@@ -169,3 +169,13 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# pycharm
+.idea
+
+# pixi
+.pixi
+pixi.lock
+
+# temp
+**temp**
