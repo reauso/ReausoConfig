@@ -1,0 +1,25 @@
+[project]
+name = "ReausoConfig"
+version = "0.0.0"
+authors = ["Rene Ebertowski <r.ebertowski@gmx.de>"]
+channels = ["conda-forge"]
+platforms = ["linux-64", "win-64", "osx-64"]
+readme = "README.md"
+
+[tasks]
+
+[dependencies]
+python = "3.13"
+pip = "*"
+pixi-pycharm = "*"
+
+[pypi-dependencies]
+
+[feature.test.dependencies]
+pytest = "*"
+
+[feature.test.tasks]
+test = "pytest"
+
+[environments]
+test = ["test"]
