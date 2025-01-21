@@ -10,7 +10,7 @@ class ConfigStore:
         # TODO doc
         # TODO implement
         # TODO test
-        self._configs = {}
+        self._known_configs = {}
 
     def register(
             self,
