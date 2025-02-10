@@ -22,6 +22,7 @@ pixi-pycharm = "*"
 
 [tool.pixi.pypi-dependencies]
 reausoconfig = { path = ".", editable = true }
+"ruamel.yaml" = "==0.18.10"
 
 [tool.pixi.tasks]
 
