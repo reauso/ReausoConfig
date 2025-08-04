@@ -2,7 +2,8 @@
 
 This module provides :class:`ConfigReference`, a dataclass capturing the
 constructor parameters of a target class, and :class:`ConfigStore`, a singleton
-registry for such references.
+registry for such references.  References can be registered and later
+unregistered from the store.
 """
 
 import inspect
@@ -50,7 +51,11 @@ class ConfigReference:
 
 @Singleton
 class ConfigStore:
-    """Registry for :class:`ConfigReference` objects."""
+    """Registry for :class:`ConfigReference` objects.
+
+    References can be registered via :meth:`register` and unregistered again
+    using :meth:`unregister`.
+    """
 
     def __init__(self) -> None:
         """Initialize the store."""
@@ -71,6 +76,14 @@ class ConfigStore:
             target_class=target,
         )
         self._known_references[reference.name] = reference
+
+    def unregister(self, name: str) -> None:
+        """Unregister a previously registered configuration reference.
+
+        :param name: Identifier of the reference to unregister.
+        :raises KeyError: If no reference with that name exists.
+        """
+        del self._known_references[name]
 
     @property
     def known_references(self) -> MappingProxyType[str, ConfigReference]:
