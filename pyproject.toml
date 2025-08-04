@@ -42,3 +42,15 @@ coverage = { cmd = [
     "coverage", "report",
     "&&", "coverage", "html"
 ], depends-on = ["test"] }
+
+[tool.coverage.run]
+source = ["rconfig"]
+omit = [
+  "*/*_test.py",
+  "*/lib/python*/unittest/*",
+  "*/Lib/unittest/*"
+]
+
+[tool.coverage.report]
+show_missing = true
+#skip_covered = true
