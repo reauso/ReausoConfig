@@ -1,19 +1,22 @@
-from unittest.case import TestCase
+from unittest import TestCase
 
-from rconfig.util import Singleton
+from rconfig.util.singleton import Singleton
 
 
 class SingletonTests(TestCase):
-    @staticmethod
-    def singleton_impl_class():
+    @property
+    def singleton_impl_class(self):
         @Singleton
         class SingletonImpl:
-            pass
+            variable = 10
+
+            def a_member(self) -> int:
+                return 0
 
         return SingletonImpl
 
-    @staticmethod
-    def singleton_impl_with_params_class():
+    @property
+    def singleton_impl_with_params_class(self):
         @Singleton
         class SingletonImplWithParams:
             def __init__(self, a, b, c):
@@ -23,20 +26,19 @@ class SingletonTests(TestCase):
 
         return SingletonImplWithParams
 
-    def test_instance_getter__BeforeInstanceIsCreated__ReturnNone(self):
+    def test_instance_getter__BeforeInstanceIsCreated__RaiseRuntimeError(self):
         # Arrange
-        singleton_class = self.singleton_impl_class()
+        singleton_class = self.singleton_impl_class
 
         # Act
-        actual = singleton_class.instance
+        expected_regex = "No existing instance!"
+        with self.assertRaisesRegex(expected_exception=RuntimeError, expected_regex=expected_regex):
+            _ = singleton_class.instance
 
-        # Assert
-        self.assertIsNone(actual)
-
-    def test_instance_getter__AfterDefaultInstanceIsCreated__ReturnSameImplInstance(self):
+    def test_instance_getter__AfterDefaultInstanceIsCreated__ReturnSameInstance(self):
         # Arrange
-        singleton_class = self.singleton_impl_class()
-        expected = singleton_class.default_instance()
+        singleton_class = self.singleton_impl_class
+        expected = singleton_class()
 
         # Act
         actual = singleton_class.instance
@@ -45,9 +47,9 @@ class SingletonTests(TestCase):
         self.assertIs(actual, expected)
         self.assertIsInstance(actual, singleton_class.wrapped_class)
 
-    def test_instance_getter__AfterParameterizedInstanceIsCreated__ReturnSameImplInstance(self):
+    def test_instance_getter__AfterParameterizedInstanceIsCreated__ReturnSameInstance(self):
         # Arrange
-        singleton_class = self.singleton_impl_with_params_class()
+        singleton_class = self.singleton_impl_with_params_class
         expected = singleton_class(1, 2, 3)
 
         # Act
@@ -57,55 +59,9 @@ class SingletonTests(TestCase):
         self.assertIs(expected, actual)
         self.assertIsInstance(actual, singleton_class.wrapped_class)
 
-    def test_default_instance__BeforeInstanceExist__SetAndReturnDefaultInstance(self):
-        # Arrange
-        singleton_class = self.singleton_impl_class()
-
-        # Act
-        actual = singleton_class.default_instance()
-
-        # Assert
-        self.assertIsInstance(actual, singleton_class.wrapped_class)
-        self.assertIs(actual, singleton_class._instance)
-
-    def test_default_instance__AfterInstanceExist__ReturnSetInstance(self):
-        # Arrange
-        singleton_class = self.singleton_impl_class()
-        expected = singleton_class.default_instance()
-        assert singleton_class._instance is expected
-
-        # Act
-        actual = singleton_class.default_instance()
-
-        # Assert
-        self.assertIsInstance(actual, singleton_class.wrapped_class)
-        self.assertIs(actual, singleton_class._instance)
-        self.assertIs(actual, expected)
-
-    def test_default_instance__BeforeInstanceWithParamsExist__RaiseTypeError(self):
-        # Arrange
-        singleton_class = self.singleton_impl_with_params_class()
-
-        # Act & Assert
-        expected_regex = r'missing \d required positional argument[s]?: '
-        with self.assertRaisesRegex(expected_exception=TypeError, expected_regex=expected_regex):
-            _ = singleton_class.default_instance()
-
-    def test_default_instance__AfterInstanceWithParamsExist__RaiseRuntimeError(self):
-        # Arrange
-        singleton_class = self.singleton_impl_with_params_class()
-        expected = singleton_class(1, 2, 3)
-        assert singleton_class._instance is expected
-
-        # Act & Assert
-        expected_regex = (r'This singleton instance is already instantiated with parameters and therefore can'
-                          r'only be accessed by the instance property of this class or another constructing call.')
-        with self.assertRaisesRegex(expected_exception=RuntimeError, expected_regex=expected_regex):
-            _ = singleton_class.default_instance()
-
     def test_call__BeforeInstanceExist__SetAndReturnInstance(self):
         # Arrange
-        singleton_class = self.singleton_impl_class()
+        singleton_class = self.singleton_impl_class
 
         # Act
         actual = singleton_class()
@@ -114,10 +70,10 @@ class SingletonTests(TestCase):
         self.assertIsInstance(actual, singleton_class.wrapped_class)
         self.assertIs(actual, singleton_class._instance)
 
-    def test_call_instance__AfterInstanceExist__ReturnSetInstance(self):
+    def test_call__AfterInstanceExist__ReturnExistingInstance(self):
         # Arrange
-        singleton_class = self.singleton_impl_class()
-        expected = singleton_class.default_instance()
+        singleton_class = self.singleton_impl_class
+        expected = singleton_class()
         assert singleton_class._instance is expected
 
         # Act
@@ -130,7 +86,7 @@ class SingletonTests(TestCase):
 
     def test_call__BeforeInstanceWithParamsExist__SetAndReturnInstance(self):
         # Arrange
-        singleton_class = self.singleton_impl_with_params_class()
+        singleton_class = self.singleton_impl_with_params_class
 
         # Act
         actual = singleton_class(1, 2, 3)
@@ -139,9 +95,9 @@ class SingletonTests(TestCase):
         self.assertIsInstance(actual, singleton_class.wrapped_class)
         self.assertIs(actual, singleton_class._instance)
 
-    def test_call__AfterInstanceWithParamsExist__ReturnSetInstance(self):
+    def test_call__AfterInstanceWithParamsExist__ReturnExistingInstance(self):
         # Arrange
-        singleton_class = self.singleton_impl_with_params_class()
+        singleton_class = self.singleton_impl_with_params_class
         expected = singleton_class(1, 2, 3)
         assert singleton_class._instance is expected
 
@@ -159,7 +115,7 @@ class SingletonTests(TestCase):
 
     def test_call__BeforeInstanceWithParamsExistButMissingParam__RaiseTypeError(self):
         # Arrange
-        singleton_class = self.singleton_impl_with_params_class()
+        singleton_class = self.singleton_impl_with_params_class
 
         # Act
         expected_regex = r'missing \d required positional argument[s]?: '
@@ -168,7 +124,7 @@ class SingletonTests(TestCase):
 
     def test_call__AfterInstanceWithParamsExistButMissingParam__RaiseValueError(self):
         # Arrange
-        singleton_class = self.singleton_impl_with_params_class()
+        singleton_class = self.singleton_impl_with_params_class
         expected = singleton_class(1, 2, 3)
         assert singleton_class._instance is expected
 
@@ -179,7 +135,7 @@ class SingletonTests(TestCase):
 
     def test_call__AfterInstanceWithParamsExistButDifferentParamValue__RaiseValueError(self):
         # Arrange
-        singleton_class = self.singleton_impl_with_params_class()
+        singleton_class = self.singleton_impl_with_params_class
         expected = singleton_class(1, 2, 3)
         assert singleton_class._instance is expected
 
@@ -187,3 +143,34 @@ class SingletonTests(TestCase):
         expected_regex = r'This singleton is already instantiated with different arguments.'
         with self.assertRaisesRegex(expected_exception=ValueError, expected_regex=expected_regex):
             _ = singleton_class(1, 2, 4)
+
+    def test_getattr__StaticVariable__ReturnsVariableValue(self):
+        # Arrange
+        singleton_class = self.singleton_impl_class
+
+        # Act
+        actual = singleton_class.variable
+
+        # Assert
+        self.assertIs(actual, 10)
+
+    def test_getattr__CallMemberFunction__ReturnsMemberFunctionReturnValue(self):
+        # Arrange
+        singleton_class = self.singleton_impl_class
+        instance = singleton_class()
+
+        # Act
+        actual = instance.a_member()
+
+        # Assert
+        self.assertIs(actual, 0)
+
+    def test_getattr__UnavailableAttribute__Raises(self):
+        # Arrange
+        singleton_class = self.singleton_impl_class
+        instance = singleton_class()
+
+        # Act & Assert
+        expected_regex = r".* object has no attribute 'unavailable_attribute'"
+        with self.assertRaisesRegex(expected_exception=AttributeError, expected_regex=expected_regex):
+            _ = instance.unavailable_attribute
