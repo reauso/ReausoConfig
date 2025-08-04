@@ -98,3 +98,20 @@ class ConfigStoreTests(TestCase):
 
         self.assertIn("example", references)
 
+    def test_unregister__RegisteredName__RemovesReference(self):
+        store = self._empty_store()
+
+        class Example:
+            pass
+
+        store.register(name="example", target=Example)
+        store.unregister("example")
+
+        self.assertNotIn("example", store.known_references)
+
+    def test_unregister__UnknownName__RaisesKeyError(self):
+        store = self._empty_store()
+
+        with self.assertRaises(KeyError):
+            store.unregister("unknown")
+
