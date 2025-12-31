@@ -11,6 +11,7 @@ class ConfigStoreTests(TestCase):
         return store
 
     def test_register__WithTargetClass__StoreConfigReference(self):
+        # Arrange
         store = self._empty_store()
 
         class Example:
@@ -19,8 +20,10 @@ class ConfigStoreTests(TestCase):
                 self.b = b
                 self.c = c
 
+        # Act
         store.register(name="example", target=Example)
 
+        # Assert
         references = store.known_references
         self.assertIn("example", references)
         reference = references["example"]
@@ -29,6 +32,7 @@ class ConfigStoreTests(TestCase):
         self.assertIsInstance(reference.decisive_init_parameters, MappingProxyType)
 
     def test_register__TargetWithoutInitAttribute__RaisesAttributeError(self):
+        # Arrange
         store = self._empty_store()
 
         class NoInitMeta(type):
@@ -40,23 +44,27 @@ class ConfigStoreTests(TestCase):
         class NoInit(metaclass=NoInitMeta):
             pass
 
+        # Act & Assert
         with self.assertRaisesRegex(AttributeError, "has no '__init__'"):
             store.register(name="noinit", target=NoInit)
 
         self.assertEqual(len(store.known_references), 0)
 
     def test_register__TargetWithNonCallableInitAttribute__RaisesTypeError(self):
+        # Arrange
         store = self._empty_store()
 
         class InitNotCallable:
             __init__ = 42  # type: ignore[assignment]
 
+        # Act & Assert
         with self.assertRaises(TypeError):
             store.register(name="notcallable", target=InitNotCallable)
 
         self.assertEqual(len(store.known_references), 0)
 
     def test_register__NameAlreadyExists__OverridesExistingReference(self):
+        # Arrange
         store = self._empty_store()
 
         class First:
@@ -66,13 +74,17 @@ class ConfigStoreTests(TestCase):
             pass
 
         store.register(name="dup", target=First)
+
+        # Act
         store.register(name="dup", target=Second)
 
+        # Assert
         references = store.known_references
         self.assertEqual(len(references), 1)
         self.assertIs(references["dup"].target_class, Second)
 
     def test_known_references__ReturnMappingProxy__IsImmutable(self):
+        # Arrange
         store = self._empty_store()
 
         class Example:
@@ -80,13 +92,17 @@ class ConfigStoreTests(TestCase):
                 pass
 
         store.register(name="example", target=Example)
+
+        # Act
         references = store.known_references
 
+        # Assert
         self.assertIsInstance(references, MappingProxyType)
         with self.assertRaises(TypeError):
             references["new"] = object()
 
     def test_known_references__RetrievedViewReflectsRegistrations(self):
+        # Arrange
         store = self._empty_store()
 
         class Example:
@@ -94,24 +110,33 @@ class ConfigStoreTests(TestCase):
                 pass
 
         references = store.known_references
+
+        # Act
         store.register(name="example", target=Example)
 
+        # Assert
         self.assertIn("example", references)
 
     def test_unregister__RegisteredName__RemovesReference(self):
+        # Arrange
         store = self._empty_store()
 
         class Example:
             pass
 
         store.register(name="example", target=Example)
+
+        # Act
         store.unregister("example")
 
+        # Assert
         self.assertNotIn("example", store.known_references)
 
     def test_unregister__UnknownName__RaisesKeyError(self):
+        # Arrange
         store = self._empty_store()
 
+        # Act & Assert
         with self.assertRaises(KeyError):
             store.unregister("unknown")
 
