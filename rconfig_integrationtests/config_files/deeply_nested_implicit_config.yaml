@@ -1,0 +1,4 @@
+_target_: l1
+level2:
+  level3:
+    value: 42

@@ -1,0 +1,5 @@
+_target_: trainer
+model:
+  hidden_size: 512
+  dropout: 0.3
+epochs: 20
