@@ -62,7 +62,7 @@ class IntegrationTests(TestCase):
     def test_instantiate__FromPath__ReturnsNestedInstance(self):
         config_path = CONFIG_DIR / "trainer_config.yaml"
 
-        trainer = rc.instantiate(config_path)
+        trainer = rc.instantiate(config_path, cli_overrides=False)
 
         self.assertIsInstance(trainer, TrainerConfig)
         self.assertIsInstance(trainer.model, ModelConfig)
@@ -75,7 +75,7 @@ class IntegrationTests(TestCase):
         config_path = CONFIG_DIR / "trainer_config.yaml"
 
         # Type-safe instantiation
-        trainer = rc.instantiate(config_path, TrainerConfig)
+        trainer = rc.instantiate(config_path, TrainerConfig, cli_overrides=False)
 
         self.assertIsInstance(trainer, TrainerConfig)
         self.assertEqual(trainer.epochs, 10)
@@ -88,7 +88,7 @@ class IntegrationTests(TestCase):
         self.assertTrue(result.valid)
 
         # Step 2: Instantiate
-        trainer = rc.instantiate(config_path)
+        trainer = rc.instantiate(config_path, cli_overrides=False)
 
         # Verify final result
         self.assertIsInstance(trainer, TrainerConfig)
@@ -121,7 +121,7 @@ class ImplicitTargetIntegrationTests(TestCase):
     def test_instantiate__ImplicitNestedConfig__ReturnsCorrectInstance(self):
         config_path = CONFIG_DIR / "trainer_implicit_config.yaml"
 
-        trainer = rc.instantiate(config_path)
+        trainer = rc.instantiate(config_path, cli_overrides=False)
 
         self.assertIsInstance(trainer, TrainerConfig)
         self.assertIsInstance(trainer.model, ModelConfig)
@@ -132,7 +132,7 @@ class ImplicitTargetIntegrationTests(TestCase):
     def test_instantiate__DeeplyNestedImplicit__ReturnsCorrectInstance(self):
         config_path = CONFIG_DIR / "deeply_nested_implicit_config.yaml"
 
-        result = rc.instantiate(config_path)
+        result = rc.instantiate(config_path, cli_overrides=False)
 
         self.assertIsInstance(result, Level1)
         self.assertIsInstance(result.level2, Level2)
@@ -147,7 +147,7 @@ class ImplicitTargetIntegrationTests(TestCase):
         self.assertTrue(result.valid)
 
         # Step 2: Instantiate
-        trainer = rc.instantiate(config_path)
+        trainer = rc.instantiate(config_path, cli_overrides=False)
 
         # Verify final result
         self.assertIsInstance(trainer, TrainerConfig)

@@ -87,6 +87,50 @@ Before instantiation, configs are validated for:
 - Type compatibility
 - Target existence in registry
 
+### CLI Overrides
+
+Override config values from the command line:
+
+```bash
+python main.py model.hidden_size=512 epochs=20
+```
+
+Or programmatically:
+
+```python
+trainer = rc.instantiate(
+    Path("config.yaml"),
+    overrides={"model.hidden_size": 512, "epochs": 20},
+)
+```
+
+#### Override Syntax
+
+| Syntax | Example | Description |
+|--------|---------|-------------|
+| Dot notation | `model.lr=0.01` | Set nested value |
+| List indexing | `layers[0].size=128` | Set list element |
+| Add to list | `+callbacks=logger` | Append to list |
+| Remove key | `~dropout` | Delete key |
+
+#### Disabling CLI Overrides
+
+For tests or library usage, disable automatic CLI parsing:
+
+```python
+model = rc.instantiate(path, cli_overrides=False)
+```
+
+#### Override Priority
+
+When both programmatic and CLI overrides are provided, CLI wins:
+
+```python
+# CLI: python main.py model.lr=0.05
+trainer = rc.instantiate(path, overrides={"model.lr": 0.01})
+# Result: model.lr = 0.05 (CLI wins)
+```
+
 ### Nested Configs
 
 Configs can contain nested configs that are instantiated recursively:
@@ -195,16 +239,22 @@ else:
         print(error)
 ```
 
-### `rc.instantiate(path, expected_type=None)`
+### `rc.instantiate(path, expected_type=None, *, overrides=None, cli_overrides=True)`
 
 Load, validate, and instantiate a config file.
 
 ```python
-# Basic usage
+# Basic usage (CLI overrides enabled by default)
 model = rc.instantiate(Path("config.yaml"))
 
 # Type-safe version (for IDE autocompletion)
 model = rc.instantiate(Path("config.yaml"), ModelConfig)
+
+# With programmatic overrides
+model = rc.instantiate(Path("config.yaml"), overrides={"model.lr": 0.01})
+
+# Disable CLI overrides (for tests)
+model = rc.instantiate(Path("config.yaml"), cli_overrides=False)
 ```
 
 ### `rc.known_references()`
@@ -273,6 +323,9 @@ ConfigError (base)
 │   ├── AmbiguousTargetError      # Cannot infer type (abstract/multiple impls)
 │   ├── TargetTypeMismatchError   # Explicit _target_ wrong type
 │   └── TypeInferenceError        # Inferred type validation failed
+├── OverrideError             # Override-related errors
+│   ├── InvalidOverridePathError  # Override path doesn't exist
+│   └── InvalidOverrideSyntaxError # Override string malformed
 └── InstantiationError        # Object creation failed
 ```
 
@@ -313,7 +366,6 @@ except InstantiationError as e:
 ### Cons
 
 - **Early stage**: Some features from the vision are not yet implemented
-- **No CLI overrides**: Cannot override config values from command line (planned)
 - **No interpolation**: Cannot reference other config values with `${...}` (planned)
 - **No config composition**: Cannot merge multiple config files (planned)
 
@@ -321,7 +373,6 @@ except InstantiationError as e:
 
 See [VISION.md](VISION.md) for planned features including:
 
-- CLI override system (`model.lr=0.01`)
 - Value interpolation (`${model.learning_rate}`)
 - Config composition and defaults
 - Environment variable support

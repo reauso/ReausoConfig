@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Union
 from unittest.case import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from rconfig.ConfigStore import ConfigStore
 from rconfig.ConfigValidator import ConfigValidator
@@ -721,3 +721,104 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
 
         self.assertIsInstance(result.inner, Inner)
         self.assertEqual(result.inner.value, 42)
+
+
+class ConfigInstantiatorHelperMethodTests(TestCase):
+    """Tests for helper methods to improve coverage (lines 149, 153, 226-227, 236, 259)."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+        validator = ConfigValidator(store)
+        return ConfigInstantiator(store, validator)
+
+    # --- _is_class_type tests (lines 148-149, 152-153) ---
+    def test_isClassType__GenericType__ReturnsFalse(self):
+        """Test generic types return False (line 148-149)."""
+        store = self._empty_store()
+        instantiator = self._create_instantiator(store)
+
+        # Generic types have origin, should return False
+        self.assertFalse(instantiator._is_class_type(list[int]))
+        self.assertFalse(instantiator._is_class_type(dict[str, int]))
+        self.assertFalse(instantiator._is_class_type(Optional[int]))
+
+    def test_isClassType__NonTypeObject__ReturnsFalse(self):
+        """Test non-type objects return False (line 152-153)."""
+        store = self._empty_store()
+        instantiator = self._create_instantiator(store)
+
+        # Non-type objects should return False
+        self.assertFalse(instantiator._is_class_type("not a type"))  # type: ignore
+        self.assertFalse(instantiator._is_class_type(42))  # type: ignore
+        self.assertFalse(instantiator._is_class_type(None))  # type: ignore
+
+    # --- _find_registered_subclasses TypeError handling (lines 226-227) ---
+    def test_findSubclasses__IssubclassTypeError__HandledGracefully(self):
+        """Test TypeError in issubclass is handled (lines 226-227)."""
+        store = self._empty_store()
+
+        class Base:
+            pass
+
+        store.register("base", Base)
+        instantiator = self._create_instantiator(store)
+
+        # Mock issubclass to raise TypeError
+        with patch(
+            "rconfig.ConfigInstantiator.issubclass",
+            side_effect=TypeError("Mock TypeError"),
+        ):
+            result = instantiator._find_registered_subclasses(Base)
+
+        self.assertIsInstance(result, list)
+
+    # --- _is_concrete_type with abstract class (line 235-236) ---
+    def test_isConcreteType__AbstractClass__ReturnsFalseNone(self):
+        """Test abstract class returns (False, None) (line 235-236)."""
+        store = self._empty_store()
+
+        class AbstractBase(ABC):
+            @abstractmethod
+            def method(self) -> None:
+                pass
+
+        instantiator = self._create_instantiator(store)
+
+        is_concrete, target = instantiator._is_concrete_type(AbstractBase)
+
+        self.assertFalse(is_concrete)
+        self.assertIsNone(target)
+
+    # --- _augment_with_inferred_target when class_type is None (line 258-259) ---
+    def test_augmentWithInferredTarget__NoClassType__ReturnsNone(self):
+        """Test when _extract_class_from_hint returns None (line 258-259)."""
+        store = self._empty_store()
+        instantiator = self._create_instantiator(store)
+
+        # list[int] is a generic type, _extract_class_from_hint returns None
+        result = instantiator._augment_with_inferred_target(
+            {"value": 42}, list[int]
+        )
+
+        self.assertIsNone(result)
+
+    # --- _could_be_implicit_nested edge cases (line 204-205) ---
+    def test_couldBeImplicit__DictWithTarget__ReturnsFalse(self):
+        """Test dict with _target_ returns False (line 204-205)."""
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        instantiator = self._create_instantiator(store)
+
+        result = instantiator._could_be_implicit_nested(
+            {"_target_": "model", "value": 42}, Model
+        )
+
+        self.assertFalse(result)
