@@ -2,12 +2,13 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Union
 from unittest.case import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from rconfig.ConfigStore import ConfigStore
 from rconfig.ConfigValidator import ConfigValidator, ValidationResult
 from rconfig.errors import (
     AmbiguousTargetError,
+    InvalidOverridePathError,
     MissingFieldError,
     TargetNotFoundError,
     TargetTypeMismatchError,
@@ -1148,3 +1149,475 @@ class ConfigValidatorImplicitTargetTests(TestCase):
 
         # Assert
         self.assertTrue(result.valid)
+
+
+class ValidateOverridePathTests(TestCase):
+    """Tests for validate_override_path method (lines 543-599)."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    # --- Empty path (line 557-558) ---
+    def test_validatePath__EmptyPath__RaisesInvalidOverridePathError(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+        config = {"key": "value"}
+
+        with self.assertRaises(InvalidOverridePathError) as ctx:
+            validator.validate_override_path([], config)
+        self.assertIn("Empty path", str(ctx.exception))
+
+    # --- Dict key access (lines 583-597) ---
+    def test_validatePath__SimpleKey__ReturnsTypeHint(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "value": 42}
+
+        result = validator.validate_override_path(["value"], config)
+
+        self.assertEqual(result, int)
+
+    def test_validatePath__NestedDictKey__ReturnsTypeHint(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            count: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("inner", Inner)
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner", "count": 10},
+        }
+
+        result = validator.validate_override_path(["inner", "count"], config)
+
+        self.assertEqual(result, int)
+
+    def test_validatePath__KeyNotFound__RaisesInvalidOverridePathError(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "value": 42}
+
+        with self.assertRaises(InvalidOverridePathError) as ctx:
+            validator.validate_override_path(["nonexistent"], config)
+        self.assertIn("not found", str(ctx.exception))
+
+    def test_validatePath__KeyOnNonDict__RaisesInvalidOverridePathError(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "value": 42}
+
+        with self.assertRaises(InvalidOverridePathError) as ctx:
+            validator.validate_override_path(["value", "nested"], config)
+        self.assertIn("non-dict", str(ctx.exception))
+
+    # --- List index access (lines 564-582) ---
+    def test_validatePath__ListIndex__ReturnsElementType(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            items: list[int]
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "items": [1, 2, 3]}
+
+        result = validator.validate_override_path(["items", 0], config)
+
+        self.assertEqual(result, int)
+
+    def test_validatePath__ListIndexOutOfRange__RaisesInvalidOverridePathError(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            items: list[int]
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "items": [1, 2]}
+
+        with self.assertRaises(InvalidOverridePathError) as ctx:
+            validator.validate_override_path(["items", 99], config)
+        self.assertIn("out of range", str(ctx.exception))
+
+    def test_validatePath__NegativeListIndex__RaisesInvalidOverridePathError(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            items: list[int]
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "items": [1, 2]}
+
+        with self.assertRaises(InvalidOverridePathError) as ctx:
+            validator.validate_override_path(["items", -1], config)
+        self.assertIn("out of range", str(ctx.exception))
+
+    def test_validatePath__IndexOnNonList__RaisesInvalidOverridePathError(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "value": 42}
+
+        with self.assertRaises(InvalidOverridePathError) as ctx:
+            validator.validate_override_path(["value", 0], config)
+        self.assertIn("non-list", str(ctx.exception))
+
+    # --- Mixed path access ---
+    def test_validatePath__MixedDictAndList__TraversesCorrectly(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Item:
+            name: str
+
+        @dataclass
+        class Container:
+            items: list[Item]
+
+        store.register("item", Item)
+        store.register("container", Container)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "container",
+            "items": [
+                {"_target_": "item", "name": "first"},
+                {"_target_": "item", "name": "second"},
+            ],
+        }
+
+        result = validator.validate_override_path(["items", 0, "name"], config)
+
+        self.assertEqual(result, str)
+
+    # --- Type hint resolution edge cases (lines 576-582) ---
+    def test_validatePath__ListWithNoTypeArgs__ReturnsNone(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            items: list  # Untyped list
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "items": [1, 2, 3]}
+
+        result = validator.validate_override_path(["items", 0], config)
+
+        # Untyped list - can't determine element type
+        self.assertIsNone(result)
+
+
+class GetFieldTypeTests(TestCase):
+    """Tests for _get_field_type method (lines 601-622)."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def test_getFieldType__NoTargetInConfig__ReturnsNone(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+        config = {"value": 42}  # No _target_
+
+        result = validator._get_field_type(config, "value")
+
+        self.assertIsNone(result)
+
+    def test_getFieldType__UnknownTarget__ReturnsNone(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+        config = {"_target_": "unknown", "value": 42}
+
+        result = validator._get_field_type(config, "value")
+
+        self.assertIsNone(result)
+
+    def test_getFieldType__ValidTarget_ExistingField__ReturnsType(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "value": 42}
+
+        result = validator._get_field_type(config, "value")
+
+        self.assertEqual(result, int)
+
+    def test_getFieldType__ValidTarget_NonExistentField__ReturnsNone(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "value": 42}
+
+        result = validator._get_field_type(config, "nonexistent")
+
+        self.assertIsNone(result)
+
+    def test_getFieldType__GetTypeHintsFails__ReturnsNone(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"_target_": "model", "value": 42}
+
+        with patch(
+            "rconfig.ConfigValidator.get_type_hints",
+            side_effect=NameError("Bad type hint"),
+        ):
+            result = validator._get_field_type(config, "value")
+
+        self.assertIsNone(result)
+
+
+class IsClassTypeTests(TestCase):
+    """Tests for _is_class_type edge cases (lines 207-208)."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def test_isClassType__GenericType__ReturnsFalse(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Generic types have an origin, should return False at line 203-204
+        self.assertFalse(validator._is_class_type(list[int]))
+        self.assertFalse(validator._is_class_type(dict[str, int]))
+        self.assertFalse(validator._is_class_type(Optional[int]))
+
+    def test_isClassType__NonTypeObject__ReturnsFalse(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Non-type objects should return False at line 207-208
+        self.assertFalse(validator._is_class_type("not a type"))  # type: ignore
+        self.assertFalse(validator._is_class_type(42))  # type: ignore
+        self.assertFalse(validator._is_class_type(None))  # type: ignore
+
+
+class FindRegisteredSubclassesTests(TestCase):
+    """Tests for _find_registered_subclasses error handling (lines 271-273)."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def test_findSubclasses__IssubclassTypeError__HandledGracefully(self):
+        store = self._empty_store()
+
+        class Base:
+            pass
+
+        # Register Base normally
+        store.register("base", Base)
+
+        validator = ConfigValidator(store)
+
+        # Mock issubclass to raise TypeError for our test
+        original_issubclass = issubclass
+
+        def mock_issubclass(cls, classinfo):
+            if cls is Base:
+                raise TypeError("Mock TypeError")
+            return original_issubclass(cls, classinfo)
+
+        with patch("rconfig.ConfigValidator.issubclass", side_effect=mock_issubclass):
+            # This should not raise, just skip the problematic class
+            result = validator._find_registered_subclasses(Base)
+
+        # Result should be empty since the TypeError was caught
+        self.assertIsInstance(result, list)
+
+
+class CheckTargetTypeCompatibilityTests(TestCase):
+    """Tests for _check_target_type_compatibility edge cases (lines 415-444)."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def test_checkCompatibility__NoExpectedType__ReturnsEmpty(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        store.register("inner", Inner)
+        validator = ConfigValidator(store)
+        config = {"_target_": "inner", "value": 42}
+
+        result = validator._check_target_type_compatibility(
+            config, None, "field", "path"
+        )
+
+        self.assertEqual(result, [])
+
+    def test_checkCompatibility__GenericExpectedType__ReturnsEmpty(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        store.register("inner", Inner)
+        validator = ConfigValidator(store)
+        config = {"_target_": "inner", "value": 42}
+
+        # list[Inner] is a generic type, _extract_class_from_hint returns None
+        result = validator._check_target_type_compatibility(
+            config, list[Inner], "field", "path"
+        )
+
+        self.assertEqual(result, [])
+
+    def test_checkCompatibility__IssubclassTypeError__HandledGracefully(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        class Expected:
+            pass
+
+        store.register("inner", Inner)
+        validator = ConfigValidator(store)
+        config = {"_target_": "inner", "value": 42}
+
+        # Mock issubclass to raise TypeError
+        with patch(
+            "rconfig.ConfigValidator.issubclass",
+            side_effect=TypeError("Mock TypeError"),
+        ):
+            # This should not raise
+            result = validator._check_target_type_compatibility(
+                config, Expected, "field", "path"
+            )
+
+        # Should return empty list (TypeError caught)
+        self.assertEqual(result, [])
+
+
+class TypeReprTests(TestCase):
+    """Tests for _type_repr edge cases (lines 531, 536, 541)."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def test_typeRepr__UntypedList__ReturnsListString(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Create an untyped list type annotation
+        result = validator._type_repr(list)
+
+        self.assertEqual(result, "list")
+
+    def test_typeRepr__UntypedDict__ReturnsDictString(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        result = validator._type_repr(dict)
+
+        self.assertEqual(result, "dict")
+
+    def test_typeRepr__TypeWithoutName__ReturnsFallbackStr(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Create a mock type without __name__
+        mock_type = MagicMock()
+        del mock_type.__name__  # Remove __name__ attribute
+        mock_type.__str__ = lambda self: "MockType"
+
+        result = validator._type_repr(mock_type)
+
+        self.assertIn("Mock", result)
+
+
+class CouldBeImplicitNestedTests(TestCase):
+    """Tests for _could_be_implicit_nested edge cases (lines 335, 337)."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def test_couldBeImplicit__DictWithTarget__ReturnsFalse(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        @dataclass
+        class Model:
+            value: int
+
+        result = validator._could_be_implicit_nested(
+            {"_target_": "model", "value": 42}, Model
+        )
+
+        self.assertFalse(result)
+
+    def test_couldBeImplicit__NoneExpectedType__ReturnsFalse(self):
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        result = validator._could_be_implicit_nested({"value": 42}, None)
+
+        self.assertFalse(result)

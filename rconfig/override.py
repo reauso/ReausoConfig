@@ -1,0 +1,350 @@
+"""Override parsing and application for CLI and programmatic config overrides.
+
+This module provides functionality to parse override strings (like "model.lr=0.01")
+and apply them to configuration dictionaries before instantiation.
+"""
+
+import copy
+import re
+from dataclasses import dataclass
+from typing import Any, Literal
+
+from .errors import InvalidOverrideSyntaxError
+
+
+@dataclass
+class Override:
+    """Represents a single configuration override.
+
+    :param path: List of keys/indices to traverse (e.g., ["model", "layers", 0, "size"]).
+    :param value: The value to set, add, or None for remove operations.
+    :param operation: The type of override operation.
+    """
+
+    path: list[str | int]
+    value: Any
+    operation: Literal["set", "add", "remove"]
+
+
+# Regex patterns for parsing override keys
+_IDENTIFIER_PATTERN = r"[a-zA-Z_][a-zA-Z0-9_]*"
+_INDEX_PATTERN = r"\[(\d+)\]"
+_SEGMENT_PATTERN = rf"({_IDENTIFIER_PATTERN})(?:{_INDEX_PATTERN})?"
+_PATH_PATTERN = rf"^(\+|~)?({_SEGMENT_PATTERN}(?:\.{_SEGMENT_PATTERN})*)$"
+_COMPILED_PATH_PATTERN = re.compile(_PATH_PATTERN)
+_COMPILED_SEGMENT_PATTERN = re.compile(_SEGMENT_PATTERN)
+
+
+def parse_override_key(key: str) -> tuple[list[str | int], Literal["set", "add", "remove"]]:
+    """Parse an override key into a path and operation.
+
+    :param key: Override key string (e.g., "model.lr", "+callbacks", "~dropout").
+    :return: Tuple of (path, operation).
+    :raises InvalidOverrideSyntaxError: If the key cannot be parsed.
+
+    Examples::
+
+        parse_override_key("model.lr")
+        # (["model", "lr"], "set")
+
+        parse_override_key("layers[0].size")
+        # (["layers", 0, "size"], "set")
+
+        parse_override_key("+callbacks")
+        # (["callbacks"], "add")
+
+        parse_override_key("~dropout")
+        # (["dropout"], "remove")
+    """
+    match = _COMPILED_PATH_PATTERN.match(key)
+    if not match:
+        raise InvalidOverrideSyntaxError(key, "Invalid override key syntax")
+
+    prefix = match.group(1)
+    path_str = match.group(2)
+
+    # Determine operation from prefix
+    if prefix == "+":
+        operation: Literal["set", "add", "remove"] = "add"
+    elif prefix == "~":
+        operation = "remove"
+    else:
+        operation = "set"
+
+    # Parse path segments
+    path: list[str | int] = []
+    for segment_match in _COMPILED_SEGMENT_PATTERN.finditer(path_str):
+        identifier = segment_match.group(1)
+        index_str = segment_match.group(2)
+
+        path.append(identifier)
+        if index_str is not None:
+            path.append(int(index_str))
+
+    return path, operation
+
+
+def parse_override_value(raw: str, expected_type: type | None = None) -> Any:
+    """Parse a string value, optionally coercing to an expected type.
+
+    :param raw: Raw string value from CLI or config.
+    :param expected_type: Expected type from class type hints, or None for auto-inference.
+    :return: Parsed value.
+    :raises ValueError: If the value cannot be coerced to the expected type.
+
+    Type coercion priority:
+    1. If expected_type is provided, attempt to convert to that type
+    2. Otherwise, use YAML-style inference:
+       - "true"/"false" -> bool
+       - Integer pattern -> int
+       - Float pattern -> float
+       - Everything else -> string
+    """
+    # If expected type is provided, try to coerce
+    if expected_type is not None:
+        return _coerce_to_type(raw, expected_type)
+
+    # YAML-style auto-inference
+    return _infer_value_type(raw)
+
+
+def _coerce_to_type(raw: str, expected_type: type) -> Any:
+    """Coerce a string value to the expected type."""
+    # Handle None type
+    if expected_type is type(None):
+        if raw.lower() in ("none", "null", "~"):
+            return None
+        raise ValueError(f"Cannot convert '{raw}' to None")
+
+    # Handle bool specially (before int, since bool is subclass of int)
+    if expected_type is bool:
+        if raw.lower() in ("true", "yes", "1", "on"):
+            return True
+        if raw.lower() in ("false", "no", "0", "off"):
+            return False
+        raise ValueError(f"Cannot convert '{raw}' to bool")
+
+    # Handle basic types
+    if expected_type in (int, float, str):
+        try:
+            return expected_type(raw)
+        except ValueError as e:
+            raise ValueError(f"Cannot convert '{raw}' to {expected_type.__name__}") from e
+
+    # Handle list and dict by parsing as YAML
+    if expected_type is list or (hasattr(expected_type, "__origin__") and expected_type.__origin__ is list):
+        return _parse_yaml_value(raw)
+
+    if expected_type is dict or (hasattr(expected_type, "__origin__") and expected_type.__origin__ is dict):
+        return _parse_yaml_value(raw)
+
+    # Fallback: try direct conversion
+    try:
+        return expected_type(raw)
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Cannot convert '{raw}' to {expected_type}") from e
+
+
+def _infer_value_type(raw: str) -> Any:
+    """Infer the type of a string value using YAML-style rules."""
+    # Check for boolean
+    if raw.lower() in ("true", "yes"):
+        return True
+    if raw.lower() in ("false", "no"):
+        return False
+
+    # Check for None
+    if raw.lower() in ("none", "null", "~"):
+        return None
+
+    # Check for integer
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+
+    # Check for float
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+
+    # Check for list or dict (YAML syntax)
+    if raw.startswith("[") or raw.startswith("{"):
+        try:
+            return _parse_yaml_value(raw)
+        except Exception:
+            pass
+
+    # Default to string
+    return raw
+
+
+def _parse_yaml_value(raw: str) -> Any:
+    """Parse a YAML-formatted value string."""
+    try:
+        from ruamel.yaml import YAML
+
+        yaml = YAML(typ="safe")
+        return yaml.load(raw)
+    except Exception as e:
+        raise ValueError(f"Cannot parse YAML value: {raw}") from e
+
+
+def parse_cli_arg(arg: str) -> Override | None:
+    """Parse a single CLI argument as an override.
+
+    :param arg: CLI argument string.
+    :return: Override object if the arg is an override, None otherwise.
+
+    An argument is considered an override if it matches:
+    - key=value (set operation)
+    - +key=value (add operation)
+    - ~key (remove operation)
+
+    Non-override args (like --help, -v) return None.
+    """
+    # Skip args that look like flags
+    if arg.startswith("-") and not arg.startswith("~"):
+        return None
+
+    # Check for remove operation (no value required)
+    if arg.startswith("~"):
+        key = arg[1:]
+        if not key or "=" in key:
+            # ~key=value is invalid for remove, but ~key is valid
+            if "=" not in key:
+                try:
+                    path, operation = parse_override_key(arg)
+                    return Override(path=path, value=None, operation=operation)
+                except InvalidOverrideSyntaxError:
+                    return None
+        try:
+            path, operation = parse_override_key(arg)
+            return Override(path=path, value=None, operation=operation)
+        except InvalidOverrideSyntaxError:
+            return None
+
+    # Check for set or add operation (requires =)
+    if "=" not in arg:
+        return None
+
+    key, _, value = arg.partition("=")
+
+    try:
+        path, operation = parse_override_key(key)
+    except InvalidOverrideSyntaxError:
+        return None
+
+    # Parse value (type inference happens later with type hints)
+    return Override(path=path, value=value, operation=operation)
+
+
+def extract_cli_overrides(argv: list[str]) -> list[Override]:
+    """Extract override-style arguments from a list of CLI args.
+
+    :param argv: List of CLI arguments (typically sys.argv[1:]).
+    :return: List of Override objects extracted from argv.
+
+    Non-override arguments are silently ignored.
+    """
+    overrides = []
+    for arg in argv:
+        override = parse_cli_arg(arg)
+        if override is not None:
+            overrides.append(override)
+    return overrides
+
+
+def parse_dict_overrides(overrides: dict[str, Any]) -> list[Override]:
+    """Convert a dictionary of overrides to Override objects.
+
+    :param overrides: Dictionary with override keys and values.
+    :return: List of Override objects.
+
+    Examples::
+
+        parse_dict_overrides({"model.lr": 0.01})
+        # [Override(["model", "lr"], 0.01, "set")]
+
+        parse_dict_overrides({"+callbacks": "logger", "~dropout": None})
+        # [Override(["callbacks"], "logger", "add"), Override(["dropout"], None, "remove")]
+    """
+    result = []
+    for key, value in overrides.items():
+        path, operation = parse_override_key(key)
+        result.append(Override(path=path, value=value, operation=operation))
+    return result
+
+
+def apply_overrides(config: dict[str, Any], overrides: list[Override]) -> dict[str, Any]:
+    """Apply a list of overrides to a configuration dictionary.
+
+    :param config: Original configuration dictionary.
+    :param overrides: List of Override objects to apply.
+    :return: New configuration dictionary with overrides applied.
+
+    The original config is not modified; a deep copy is made.
+    Overrides are applied in order, so later overrides win on conflict.
+    """
+    result = copy.deepcopy(config)
+
+    for override in overrides:
+        _apply_single_override(result, override)
+
+    return result
+
+
+def _apply_single_override(config: dict[str, Any], override: Override) -> None:
+    """Apply a single override to a config dict (mutates in place)."""
+    if not override.path:
+        return
+
+    # Navigate to parent of target
+    current: Any = config
+    for i, key in enumerate(override.path[:-1]):
+        if isinstance(key, int):
+            if not isinstance(current, list) or key >= len(current):
+                raise KeyError(f"List index {key} out of range at path {override.path[:i+1]}")
+            current = current[key]
+        else:
+            if not isinstance(current, dict) or key not in current:
+                raise KeyError(f"Key '{key}' not found at path {override.path[:i+1]}")
+            current = current[key]
+
+    # Apply the operation
+    final_key = override.path[-1]
+
+    if override.operation == "set":
+        if isinstance(final_key, int):
+            if not isinstance(current, list) or final_key >= len(current):
+                raise KeyError(f"List index {final_key} out of range")
+            current[final_key] = override.value
+        else:
+            if not isinstance(current, dict):
+                raise KeyError(f"Cannot set key '{final_key}' on non-dict")
+            current[final_key] = override.value
+
+    elif override.operation == "add":
+        if isinstance(final_key, int):
+            raise ValueError("Cannot use add operation with list index")
+        if not isinstance(current, dict):
+            raise KeyError(f"Cannot access key '{final_key}' on non-dict")
+        if final_key not in current:
+            current[final_key] = [override.value]
+        elif isinstance(current[final_key], list):
+            current[final_key].append(override.value)
+        else:
+            raise ValueError(f"Cannot add to non-list field '{final_key}'")
+
+    elif override.operation == "remove":
+        if isinstance(final_key, int):
+            if not isinstance(current, list) or final_key >= len(current):
+                raise KeyError(f"List index {final_key} out of range")
+            del current[final_key]
+        else:
+            if not isinstance(current, dict):
+                raise KeyError(f"Cannot remove key '{final_key}' from non-dict")
+            if final_key not in current:
+                raise KeyError(f"Key '{final_key}' not found for removal")
+            del current[final_key]

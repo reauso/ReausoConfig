@@ -12,6 +12,7 @@ from typing import Any, Union, get_args, get_origin, get_type_hints
 from rconfig.ConfigStore import ConfigStore, ConfigReference
 from rconfig.errors import (
     AmbiguousTargetError,
+    InvalidOverridePathError,
     MissingFieldError,
     TargetNotFoundError,
     TargetTypeMismatchError,
@@ -538,3 +539,84 @@ class ConfigValidator:
             return t.__name__
 
         return str(t)
+
+    def validate_override_path(
+        self, path: list[str | int], config: dict[str, Any]
+    ) -> type | None:
+        """Validate that an override path exists and return its expected type.
+
+        Traverses the config structure following the path, checking that each
+        segment exists and is valid. Uses type hints from registered target
+        classes to determine the expected type at the final path location.
+
+        :param path: List of keys/indices representing the override path.
+        :param config: The configuration dictionary to validate against.
+        :return: Expected type from class type hints, or None if no hint available.
+        :raises InvalidOverridePathError: If the path doesn't exist in the config.
+        """
+        if not path:
+            raise InvalidOverridePathError(path, "Empty path")
+
+        current: Any = config
+        current_type: type | None = None
+
+        for i, key in enumerate(path):
+            if isinstance(key, int):
+                # List index access
+                if not isinstance(current, list):
+                    raise InvalidOverridePathError(
+                        path, f"Cannot index into non-list at position {i}"
+                    )
+                if key < 0 or key >= len(current):
+                    raise InvalidOverridePathError(
+                        path, f"List index {key} out of range (list has {len(current)} elements)"
+                    )
+                current = current[key]
+                # Update current_type for list element
+                if current_type is not None:
+                    origin = get_origin(current_type)
+                    args = get_args(current_type)
+                    if origin is list and args:
+                        current_type = args[0]
+                    else:
+                        current_type = None
+            else:
+                # Dict key access
+                if not isinstance(current, dict):
+                    raise InvalidOverridePathError(
+                        path, f"Cannot access key '{key}' on non-dict at position {i}"
+                    )
+                if key not in current:
+                    raise InvalidOverridePathError(
+                        path, f"Key '{key}' not found in config"
+                    )
+
+                # Get type hint for this field if we have a target
+                current_type = self._get_field_type(current, key)
+
+                current = current[key]
+
+        return current_type
+
+    def _get_field_type(self, config: dict[str, Any], field_name: str) -> type | None:
+        """Get the expected type for a field based on the config's target class.
+
+        :param config: Config dict that may contain a _target_ key.
+        :param field_name: Name of the field to get type for.
+        :return: Expected type from class type hints, or None if not available.
+        """
+        if TARGET_KEY not in config:
+            return None
+
+        target_name = config[TARGET_KEY]
+        if target_name not in self._store.known_references:
+            return None
+
+        reference = self._store.known_references[target_name]
+
+        try:
+            type_hints = get_type_hints(reference.target_class)
+        except Exception:
+            return None
+
+        return type_hints.get(field_name)
