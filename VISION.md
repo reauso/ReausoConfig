@@ -24,7 +24,7 @@ A lightweight Python configuration library that turns YAML files into Python obj
 
 ## What Users Can Do
 
-### 1. Define Configuration in YAML
+### ✓ 1. Define Configuration in YAML
 
 ```yaml
 # config/model.yaml
@@ -36,7 +36,7 @@ dropout: 0.1
 
 The `_target_` key maps to a class registered in the ConfigStore.
 
-### 2. Register Classes Once
+### ✓ 2. Register Classes Once
 
 ```python
 # main.py - the ONLY place that depends on ReausoConfig
@@ -53,7 +53,7 @@ app = config.instantiate()
 run_training(app.model, app.dataset)
 ```
 
-### 3. Override via Command Line
+### ✓ 3. Override via Command Line
 
 ```bash
 python main.py model.learning_rate=0.01 dataset.batch_size=64
@@ -107,38 +107,38 @@ app = config.instantiate(num_workers=os.cpu_count())
 
 ## Core Features
 
-### Minimal Dependency
+### ✓ Minimal Dependency
 - Only `main.py` imports ReausoConfig
 - All domain classes are pure Python
 - Instantiated objects have no framework coupling
 
-### Type-Safe Configuration
+### ✓ Type-Safe Configuration
 - Validates config arguments against class signatures
 - Reports type mismatches before instantiation
 - Uses Python's `inspect` module for introspection
 
-### Hierarchical Configs
-- Nest configs within configs
+### (partial) Hierarchical Configs
+- ✓ Nest configs within configs
 - Include external files
 - Compose from defaults
 
-### CLI Override System
-- Dot notation for nested values: `model.optimizer.lr=0.01`
-- List indexing: `model.layers[0].size=128`
-- Add/remove operations: `+callbacks=logger`, `~callbacks`
+### ✓ CLI Override System
+- ✓ Dot notation for nested values: `model.optimizer.lr=0.01`
+- ✓ List indexing: `model.layers[0].size=128`
+- ✓ Add/remove operations: `+callbacks=logger`, `~callbacks`
 
 ### Interpolation
 - Reference other config values: `${path.to.value}`
 - Environment variables: `${env:VAR}` or `${env:VAR,default}`
 - Prevents circular references
 
-### Validation
-- Schema validation (valid YAML)
-- Target validation (`_target_` exists in registry)
-- Signature validation (all required params provided)
-- Type validation (argument types match)
+### ✓ Validation
+- ✓ Schema validation (valid YAML)
+- ✓ Target validation (`_target_` exists in registry)
+- ✓ Signature validation (all required params provided)
+- ✓ Type validation (argument types match)
 
-### Rich Error Messages
+### ✓ Rich Error Messages
 ```
 ConfigurationError: Missing required parameter 'hidden_size'
 
@@ -169,10 +169,10 @@ config/
 python main.py model=vgg dataset=cifar
 ```
 
-### Dry-Run Mode
+### (partial) Dry-Run Mode
 Validate and preview what would be instantiated without actually doing it:
 ```python
-config.validate()  # Check everything is valid
+config.validate()  # ✓ Check everything is valid
 config.preview()   # Show instantiation plan
 ```
 
