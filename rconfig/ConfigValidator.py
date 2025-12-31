@@ -4,14 +4,18 @@ This module provides validation of config dictionaries against registered
 target classes in the ConfigStore.
 """
 
+import inspect
 from dataclasses import dataclass, field
 from inspect import Parameter
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from rconfig.ConfigStore import ConfigStore, ConfigReference
 from rconfig.errors import (
+    AmbiguousTargetError,
     MissingFieldError,
     TargetNotFoundError,
+    TargetTypeMismatchError,
+    TypeInferenceError,
     TypeMismatchError,
     ValidationError,
 )
@@ -146,13 +150,31 @@ class ConfigValidator:
 
             field_path = f"{config_path}.{param_name}" if config_path else param_name
 
-            # Check if value is a nested config
+            # Check if value is an explicit nested config (has _target_)
             if self._is_nested_config(value):
                 # Recursively validate nested config
                 nested_result = self.validate(value, field_path)
                 errors.extend(nested_result.errors)
+
+                # Also validate that the target class matches the expected type
+                if nested_result.valid:
+                    errors.extend(
+                        self._check_target_type_compatibility(
+                            value, expected_type, param_name, field_path
+                        )
+                    )
+
+            # Check if value could be an implicit nested config (dict without _target_)
+            elif self._could_be_implicit_nested(value, expected_type):
+                # Try to infer target or report error
+                errors.extend(
+                    self._validate_implicit_nested(
+                        value, expected_type, param_name, field_path
+                    )
+                )
+
             else:
-                # Validate type
+                # Validate regular type
                 type_error = self._check_type(
                     param_name, value, expected_type, field_path
                 )
@@ -164,6 +186,263 @@ class ConfigValidator:
     def _is_nested_config(self, value: Any) -> bool:
         """Check if a value is a nested config (dict with _target_)."""
         return isinstance(value, dict) and TARGET_KEY in value
+
+    def _is_class_type(self, hint: type) -> bool:
+        """Check if a type hint represents a class that could be a config target.
+
+        Excludes primitive types and built-in collection types that cannot
+        be config targets.
+
+        :param hint: Type hint to check.
+        :return: True if hint is a class type that could be a config target.
+        """
+        origin = get_origin(hint)
+
+        # If it has an origin, it's a generic (list[X], dict[K, V], Optional[X], etc.)
+        if origin is not None:
+            return False
+
+        # Check if it's actually a class
+        if not isinstance(hint, type):
+            return False
+
+        # Exclude primitive types and built-in collections
+        excluded_types = (
+            int,
+            float,
+            str,
+            bool,
+            bytes,
+            type(None),
+            list,
+            dict,
+            set,
+            frozenset,
+            tuple,
+        )
+        if hint in excluded_types:
+            return False
+
+        return True
+
+    def _extract_class_from_hint(self, hint: type) -> type | None:
+        """Extract the underlying class type from a type hint.
+
+        Handles Optional[X], Union[X, None], and plain class types.
+        Returns None if the hint doesn't represent a single class type.
+
+        :param hint: Type hint to analyze.
+        :return: The underlying class type, or None if not applicable.
+        """
+        origin = get_origin(hint)
+        args = get_args(hint)
+
+        # Handle Optional[X] which is Union[X, None]
+        if origin is Union:
+            non_none_args = [a for a in args if a is not type(None)]
+            if len(non_none_args) == 1:
+                # It's Optional[X], check if X is a class
+                inner = non_none_args[0]
+                if self._is_class_type(inner):
+                    return inner
+            return None
+
+        # Plain class type
+        if self._is_class_type(hint):
+            return hint
+
+        return None
+
+    def _find_registered_subclasses(self, base_class: type) -> list[str]:
+        """Find all registered targets that are subclasses of the given base class.
+
+        :param base_class: Base class to find subclasses of.
+        :return: List of target names whose classes are subclasses of base_class.
+        """
+        subclasses: list[str] = []
+
+        for name, reference in self._store.known_references.items():
+            target_class = reference.target_class
+            # Check if target_class is a subclass of base_class (including exact match)
+            try:
+                if issubclass(target_class, base_class):
+                    subclasses.append(name)
+            except TypeError:
+                # issubclass can raise TypeError for some types
+                continue
+
+        return subclasses
+
+    def _find_exact_match(self, cls: type) -> str | None:
+        """Find a registered target that exactly matches the given class.
+
+        :param cls: Class to find exact match for.
+        :return: Target name if exact match found, None otherwise.
+        """
+        for name, reference in self._store.known_references.items():
+            if reference.target_class is cls:
+                return name
+        return None
+
+    def _is_concrete_type(
+        self, cls: type
+    ) -> tuple[bool, str | None, list[str]]:
+        """Determine if a type is concrete (unambiguously instantiable).
+
+        A type is concrete if:
+        1. It is not abstract (no @abstractmethod decorators)
+        2. It has exactly one registered target matching it (itself)
+
+        :param cls: Class to check.
+        :return: Tuple of (is_concrete, exact_target_name, all_matching_targets)
+        """
+        # Check if abstract
+        if inspect.isabstract(cls):
+            matching = self._find_registered_subclasses(cls)
+            return (False, None, matching)
+
+        # Find all registered subclasses (including exact matches)
+        matching_targets = self._find_registered_subclasses(cls)
+
+        # Check for exact match
+        exact_match = self._find_exact_match(cls)
+
+        if exact_match is not None:
+            # We have an exact match. Is it the ONLY match?
+            if len(matching_targets) == 1 and matching_targets[0] == exact_match:
+                # Concrete: exactly one target, it's the exact match
+                return (True, exact_match, matching_targets)
+            else:
+                # Ambiguous: there are subclasses registered too
+                return (False, None, matching_targets)
+        else:
+            # No exact match registered - ambiguous
+            return (False, None, matching_targets)
+
+    def _could_be_implicit_nested(
+        self, value: Any, expected_type: type | None
+    ) -> bool:
+        """Check if value could be an implicit nested config (dict without _target_).
+
+        A dict could be an implicit nested config if:
+        1. It's a dict without _target_
+        2. The expected type is a class type (not list, dict, etc.)
+        """
+        if not isinstance(value, dict):
+            return False
+        if TARGET_KEY in value:
+            return False  # Already has _target_, not implicit
+        if expected_type is None:
+            return False
+
+        # Extract the actual class type from the hint (handle Optional, etc.)
+        class_type = self._extract_class_from_hint(expected_type)
+        return class_type is not None
+
+    def _validate_implicit_nested(
+        self,
+        value: dict[str, Any],
+        expected_type: type,
+        field_name: str,
+        field_path: str,
+    ) -> list[ValidationError]:
+        """Validate an implicit nested config (dict without _target_).
+
+        If the type is concrete, infers the target and validates.
+        If the type is ambiguous, returns an appropriate error.
+        """
+        errors: list[ValidationError] = []
+
+        # Extract the class type from the hint
+        class_type = self._extract_class_from_hint(expected_type)
+
+        if class_type is None:
+            # Should not happen if _could_be_implicit_nested returned True
+            return errors
+
+        # Check if the type is concrete (can be inferred)
+        is_concrete, inferred_target, matching_targets = self._is_concrete_type(
+            class_type
+        )
+
+        if is_concrete and inferred_target is not None:
+            # Type is concrete - inject the target and validate
+            augmented_config = {TARGET_KEY: inferred_target, **value}
+            nested_result = self.validate(augmented_config, field_path)
+
+            if not nested_result.valid:
+                # Wrap validation errors in TypeInferenceError
+                errors.append(
+                    TypeInferenceError(
+                        field_name,
+                        class_type,
+                        nested_result.errors,
+                        field_path,
+                    )
+                )
+        else:
+            # Type is ambiguous - report detailed error
+            errors.append(
+                AmbiguousTargetError(
+                    field_name,
+                    class_type,
+                    matching_targets,
+                    inspect.isabstract(class_type),
+                    field_path,
+                )
+            )
+
+        return errors
+
+    def _check_target_type_compatibility(
+        self,
+        value: dict[str, Any],
+        expected_type: type | None,
+        field_name: str,
+        field_path: str,
+    ) -> list[ValidationError]:
+        """Check that an explicit _target_ class is compatible with the expected type.
+
+        :param value: The nested config dict with _target_.
+        :param expected_type: Expected type from parent's type hint.
+        :param field_name: Name of the field being validated.
+        :param field_path: Full path for error messages.
+        :return: List of validation errors (empty if valid).
+        """
+        errors: list[ValidationError] = []
+
+        if expected_type is None:
+            return errors
+
+        # Extract the class type from the hint
+        class_type = self._extract_class_from_hint(expected_type)
+
+        if class_type is None:
+            return errors
+
+        target_name = value[TARGET_KEY]
+        if target_name not in self._store.known_references:
+            return errors  # Target not found error already handled elsewhere
+
+        target_class = self._store.known_references[target_name].target_class
+
+        # Check if target_class is a subclass of expected type
+        try:
+            if not issubclass(target_class, class_type):
+                errors.append(
+                    TargetTypeMismatchError(
+                        field_name,
+                        target_name,
+                        target_class,
+                        class_type,
+                        field_path,
+                    )
+                )
+        except TypeError:
+            # issubclass can raise TypeError for some types
+            pass
+
+        return errors
 
     def _check_type(
         self,
@@ -220,9 +499,13 @@ class ConfigValidator:
 
         # Handle basic types
         if origin is None:
-            # For nested configs, we check the _target_ matches
+            # Explicit nested config - validated recursively
             if isinstance(value, dict) and TARGET_KEY in value:
-                return True  # Will be validated recursively
+                return True
+
+            # Implicit nested config (dict without _target_ matching class type)
+            if isinstance(value, dict) and self._is_class_type(expected_type):
+                return True  # Validated by _validate_implicit_nested
 
             # Direct type check
             return isinstance(value, expected_type)

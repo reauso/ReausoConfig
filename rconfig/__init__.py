@@ -32,11 +32,14 @@ from .ConfigValidator import ConfigValidator, ValidationResult
 from .ConfigInstantiator import ConfigInstantiator
 from .loaders import load_config as _load_config
 from .errors import (
+    AmbiguousTargetError,
     ConfigError,
     ConfigFileError,
     InstantiationError,
     MissingFieldError,
     TargetNotFoundError,
+    TargetTypeMismatchError,
+    TypeInferenceError,
     TypeMismatchError,
     ValidationError,
 )
@@ -144,11 +147,14 @@ __all__ = [
     "ValidationResult",
     "ConfigInstantiator",
     # Exceptions
+    "AmbiguousTargetError",
     "ConfigError",
     "ConfigFileError",
-    "TargetNotFoundError",
-    "ValidationError",
-    "MissingFieldError",
-    "TypeMismatchError",
     "InstantiationError",
+    "MissingFieldError",
+    "TargetNotFoundError",
+    "TargetTypeMismatchError",
+    "TypeInferenceError",
+    "TypeMismatchError",
+    "ValidationError",
 ]

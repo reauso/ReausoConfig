@@ -1,12 +1,16 @@
+from abc import ABC
 from pathlib import Path
 from unittest.case import TestCase
 
 from rconfig.errors import (
+    AmbiguousTargetError,
     ConfigError,
     ConfigFileError,
     InstantiationError,
     MissingFieldError,
     TargetNotFoundError,
+    TargetTypeMismatchError,
+    TypeInferenceError,
     TypeMismatchError,
     ValidationError,
 )
@@ -156,3 +160,166 @@ class InstantiationErrorTests(TestCase):
         # Assert
         self.assertEqual(error.config_path, "trainer.model")
         self.assertIn("at 'trainer.model'", str(error))
+
+
+class AmbiguousTargetErrorTests(TestCase):
+    def test_AmbiguousTargetError__AbstractClass__FormatsMessageCorrectly(self):
+        # Arrange
+        class AbstractBase(ABC):
+            pass
+
+        # Act
+        error = AmbiguousTargetError(
+            field="processor",
+            expected_type=AbstractBase,
+            available_targets=["impl_a", "impl_b"],
+            is_abstract=True,
+            config_path="pipeline.processor",
+        )
+
+        # Assert
+        self.assertIsInstance(error, ValidationError)
+        message = str(error)
+        self.assertIn("processor", message)
+        self.assertIn("pipeline.processor", message)
+        self.assertIn("abstract", message.lower())
+        self.assertIn("'impl_a'", message)
+        self.assertIn("'impl_b'", message)
+        self.assertIn("_target_", message)
+
+    def test_AmbiguousTargetError__MultipleImplementations__FormatsMessageCorrectly(self):
+        # Arrange & Act
+        error = AmbiguousTargetError(
+            field="encoder",
+            expected_type=object,
+            available_targets=["enc_a", "enc_b", "enc_c"],
+            is_abstract=False,
+            config_path="model.encoder",
+        )
+
+        # Assert
+        message = str(error)
+        self.assertIn("multiple", message.lower())
+        self.assertIn("_target_", message)
+        self.assertIn("'enc_a'", message)
+        self.assertIn("'enc_b'", message)
+        self.assertIn("'enc_c'", message)
+
+    def test_AmbiguousTargetError__NoAvailableTargets__FormatsMessageCorrectly(self):
+        # Arrange & Act
+        error = AmbiguousTargetError(
+            field="unknown",
+            expected_type=object,
+            available_targets=[],
+            is_abstract=False,
+            config_path="",
+        )
+
+        # Assert
+        message = str(error)
+        self.assertIn("none", message.lower())
+
+    def test_AmbiguousTargetError__WithoutConfigPath__OmitsLocation(self):
+        # Act
+        error = AmbiguousTargetError(
+            field="item",
+            expected_type=object,
+            available_targets=["a"],
+            is_abstract=False,
+            config_path="",
+        )
+
+        # Assert
+        self.assertNotIn("at ''", str(error))
+
+
+class TargetTypeMismatchErrorTests(TestCase):
+    def test_TargetTypeMismatchError__FormatsMessageCorrectly(self):
+        # Arrange
+        class Expected:
+            pass
+
+        class Actual:
+            pass
+
+        # Act
+        error = TargetTypeMismatchError(
+            field="encoder",
+            target="wrong_target",
+            target_class=Actual,
+            expected_type=Expected,
+            config_path="model.encoder",
+        )
+
+        # Assert
+        self.assertIsInstance(error, ValidationError)
+        message = str(error)
+        self.assertIn("encoder", message)
+        self.assertIn("wrong_target", message)
+        self.assertIn("Expected", message)
+        self.assertIn("Actual", message)
+        self.assertIn("model.encoder", message)
+
+    def test_TargetTypeMismatchError__WithoutConfigPath__OmitsLocation(self):
+        # Arrange
+        class A:
+            pass
+
+        class B:
+            pass
+
+        # Act
+        error = TargetTypeMismatchError(
+            field="item",
+            target="b",
+            target_class=B,
+            expected_type=A,
+            config_path="",
+        )
+
+        # Assert
+        self.assertNotIn("at ''", str(error))
+
+
+class TypeInferenceErrorTests(TestCase):
+    def test_TypeInferenceError__FormatsMessageWithNestedErrors(self):
+        # Arrange
+        nested_errors = [
+            MissingFieldError("hidden_size", "model", "trainer.model"),
+            TypeMismatchError("dropout", float, str, "trainer.model"),
+        ]
+
+        class ModelConfig:
+            pass
+
+        # Act
+        error = TypeInferenceError(
+            field="model",
+            inferred_type=ModelConfig,
+            validation_errors=nested_errors,
+            config_path="trainer.model",
+        )
+
+        # Assert
+        self.assertIsInstance(error, ValidationError)
+        message = str(error)
+        self.assertIn("model", message)
+        self.assertIn("ModelConfig", message)
+        self.assertIn("hidden_size", message)
+        self.assertIn("_target_", message)
+
+    def test_TypeInferenceError__WithoutConfigPath__OmitsLocation(self):
+        # Arrange
+        class MyClass:
+            pass
+
+        # Act
+        error = TypeInferenceError(
+            field="item",
+            inferred_type=MyClass,
+            validation_errors=[],
+            config_path="",
+        )
+
+        # Assert
+        self.assertNotIn("at ''", str(error))
