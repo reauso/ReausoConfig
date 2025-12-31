@@ -15,7 +15,11 @@ from rconfig import (
     ConfigStore,
     ConfigValidator,
     InstantiationError,
+    InvalidOverridePathError,
+    InvalidOverrideSyntaxError,
     MissingFieldError,
+    Override,
+    OverrideError,
     TargetNotFoundError,
     TypeMismatchError,
     ValidationError,
@@ -107,7 +111,7 @@ class ModuleLevelAPITests(TestCase):
 
         try:
             # Act
-            result = rc.instantiate(path)
+            result = rc.instantiate(path, cli_overrides=False)
 
             # Assert
             self.assertIsInstance(result, Model)
@@ -149,6 +153,18 @@ class ExportsTests(TestCase):
         self.assertTrue(issubclass(MissingFieldError, ValidationError))
         self.assertTrue(issubclass(TypeMismatchError, ValidationError))
         self.assertTrue(issubclass(InstantiationError, ConfigError))
+        self.assertTrue(issubclass(OverrideError, ConfigError))
+        self.assertTrue(issubclass(InvalidOverridePathError, OverrideError))
+        self.assertTrue(issubclass(InvalidOverrideSyntaxError, OverrideError))
+
+    def test_exports__OverrideClassAccessible(self):
+        # Act - Create an instance to verify class is properly exported
+        override = Override(path=["test"], value=1, operation="set")
+
+        # Assert
+        self.assertEqual(override.path, ["test"])
+        self.assertEqual(override.value, 1)
+        self.assertEqual(override.operation, "set")
 
 
 class IntegrationTests(TestCase):
@@ -187,7 +203,7 @@ epochs: 10
 
         try:
             # Act - Method 1: One-liner
-            trainer = rc.instantiate(path)
+            trainer = rc.instantiate(path, cli_overrides=False)
 
             # Assert
             self.assertIsInstance(trainer, TrainerConfig)
@@ -203,10 +219,150 @@ epochs: 10
             self.assertTrue(result.valid)
 
             # Act
-            trainer2 = rc.instantiate(path)
+            trainer2 = rc.instantiate(path, cli_overrides=False)
 
             # Assert
             self.assertEqual(trainer2.epochs, 10)
 
+        finally:
+            path.unlink()
+
+
+class InstantiateWithOverridesTests(TestCase):
+    def setUp(self):
+        rc._store._known_references.clear()
+
+    def test_instantiate__WithDictOverrides__AppliesOverrides(self):
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("_target_: model\nsize: 256\n")
+            path = Path(f.name)
+
+        try:
+            # Act
+            result = rc.instantiate(
+                path, overrides={"size": 512}, cli_overrides=False
+            )
+
+            # Assert
+            self.assertEqual(result.size, 512)
+        finally:
+            path.unlink()
+
+    def test_instantiate__WithCliOverridesFalse__IgnoresSysArgv(self):
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("_target_: model\nsize: 256\n")
+            path = Path(f.name)
+
+        try:
+            # Act - sys.argv may contain test runner args, but they should be ignored
+            result = rc.instantiate(path, cli_overrides=False)
+
+            # Assert - should use config value, not any CLI args
+            self.assertEqual(result.size, 256)
+        finally:
+            path.unlink()
+
+    def test_instantiate__WithNestedOverride__AppliesNestedValue(self):
+        # Arrange
+        @dataclass
+        class ModelConfig:
+            hidden_size: int
+
+        @dataclass
+        class TrainerConfig:
+            model: ModelConfig
+            epochs: int
+
+        rc.register("model", ModelConfig)
+        rc.register("trainer", TrainerConfig)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("_target_: trainer\nmodel:\n  _target_: model\n  hidden_size: 256\nepochs: 10\n")
+            path = Path(f.name)
+
+        try:
+            # Act
+            result = rc.instantiate(
+                path,
+                overrides={"model.hidden_size": 1024},
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertEqual(result.model.hidden_size, 1024)
+            self.assertEqual(result.epochs, 10)
+        finally:
+            path.unlink()
+
+    def test_instantiate__WithInvalidPath__RaisesInvalidOverridePathError(self):
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("_target_: model\nsize: 256\n")
+            path = Path(f.name)
+
+        try:
+            # Act & Assert
+            with self.assertRaises(InvalidOverridePathError):
+                rc.instantiate(
+                    path,
+                    overrides={"nonexistent": 123},
+                    cli_overrides=False,
+                )
+        finally:
+            path.unlink()
+
+    def test_instantiate__WithTypeCoercion__ConvertsStringValue(self):
+        # Arrange
+        @dataclass
+        class Model:
+            lr: float
+
+        rc.register("model", Model)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("_target_: model\nlr: 0.1\n")
+            path = Path(f.name)
+
+        try:
+            # Act - pass string value that should be coerced to float
+            result = rc.instantiate(
+                path,
+                overrides={"lr": "0.01"},
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertEqual(result.lr, 0.01)
+            self.assertIsInstance(result.lr, float)
         finally:
             path.unlink()

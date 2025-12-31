@@ -266,3 +266,47 @@ class InstantiationError(ConfigError):
         super().__init__(
             f"Failed to instantiate target '{target}'{location}: {reason}"
         )
+
+
+class OverrideError(ConfigError):
+    """Base exception for override-related errors."""
+
+
+class InvalidOverridePathError(OverrideError):
+    """Raised when an override path doesn't exist in the config structure.
+
+    :param path: The override path that was not found.
+    :param reason: Description of what went wrong.
+    """
+
+    def __init__(self, path: list[str | int], reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        path_str = _format_override_path(path)
+        super().__init__(f"Invalid override path '{path_str}': {reason}")
+
+
+class InvalidOverrideSyntaxError(OverrideError):
+    """Raised when an override string cannot be parsed.
+
+    :param override_string: The string that could not be parsed.
+    :param reason: Description of what went wrong.
+    """
+
+    def __init__(self, override_string: str, reason: str) -> None:
+        self.override_string = override_string
+        self.reason = reason
+        super().__init__(f"Invalid override syntax '{override_string}': {reason}")
+
+
+def _format_override_path(path: list[str | int]) -> str:
+    """Format an override path list as a string (e.g., ["model", "layers", 0] -> "model.layers[0]")."""
+    result = []
+    for part in path:
+        if isinstance(part, int):
+            result.append(f"[{part}]")
+        elif result:
+            result.append(f".{part}")
+        else:
+            result.append(part)
+    return "".join(result)
