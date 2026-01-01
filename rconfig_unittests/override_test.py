@@ -1,6 +1,6 @@
 """Tests for the override module."""
 
-from unittest.case import TestCase
+from unittest import TestCase
 
 from rconfig.errors import InvalidOverrideSyntaxError
 from rconfig.override import (

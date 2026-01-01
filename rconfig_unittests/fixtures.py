@@ -7,12 +7,9 @@ asserting validation results.
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator
-from unittest import TestCase
 from unittest.mock import patch
 
 from ruamel.yaml.comments import CommentedMap
-
-from rconfig.ConfigComposer import clear_cache
 
 
 def make_commented_map(data: dict[str, Any]) -> CommentedMap:
@@ -131,34 +128,3 @@ def mock_filesystem(fs: MockFileSystem) -> Generator[None, None, None]:
         patch.object(Path, "resolve", mock_resolve),
     ):
         yield
-
-
-class ValidationAssertionsMixin:
-    """Mixin providing validation assertion helpers for test cases."""
-
-    def assertValidationFails(
-        self: TestCase,
-        result: Any,
-        error_type: type | None = None,
-        error_count: int = 1,
-    ) -> Any:
-        """Assert that validation failed with expected error(s).
-
-        :param result: ValidationResult from validator.validate().
-        :param error_type: Expected error type (optional).
-        :param error_count: Expected number of errors.
-        :return: First error if error_count=1, else list of errors.
-        """
-        self.assertFalse(result.valid)
-        self.assertEqual(len(result.errors), error_count)
-        if error_type:
-            self.assertIsInstance(result.errors[0], error_type)
-        return result.errors[0] if error_count == 1 else result.errors
-
-    def assertValidationPasses(self: TestCase, result: Any) -> None:
-        """Assert that validation passed with no errors.
-
-        :param result: ValidationResult from validator.validate().
-        """
-        self.assertTrue(result.valid)
-        self.assertEqual(len(result.errors), 0)

@@ -1,6 +1,6 @@
 import tempfile
 from pathlib import Path
-from unittest.case import TestCase
+from unittest import TestCase
 
 from rconfig.ConfigComposer import (
     ConfigComposer,
