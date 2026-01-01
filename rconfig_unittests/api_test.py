@@ -366,3 +366,70 @@ class InstantiateWithOverridesTests(TestCase):
             self.assertIsInstance(result.lr, float)
         finally:
             path.unlink()
+
+
+class ApiCliOverridesTests(TestCase):
+    """Tests for CLI overrides in the API to improve coverage."""
+
+    def setUp(self):
+        # Clear the store before each test
+        rc._store._known_references.clear()
+
+    def test_instantiate__WithCliOverrides__AppliesOverrides(self):
+        """Test instantiate with cli_overrides=True reads from sys.argv."""
+        # Arrange - line 208
+        import sys
+        from unittest.mock import patch
+
+        @dataclass
+        class Model:
+            lr: float
+            epochs: int
+
+        rc.register("model", Model)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("_target_: model\nlr: 0.1\nepochs: 10\n")
+            path = Path(f.name)
+
+        try:
+            # Mock sys.argv to include overrides
+            with patch.object(sys, "argv", ["script.py", "lr=0.001", "epochs=100"]):
+                # Act
+                result = rc.instantiate(path, cli_overrides=True)
+
+                # Assert - CLI overrides should be applied
+                self.assertEqual(result.lr, 0.001)
+                self.assertEqual(result.epochs, 100)
+        finally:
+            path.unlink()
+
+    def test_instantiate__WithCliOverridesDisabled__IgnoresArgv(self):
+        """Test instantiate with cli_overrides=False ignores sys.argv."""
+        import sys
+        from unittest.mock import patch
+
+        @dataclass
+        class Model:
+            lr: float
+
+        rc.register("model", Model)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("_target_: model\nlr: 0.1\n")
+            path = Path(f.name)
+
+        try:
+            # Mock sys.argv with overrides
+            with patch.object(sys, "argv", ["script.py", "lr=999"]):
+                # Act - cli_overrides=False should ignore sys.argv
+                result = rc.instantiate(path, cli_overrides=False)
+
+                # Assert - original value should be used
+                self.assertEqual(result.lr, 0.1)
+        finally:
+            path.unlink()

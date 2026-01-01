@@ -2170,3 +2170,122 @@ class CouldBeImplicitNestedTests(TestCase):
         result = validator._could_be_implicit_nested({"value": 42}, None)
 
         self.assertFalse(result)
+
+
+class ConfigValidatorCoverageTests(TestCase):
+    """Tests to improve ConfigValidator coverage for edge cases."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def test_is_concrete_type__NameCollision__UsesFullyQualifiedName(self):
+        """Test auto-registration with name collision uses fully qualified name."""
+        # Arrange - line 339
+        store = self._empty_store()
+
+        @dataclass
+        class MyClass:
+            value: int
+
+        # Pre-register a class with the same lowercase name
+        @dataclass
+        class AnotherMyClass:
+            other: str
+
+        store.register("myclass", AnotherMyClass)
+        validator = ConfigValidator(store)
+
+        # Act - this should trigger name collision handling
+        is_concrete, exact_target, matching = validator._is_concrete_type(MyClass)
+
+        # Assert - should use fully qualified name due to collision
+        self.assertTrue(is_concrete)
+        self.assertIsNotNone(exact_target)
+        # The name should be the fully qualified name since "myclass" is taken
+        self.assertIn(".", exact_target)  # Contains module.ClassName
+
+    def test_validate_implicit_nested__ClassTypeExtractionFails__ReturnsEmpty(self):
+        """Test _validate_implicit_nested returns empty when class extraction fails."""
+        # Arrange - line 385
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Generic type that _extract_class_from_hint can't handle
+        result = validator._validate_implicit_nested(
+            {"value": 42}, list[int], "field", "path"
+        )
+
+        # Assert - should return empty (extraction returns None)
+        self.assertEqual(result, [])
+
+    def test_check_target_type_compatibility__TargetNotFound__ReturnsEmpty(self):
+        """Test _check_target_type_compatibility returns empty when target not found."""
+        # Arrange - line 449
+        store = self._empty_store()
+
+        class ExpectedClass:
+            pass
+
+        validator = ConfigValidator(store)
+        # Config with unknown target
+        config = {"_target_": "unknown_target", "value": 42}
+
+        # Act
+        result = validator._check_target_type_compatibility(
+            config, ExpectedClass, "field", "path"
+        )
+
+        # Assert - should return empty (target not found)
+        self.assertEqual(result, [])
+
+    def test_type_matches__EmptyListHint__ReturnsTrue(self):
+        """Test _type_matches with bare list type (no args) always returns True."""
+        # Arrange - line 509
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+        value = [1, 2, 3]
+
+        # Act - bare list type has no args
+        result = validator._type_matches(value, list)
+
+        # Assert
+        self.assertTrue(result)
+
+    def test_type_matches__EmptyDictHint__ReturnsTrue(self):
+        """Test _type_matches with bare dict type (no args) always returns True."""
+        # Arrange - line 517
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+        value = {"key": "value"}
+
+        # Act - bare dict type has no args
+        result = validator._type_matches(value, dict)
+
+        # Assert
+        self.assertTrue(result)
+
+    def test_type_repr__BareList__ReturnsListString(self):
+        """Test _type_repr returns 'list' for bare list type."""
+        # Arrange - line 554
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Act
+        result = validator._type_repr(list)
+
+        # Assert
+        self.assertEqual(result, "list")
+
+    def test_type_repr__BareDict__ReturnsDictString(self):
+        """Test _type_repr returns 'dict' for bare dict type."""
+        # Arrange - line 559
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Act
+        result = validator._type_repr(dict)
+
+        # Assert
+        self.assertEqual(result, "dict")

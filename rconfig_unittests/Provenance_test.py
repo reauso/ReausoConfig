@@ -336,3 +336,36 @@ class ProvenanceEdgeCaseTests(TestCase):
 
         # Assert
         self.assertIn('"\'quoted\'"', result)
+
+
+class ProvenanceCoverageTests(TestCase):
+    """Tests to improve Provenance coverage for edge cases."""
+
+    def test_format_value__RootScalar__FormatsWithAnnotation(self):
+        """Test formatting a scalar value at the root level."""
+        # Arrange - lines 166-168
+        prov = Provenance()
+        prov.add("", file="config.yaml", line=1)  # Root-level entry
+
+        # Call the internal method directly
+        lines: list[str] = []
+        prov._format_value("scalar_value", "", lines, 0)
+
+        # Assert - should format the scalar with annotation
+        self.assertEqual(len(lines), 1)
+        self.assertIn("scalar_value", lines[0])
+
+    def test_format_value__RootScalarWithProvenance__IncludesAnnotation(self):
+        """Test formatting a scalar value at the root with provenance entry."""
+        # Arrange - lines 166-168
+        prov = Provenance()
+        prov.add("", file="config.yaml", line=42)
+
+        # Call the internal method directly
+        lines: list[str] = []
+        prov._format_value(42, "", lines, 0)
+
+        # Assert - should include the provenance annotation
+        self.assertEqual(len(lines), 1)
+        self.assertIn("42", lines[0])
+        self.assertIn("config.yaml:42", lines[0])

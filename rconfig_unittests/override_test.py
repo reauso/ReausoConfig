@@ -584,3 +584,48 @@ class ApplyOverridesTests(TestCase):
         with self.assertRaises(KeyError) as ctx:
             apply_overrides(config, overrides)
         self.assertIn("not found for removal", str(ctx.exception))
+
+
+class OverrideCoverageTests(TestCase):
+    """Tests to improve override.py coverage for edge cases."""
+
+    def test_parse_cli_arg__TildeWithEmptyKey__ReturnsNone(self):
+        """Test parsing tilde with empty/invalid key returns None."""
+        # Arrange - line 219
+        # Act - empty key after ~
+        result = parse_cli_arg("~")
+
+        # Assert
+        self.assertIsNone(result)
+
+    def test_parse_cli_arg__TildeWithEquals__ReturnsNone(self):
+        """Test parsing ~key=value (invalid remove syntax) returns None."""
+        # The ~key=value is actually parsed as a valid remove in some cases
+        # but ~=value should fail
+        result = parse_cli_arg("~=value")
+
+        # This should be None (invalid key syntax)
+        self.assertIsNone(result)
+
+    def test_apply_single_override__SetListIndex__UpdatesItem(self):
+        """Test setting a list item by index."""
+        # Arrange - lines 320-322
+        config = {"items": ["a", "b", "c"]}
+        override = Override(path=["items", 1], value="updated", operation="set")
+
+        # Act - apply_overrides returns a new dict
+        result = apply_overrides(config, [override])
+
+        # Assert - the result should have the updated value
+        self.assertEqual(result["items"][1], "updated")
+
+    def test_apply_single_override__SetListIndexOutOfRange__RaisesKeyError(self):
+        """Test setting a list item with out of range index."""
+        # Arrange - lines 320-321
+        config = {"items": ["a", "b"]}
+        override = Override(path=["items", 99], value="x", operation="set")
+
+        # Act & Assert
+        with self.assertRaises(KeyError) as ctx:
+            apply_overrides(config, [override])
+        self.assertIn("out of range", str(ctx.exception))

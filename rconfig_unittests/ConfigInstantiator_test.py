@@ -1694,3 +1694,169 @@ class ConfigInstantiatorSharedInstanceTests(TestCase):
         self.assertEqual(result.value, 42)
         # Check that it was cached
         self.assertEqual(instantiator._instantiated_cache.get("root_model"), result)
+
+
+class ConfigInstantiatorCoverageTests(TestCase):
+    """Tests to improve ConfigInstantiator coverage for edge cases."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+        validator = ConfigValidator(store)
+        return ConfigInstantiator(store, validator)
+
+    def test_instantiate__UnregisteredTargetMatchingTypeHint__AutoRegisters(self):
+        """Test auto-registration when target name matches type hint class name."""
+        # Arrange - lines 146-152
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner  # Type hint is Inner
+
+        # Only register outer, not inner
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+
+        # Config uses "inner" as target name which matches Inner class name
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner", "value": 42},
+        }
+
+        # Act
+        result = instantiator.instantiate(config)
+
+        # Assert - should have auto-registered and instantiated
+        self.assertIsInstance(result, Outer)
+        self.assertIsInstance(result.inner, Inner)
+        self.assertEqual(result.inner.value, 42)
+
+    def test_instantiate_nested__CacheHit__ReturnsSharedInstance(self):
+        """Test that cache hits return the same instance during nested instantiation."""
+        # Arrange - lines 190-192, 196, 201
+        store = self._empty_store()
+
+        @dataclass
+        class Database:
+            url: str
+
+        @dataclass
+        class App:
+            db1: Database
+            db2: Database
+
+        store.register("database", Database)
+        store.register("app", App)
+        instantiator = self._create_instantiator(store)
+
+        config = {
+            "_target_": "app",
+            "db1": {"_target_": "database", "url": "postgres://localhost"},
+            "db2": {"_target_": "database", "url": "postgres://localhost"},
+        }
+
+        # Instance targets make db2 share db1's instance
+        instance_targets = {
+            "db2": "db1",
+        }
+
+        # Act
+        result = instantiator.instantiate(config, instance_targets=instance_targets)
+
+        # Assert - both should be the same object
+        self.assertIs(result.db1, result.db2)
+
+    def test_find_exact_match__NoMatch__ReturnsNone(self):
+        """Test _find_exact_match returns None when no exact match found."""
+        # Arrange - line 302
+        store = self._empty_store()
+
+        @dataclass
+        class UnregisteredClass:
+            value: int
+
+        instantiator = self._create_instantiator(store)
+
+        # Act
+        result = instantiator._find_exact_match(UnregisteredClass)
+
+        # Assert
+        self.assertIsNone(result)
+
+    def test_is_concrete_type__NameCollision__UsesFullyQualifiedName(self):
+        """Test auto-registration with name collision uses fully qualified name."""
+        # Arrange - lines 329-340
+        store = self._empty_store()
+
+        @dataclass
+        class MyClass:
+            value: int
+
+        # Pre-register a class with the same lowercase name
+        @dataclass
+        class AnotherMyClass:
+            other: str
+
+        store.register("myclass", AnotherMyClass)
+        instantiator = self._create_instantiator(store)
+
+        # Act - this should trigger name collision handling
+        is_concrete, inferred_target = instantiator._is_concrete_type(MyClass)
+
+        # Assert - should use fully qualified name due to collision
+        self.assertTrue(is_concrete)
+        self.assertIsNotNone(inferred_target)
+        # The name should be the fully qualified name since "myclass" is taken
+        self.assertIn(".", inferred_target)  # Contains module.ClassName
+
+    def test_augment_with_inferred_target__NonConcreteType__ReturnsNone(self):
+        """Test _augment_with_inferred_target returns None for non-concrete types."""
+        # Arrange - line 361
+        store = self._empty_store()
+
+        class AbstractBase(ABC):
+            @abstractmethod
+            def method(self): ...
+
+        instantiator = self._create_instantiator(store)
+        value = {"some_field": "value"}
+
+        # Act - AbstractBase is not concrete
+        result = instantiator._augment_with_inferred_target(value, AbstractBase)
+
+        # Assert
+        self.assertIsNone(result)
+
+    def test_augment_with_inferred_target__AmbiguousType__ReturnsNone(self):
+        """Test _augment_with_inferred_target returns None for ambiguous types."""
+        # Arrange - line 361
+        store = self._empty_store()
+
+        class BaseClass:
+            pass
+
+        class SubClass1(BaseClass):
+            pass
+
+        class SubClass2(BaseClass):
+            pass
+
+        # Register multiple subclasses - makes BaseClass ambiguous
+        store.register("sub1", SubClass1)
+        store.register("sub2", SubClass2)
+        instantiator = self._create_instantiator(store)
+        value = {"some_field": "value"}
+
+        # Act - BaseClass is ambiguous (multiple registered subclasses)
+        result = instantiator._augment_with_inferred_target(value, BaseClass)
+
+        # Assert
+        self.assertIsNone(result)
