@@ -268,6 +268,19 @@ class InstantiationError(ConfigError):
         )
 
 
+class MergeError(ConfigError):
+    """Raised when a merge operation fails during config composition.
+
+    :param message: Description of what went wrong.
+    :param path: The config path where the error occurred.
+    """
+
+    def __init__(self, message: str, path: str = "") -> None:
+        self.path = path
+        location = f" at '{path}'" if path else ""
+        super().__init__(f"{message}{location}")
+
+
 class OverrideError(ConfigError):
     """Base exception for override-related errors."""
 
