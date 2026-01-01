@@ -1,0 +1,9 @@
+_target_: vgg
+depth: 16
+batch_norm: true
+optimizer:
+  _ref_: ../base/optimizer.yaml
+  learning_rate: 0.005
+scheduler:
+  _ref_: ../base/scheduler.yaml
+  warmup_epochs: 10
