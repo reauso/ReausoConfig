@@ -1,0 +1,11 @@
+_target_: resnet
+layers: 50
+pretrained: false
+optimizer:
+  _target_: unknown_optimizer_type
+  learning_rate: 0.01
+scheduler:
+  _target_: scheduler
+  type: cosine
+  warmup_epochs: 5
+  min_lr: 0.00001

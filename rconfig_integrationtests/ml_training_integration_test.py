@@ -63,23 +63,30 @@ class Dataset:
 
 
 @dataclass
-class ResNet:
-    """ResNet model configuration."""
+class ModelConfig:
+    """Base class for all model configurations.
 
-    layers: int
-    pretrained: bool
+    Contains shared fields that all models need: optimizer and scheduler.
+    """
+
     optimizer: Optimizer
     scheduler: Scheduler
 
 
 @dataclass
-class VGG:
+class ResNet(ModelConfig):
+    """ResNet model configuration."""
+
+    layers: int
+    pretrained: bool
+
+
+@dataclass
+class VGG(ModelConfig):
     """VGG model configuration."""
 
     depth: int
     batch_norm: bool
-    optimizer: Optimizer
-    scheduler: Scheduler
 
 
 @dataclass
@@ -101,25 +108,41 @@ class EvalConfig:
 
 
 @dataclass
-class TrainerApp:
-    """Main trainer application."""
+class TrainerAppBase:
+    """Base class for trainer applications.
+
+    Contains shared fields for all trainer configurations.
+    """
 
     logger: Logger
     dataset: Dataset
-    model: ResNet
     training: TrainingConfig
     evaluation: EvalConfig
 
 
 @dataclass
-class TrainerAppVGG:
+class TrainerApp(TrainerAppBase):
+    """Main trainer application with ResNet model."""
+
+    model: ResNet
+
+
+@dataclass
+class TrainerAppVGG(TrainerAppBase):
     """Main trainer application with VGG model."""
 
-    logger: Logger
-    dataset: Dataset
     model: VGG
-    training: TrainingConfig
-    evaluation: EvalConfig
+
+
+@dataclass
+class TrainerAppPolymorphic(TrainerAppBase):
+    """Trainer application with polymorphic model field.
+
+    Used for testing abstract type scenarios where the model
+    can be any ModelConfig subclass and requires explicit _target_.
+    """
+
+    model: ModelConfig  # Abstract base - requires explicit _target_
 
 
 # Path to ML training config files
@@ -562,18 +585,25 @@ class MLTrainingAutoRegistrationTests(TestCase):
         """Config with _target_ that doesn't match expected type fails."""
         # Arrange
         rc.register("trainer_app", TrainerApp)
+        rc.register("logger", Logger)
+        rc.register("dataset", Dataset)
+        rc.register("augmentation", Augmentation)
+        rc.register("trainingconfig", TrainingConfig)
+        rc.register("evalconfig", EvalConfig)
         # Create a config dict with wrong _target_ for model field
+        logger_config = {"_target_": "logger", "level": "INFO", "output_dir": "/tmp"}
+        dataset_config = {
+            "_target_": "dataset",
+            "name": "cifar10",
+            "root": "/data",
+            "batch_size": 32,
+            "num_workers": 4,
+            "augmentation": {"_target_": "augmentation"},
+        }
         config = {
             "_target_": "trainer_app",
-            "logger": {"_target_": "logger", "level": "INFO", "output_dir": "/tmp"},
-            "dataset": {
-                "_target_": "dataset",
-                "name": "cifar10",
-                "root": "/data",
-                "batch_size": 32,
-                "num_workers": 4,
-                "augmentation": {"random_crop": True, "horizontal_flip": True},
-            },
+            "logger": logger_config,
+            "dataset": dataset_config,
             "model": {
                 "_target_": "wrong_model",  # Wrong target name!
                 "layers": 50,
@@ -582,13 +612,13 @@ class MLTrainingAutoRegistrationTests(TestCase):
                 "_target_": "trainingconfig",
                 "epochs": 100,
                 "save_every": 10,
-                "log": {"_instance_": "logger"},
+                "log": logger_config,
             },
             "evaluation": {
                 "_target_": "evalconfig",
                 "metrics": ["accuracy"],
-                "log": {"_instance_": "logger"},
-                "data": {"_instance_": "dataset"},
+                "log": logger_config,
+                "data": dataset_config,
             },
         }
 
@@ -606,20 +636,30 @@ class MLTrainingAutoRegistrationTests(TestCase):
         """Nested config missing required fields returns proper error."""
         # Arrange
         rc.register("trainer_app", TrainerApp)
+        rc.register("resnet", ResNet)
+        rc.register("optimizer", Optimizer)
+        rc.register("scheduler", Scheduler)
+        rc.register("logger", Logger)
+        rc.register("dataset", Dataset)
+        rc.register("augmentation", Augmentation)
+        rc.register("trainingconfig", TrainingConfig)
+        rc.register("evalconfig", EvalConfig)
         from rconfig.errors import MissingFieldError
 
         # Config with missing 'layers' field in model
+        logger_config = {"_target_": "logger", "level": "INFO", "output_dir": "/tmp"}
+        dataset_config = {
+            "_target_": "dataset",
+            "name": "cifar10",
+            "root": "/data",
+            "batch_size": 32,
+            "num_workers": 4,
+            "augmentation": {"_target_": "augmentation"},
+        }
         config = {
             "_target_": "trainer_app",
-            "logger": {"_target_": "logger", "level": "INFO", "output_dir": "/tmp"},
-            "dataset": {
-                "_target_": "dataset",
-                "name": "cifar10",
-                "root": "/data",
-                "batch_size": 32,
-                "num_workers": 4,
-                "augmentation": {"random_crop": True, "horizontal_flip": True},
-            },
+            "logger": logger_config,
+            "dataset": dataset_config,
             "model": {
                 "_target_": "resnet",
                 # Missing 'layers' field!
@@ -631,13 +671,13 @@ class MLTrainingAutoRegistrationTests(TestCase):
                 "_target_": "trainingconfig",
                 "epochs": 100,
                 "save_every": 10,
-                "log": {"_instance_": "logger"},
+                "log": logger_config,
             },
             "evaluation": {
                 "_target_": "evalconfig",
                 "metrics": ["accuracy"],
-                "log": {"_instance_": "logger"},
-                "data": {"_instance_": "dataset"},
+                "log": logger_config,
+                "data": dataset_config,
             },
         }
 

@@ -1,0 +1,13 @@
+# Tests MissingFieldError in nested config
+_target_: resnet
+layers: 50
+pretrained: false
+optimizer:
+  _target_: optimizer
+  type: adam
+  # Missing: learning_rate, weight_decay, betas
+scheduler:
+  _target_: scheduler
+  type: cosine
+  warmup_epochs: 5
+  min_lr: 0.00001

@@ -1,0 +1,10 @@
+_target_: resnet
+layers: 50
+pretrained: false
+optimizer:
+  _ref_: ./does_not_exist.yaml
+scheduler:
+  _target_: scheduler
+  type: cosine
+  warmup_epochs: 5
+  min_lr: 0.00001
