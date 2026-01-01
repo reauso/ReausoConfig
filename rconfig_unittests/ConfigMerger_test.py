@@ -1,4 +1,4 @@
-from unittest.case import TestCase
+from unittest import TestCase
 
 from rconfig.ConfigMerger import deep_merge
 from rconfig.errors import MergeError

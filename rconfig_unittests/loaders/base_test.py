@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any
-from unittest.case import TestCase
+from unittest import TestCase
 
 from rconfig.loaders.base import ConfigFileLoader
 

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Union
-from unittest.case import TestCase
+from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from rconfig.ConfigStore import ConfigStore
@@ -28,7 +28,7 @@ from rconfig.errors import (
 class ConfigInstantiatorTests(TestCase):
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
@@ -346,7 +346,7 @@ class ConfigInstantiatorImplicitTargetTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
@@ -487,7 +487,7 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
@@ -912,7 +912,7 @@ class ConfigInstantiatorAutoRegistrationTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
@@ -1168,7 +1168,7 @@ class ConfigInstantiatorHelperMethodTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
@@ -1256,7 +1256,7 @@ class ConfigInstantiatorSharedInstanceTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
@@ -1695,7 +1695,7 @@ class ConfigInstantiatorCoverageTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:

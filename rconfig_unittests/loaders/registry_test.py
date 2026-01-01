@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.case import TestCase
+from unittest import TestCase
 
 from rconfig.errors import ConfigFileError
 from rconfig.loaders import (

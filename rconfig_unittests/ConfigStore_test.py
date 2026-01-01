@@ -1,5 +1,5 @@
 from types import MappingProxyType
-from unittest.case import TestCase
+from unittest import TestCase
 
 from rconfig.ConfigStore import ConfigStore
 
@@ -7,7 +7,7 @@ from rconfig.ConfigStore import ConfigStore
 class ConfigStoreTests(TestCase):
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_register__WithTargetClass__StoreConfigReference(self):
