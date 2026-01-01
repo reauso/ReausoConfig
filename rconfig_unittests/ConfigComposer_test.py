@@ -2,7 +2,13 @@ import tempfile
 from pathlib import Path
 from unittest.case import TestCase
 
-from rconfig.ConfigComposer import ConfigComposer, clear_cache, compose, set_cache_size
+from rconfig.ConfigComposer import (
+    ConfigComposer,
+    clear_cache,
+    compose,
+    compose_with_provenance,
+    set_cache_size,
+)
 from rconfig.errors import (
     CircularRefError,
     CompositionError,
@@ -788,3 +794,195 @@ class CompositionErrorTests(TestCase):
         self.assertIn("_ref_", str(error))
         self.assertIn("_instance_", str(error))
         self.assertIn("model.encoder", str(error))
+
+
+class ProvenanceTrackingTests(TestCase):
+    """Tests for provenance tracking in ConfigComposer."""
+
+    def setUp(self) -> None:
+        """Set up a temporary directory for test configs."""
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.config_root = Path(self.temp_dir.name)
+        clear_cache()
+
+    def tearDown(self) -> None:
+        """Clean up temporary directory."""
+        self.temp_dir.cleanup()
+        clear_cache()
+
+    def _write_config(self, rel_path: str, content: str) -> Path:
+        """Write a config file to the temp directory."""
+        path = self.config_root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        return path
+
+    def test_compose_with_provenance__SimpleConfig__TracksFileAndLine(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """_target_: App
+layers: 50
+lr: 0.001
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+
+        # Assert
+        target_entry = prov.get("_target_")
+        self.assertIsNotNone(target_entry)
+        self.assertIn("app.yaml", target_entry.file)
+        self.assertEqual(target_entry.line, 1)
+
+        layers_entry = prov.get("layers")
+        self.assertEqual(layers_entry.line, 2)
+
+        lr_entry = prov.get("lr")
+        self.assertEqual(lr_entry.line, 3)
+
+    def test_compose_with_provenance__WithRef__TracksReferencedFile(self):
+        # Arrange
+        self._write_config("model.yaml", """_target_: Model
+hidden: 256
+""")
+        entry = self._write_config("app.yaml", """_target_: App
+model:
+  _ref_: model.yaml
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+
+        # Assert
+        # Model's _target_ should come from model.yaml
+        model_target = prov.get("model._target_")
+        self.assertIsNotNone(model_target)
+        self.assertIn("model.yaml", model_target.file)
+        self.assertEqual(model_target.line, 1)
+
+        # Model's hidden should come from model.yaml
+        hidden_entry = prov.get("model.hidden")
+        self.assertIn("model.yaml", hidden_entry.file)
+        self.assertEqual(hidden_entry.line, 2)
+
+    def test_compose_with_provenance__WithOverride__TracksOverride(self):
+        # Arrange
+        self._write_config("model.yaml", """_target_: Model
+layers: 34
+lr: 0.001
+""")
+        entry = self._write_config("app.yaml", """_target_: App
+model:
+  _ref_: model.yaml
+  layers: 50
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+
+        # Assert
+        layers_entry = prov.get("model.layers")
+        self.assertIsNotNone(layers_entry)
+        # The override should be tracked
+        self.assertIn("app.yaml", layers_entry.file)
+        # Should show what was overridden
+        self.assertIsNotNone(layers_entry.overrode)
+        self.assertIn("model.yaml", layers_entry.overrode)
+
+    def test_compose_with_provenance__CrossFileProvenance__TracksCorrectly(self):
+        # Arrange
+        self._write_config("shared/db.yaml", """_target_: Database
+url: postgres://localhost
+""")
+        self._write_config("services/user.yaml", """_target_: UserService
+db:
+  _ref_: /shared/db.yaml
+name: user-service
+""")
+        entry = self._write_config("app.yaml", """_target_: App
+service:
+  _ref_: services/user.yaml
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+
+        # Assert
+        # App's _target_ from app.yaml
+        app_target = prov.get("_target_")
+        self.assertIn("app.yaml", app_target.file)
+
+        # Service's _target_ from user.yaml
+        service_target = prov.get("service._target_")
+        self.assertIn("user.yaml", service_target.file)
+
+        # DB's _target_ from db.yaml
+        db_target = prov.get("service.db._target_")
+        self.assertIn("db.yaml", db_target.file)
+
+    def test_compose_with_provenance__PrintOutput__FormatsCorrectly(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """_target_: App
+value: 42
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+        output = str(prov)
+
+        # Assert
+        self.assertIn("_target_: App", output)
+        self.assertIn("app.yaml:1", output)
+        self.assertIn("value: 42", output)
+        self.assertIn("app.yaml:2", output)
+
+    def test_compose_with_provenance__ProvenanceGet__ReturnsCorrectEntry(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """_target_: App
+nested:
+  value: 42
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+        entry = prov.get("nested.value")
+
+        # Assert
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.line, 3)
+
+    def test_compose_with_provenance__ProvenanceItems__IteratesAllPaths(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """_target_: App
+a: 1
+b: 2
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+        items = list(prov.items())
+
+        # Assert
+        paths = [path for path, _ in items]
+        self.assertIn("_target_", paths)
+        self.assertIn("a", paths)
+        self.assertIn("b", paths)
+
+    def test_compose_with_provenance_convenience__SimpleFile__Works(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """_target_: App
+value: 42
+""")
+
+        # Act
+        prov = compose_with_provenance(entry)
+
+        # Assert
+        self.assertIsNotNone(prov.get("_target_"))
+        self.assertIsNotNone(prov.get("value"))
