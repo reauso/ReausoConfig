@@ -1042,6 +1042,31 @@ class ConfigValidatorImplicitTargetTests(TestCase):
         self.assertFalse(result.valid)
         self.assertIsInstance(result.errors[0], AmbiguousTargetError)
 
+    def test_validate__UnregisteredConcreteType_NoSubclasses__AutoRegistersAndValidates(self):
+        """Test concrete type without registration auto-registers when no subclasses exist."""
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner  # Inner NOT registered
+
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"value": 42},  # Should auto-register Inner
+        }
+
+        result = validator.validate(config)
+
+        self.assertTrue(result.valid)
+        # Verify Inner was auto-registered
+        self.assertIn("inner", store._known_references)
+
     def test_validate__NoTypeHintForField__SkipsTypeValidation(self):
         """Test field without type hint is skipped (line 148-149)."""
         store = self._empty_store()
@@ -1149,6 +1174,530 @@ class ConfigValidatorImplicitTargetTests(TestCase):
 
         # Assert
         self.assertTrue(result.valid)
+
+    # === Additional TargetTypeMismatchError Tests ===
+
+    def test_validate__ExplicitTarget_SiblingClass__ReturnsTargetTypeMismatchError(self):
+        """Target is registered subclass of common base but not expected type."""
+        # Arrange
+        store = self._empty_store()
+
+        class Base:
+            def __init__(self, value: int) -> None:
+                self.value = value
+
+        class ChildA(Base):
+            pass
+
+        class ChildB(Base):
+            pass
+
+        @dataclass
+        class Container:
+            item: ChildA  # Expects ChildA specifically
+
+        store.register("child_a", ChildA)
+        store.register("child_b", ChildB)
+        store.register("container", Container)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "container",
+            "item": {"_target_": "child_b", "value": 10},  # ChildB is not ChildA
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        error = result.errors[0]
+        self.assertIsInstance(error, TargetTypeMismatchError)
+        self.assertEqual(error.field, "item")
+        self.assertEqual(error.target, "child_b")
+        self.assertEqual(error.expected_type, ChildA)
+
+    def test_validate__ExplicitTarget_WrongTypeNested__ReturnsTargetTypeMismatchError(self):
+        """Deeply nested config with wrong target type."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class WrongType:
+            name: str
+
+        @dataclass
+        class CorrectType:
+            value: int
+
+        @dataclass
+        class Middle:
+            inner: CorrectType
+
+        @dataclass
+        class Outer:
+            middle: Middle
+
+        store.register("wrong_type", WrongType)
+        store.register("correct_type", CorrectType)
+        store.register("middle", Middle)
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "middle": {
+                "_target_": "middle",
+                "inner": {"_target_": "wrong_type", "name": "test"},
+            },
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        error = result.errors[0]
+        self.assertIsInstance(error, TargetTypeMismatchError)
+        self.assertEqual(error.field, "inner")
+        self.assertIn("middle.inner", error.config_path)
+
+    def test_validate__ExplicitTarget_ParentClass__ReturnsTargetTypeMismatchError(self):
+        """Target is parent class when child class is expected."""
+        # Arrange
+        store = self._empty_store()
+
+        class ParentClass:
+            def __init__(self, value: int) -> None:
+                self.value = value
+
+        class ChildClass(ParentClass):
+            pass
+
+        @dataclass
+        class Container:
+            item: ChildClass  # Expects ChildClass, not ParentClass
+
+        store.register("parent_class", ParentClass)
+        store.register("child_class", ChildClass)
+        store.register("container", Container)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "container",
+            "item": {"_target_": "parent_class", "value": 10},  # Parent is not Child
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        error = result.errors[0]
+        self.assertIsInstance(error, TargetTypeMismatchError)
+        self.assertEqual(error.target, "parent_class")
+        self.assertEqual(error.expected_type, ChildClass)
+
+    # === Additional TypeInferenceError Tests ===
+
+    def test_validate__ImplicitNested_TypeMismatch__ReturnsTypeInferenceError(self):
+        """Implicit nested config with wrong type for a field."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("inner", Inner)
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"value": "not_an_int"},  # Wrong type, no _target_
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        error = result.errors[0]
+        self.assertIsInstance(error, TypeInferenceError)
+        self.assertEqual(error.field, "inner")
+        self.assertEqual(error.inferred_type, Inner)
+        # Verify it wraps a TypeMismatchError
+        self.assertEqual(len(error.validation_errors), 1)
+        self.assertIsInstance(error.validation_errors[0], TypeMismatchError)
+
+    def test_validate__ImplicitNested_NestedValidationFails__ReturnsTypeInferenceError(self):
+        """Implicit nested config with nested validation failure."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class DeepInner:
+            required_field: int
+
+        @dataclass
+        class Inner:
+            deep: DeepInner
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("deep_inner", DeepInner)
+        store.register("inner", Inner)
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {
+                "deep": {},  # Missing required_field
+            },
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        error = result.errors[0]
+        self.assertIsInstance(error, TypeInferenceError)
+        self.assertEqual(error.field, "inner")
+
+    def test_validate__ImplicitNested_MultipleErrors__ReturnsTypeInferenceErrorWithAll(self):
+        """Implicit nested config with multiple validation errors."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            required_a: int
+            required_b: str
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("inner", Inner)
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {},  # Missing both required_a and required_b
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        error = result.errors[0]
+        self.assertIsInstance(error, TypeInferenceError)
+        # Verify it wraps multiple MissingFieldErrors
+        self.assertEqual(len(error.validation_errors), 2)
+        for wrapped_error in error.validation_errors:
+            self.assertIsInstance(wrapped_error, MissingFieldError)
+
+
+class ConfigValidatorAutoRegistrationTests(TestCase):
+    """Tests for auto-registration of concrete types from type hints."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    # === SUCCESS CASES ===
+
+    def test_validate__ExplicitTargetMatchesTypeHint__AutoRegistersAndValidates(self):
+        """Explicit _target_ matching type hint class name auto-registers."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("outer", Outer)
+        # Inner is NOT registered
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner", "value": 42},
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertTrue(result.valid)
+        self.assertIn("inner", store._known_references)
+
+    def test_validate__ExplicitTargetCaseInsensitive__AutoRegisters(self):
+        """Target name matching is case-insensitive (e.g., 'myclass' matches MyClass)."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class MyClass:
+            value: int
+
+        @dataclass
+        class Container:
+            item: MyClass
+
+        store.register("container", Container)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "container",
+            "item": {"_target_": "myclass", "value": 42},
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertTrue(result.valid)
+        self.assertIn("myclass", store._known_references)
+
+    def test_validate__DeeplyNestedExplicitTargets__AutoRegistersAll(self):
+        """Multiple levels of nested explicit targets are auto-registered."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Level3:
+            value: int
+
+        @dataclass
+        class Level2:
+            level3: Level3
+
+        @dataclass
+        class Level1:
+            level2: Level2
+
+        store.register("level1", Level1)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "level1",
+            "level2": {
+                "_target_": "level2",
+                "level3": {"_target_": "level3", "value": 99},
+            },
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertTrue(result.valid)
+        self.assertIn("level2", store._known_references)
+        self.assertIn("level3", store._known_references)
+
+    def test_validate__ExplicitTargetWithOptionalType__AutoRegisters(self):
+        """Optional[SomeClass] type hint with matching _target_ auto-registers."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Optional[Inner]
+
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner", "value": 42},
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertTrue(result.valid)
+        self.assertIn("inner", store._known_references)
+
+    # === ERROR CASES ===
+
+    def test_validate__ExplicitTargetMismatchesTypeHint__ReturnsTargetNotFoundError(self):
+        """Explicit _target_ that doesn't match type hint class name fails."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "wrong_name", "value": 42},
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        self.assertIsInstance(result.errors[0], TargetNotFoundError)
+        self.assertEqual(result.errors[0].target, "wrong_name")
+
+    def test_validate__ExplicitTargetAbstractType__ReturnsTargetNotFoundError(self):
+        """Can't auto-register abstract classes even with matching name."""
+        # Arrange
+        store = self._empty_store()
+
+        class AbstractBase(ABC):
+            @abstractmethod
+            def method(self) -> None:
+                pass
+
+        @dataclass
+        class Container:
+            item: AbstractBase
+
+        store.register("container", Container)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "container",
+            "item": {"_target_": "abstractbase", "value": 10},
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        self.assertIsInstance(result.errors[0], TargetNotFoundError)
+
+    def test_validate__ExplicitTargetNoTypeHint__SkipsNestedValidation(self):
+        """Without type hint, nested config validation is skipped (no auto-registration)."""
+        # Arrange
+        store = self._empty_store()
+
+        class Model:
+            def __init__(self, data) -> None:  # No type hint
+                self.data = data
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "model",
+            "data": {"_target_": "unknown", "value": 42},  # Nested config not validated
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert - validation passes because nested config isn't validated without type hint
+        self.assertTrue(result.valid)
+        # "unknown" is not auto-registered (no type hint to infer from)
+        self.assertNotIn("unknown", store._known_references)
+
+    def test_validate__ExplicitTargetUnionType__ReturnsTargetNotFoundError(self):
+        """Union[A, B] type hint can't auto-register (ambiguous)."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class TypeA:
+            value: int
+
+        @dataclass
+        class TypeB:
+            name: str
+
+        @dataclass
+        class Container:
+            item: Union[TypeA, TypeB]
+
+        store.register("container", Container)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "container",
+            "item": {"_target_": "typea", "value": 10},
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        self.assertIsInstance(result.errors[0], TargetNotFoundError)
+
+    def test_validate__ExplicitTargetMissingRequiredField__ReturnsMissingFieldError(self):
+        """Auto-registered explicit target with missing field fails validation."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            required_value: int  # Required field
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner"},  # Missing required_value
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        self.assertIsInstance(result.errors[0], MissingFieldError)
+        self.assertEqual(result.errors[0].field, "required_value")
+
+    def test_validate__ExplicitTargetWrongFieldType__ReturnsTypeMismatchError(self):
+        """Auto-registered explicit target with wrong field type fails."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("outer", Outer)
+        validator = ConfigValidator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner", "value": "not_an_int"},
+        }
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        self.assertIsInstance(result.errors[0], TypeMismatchError)
+        self.assertEqual(result.errors[0].field, "value")
 
 
 class ValidateOverridePathTests(TestCase):

@@ -1,4 +1,3 @@
-_target_: optimizer
 type: adam
 learning_rate: 0.001
 weight_decay: 0.0001

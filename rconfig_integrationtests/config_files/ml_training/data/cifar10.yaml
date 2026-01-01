@@ -1,4 +1,3 @@
-_target_: dataset
 name: cifar10
 root: /data/cifar10
 batch_size: 128
