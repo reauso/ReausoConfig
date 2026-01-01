@@ -1,4 +1,4 @@
-from typing import TypeVar, Type, Generic, Optional
+from typing import TypeVar, Generic
 
 T = TypeVar('T')
 
@@ -8,7 +8,7 @@ class Singleton(Generic[T]):
     A singleton decorator for classes of which a maximum of one instance should exist.
     """
 
-    def __init__(self, wrapped_cls: Type[T]) -> None:
+    def __init__(self, wrapped_cls: type[T]) -> None:
         """
         Creates a new Singleton instance.
 
@@ -21,12 +21,12 @@ class Singleton(Generic[T]):
         self._kwargs = None
 
     @property
-    def wrapped_class(self) -> Type[T]:
+    def wrapped_class(self) -> type[T]:
         """ The wrapped class of this singleton. """
         return self._wrapped_cls
 
     @property
-    def instance(self) -> Optional[T]:
+    def instance(self) -> T | None:
         """ The singleton instance of the type of the wrapped class or None if no instance has been created so far. """
         if not self.exists:
             message = f"No existing instance!"

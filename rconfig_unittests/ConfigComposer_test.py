@@ -2055,8 +2055,8 @@ class ConfigComposerInternalMethodTests(TestCase):
 
         self.assertIn("non-dict", str(ctx.exception))
 
-    def test_deep_copy_replacing_instances__UnresolvedMarker__ReturnsNone(self):
-        """Test _deep_copy_replacing_instances with unresolved _instance_ marker."""
+    def test_deep_copy_with_resolved_instances__UnresolvedMarker__ReturnsNone(self):
+        """Test _deep_copy_with_resolved_instances with unresolved _instance_ marker."""
         # Arrange
         from rconfig.InstanceResolver import InstanceResolver
         from rconfig.Provenance import Provenance
@@ -2067,7 +2067,7 @@ class ConfigComposerInternalMethodTests(TestCase):
         resolved = {}  # empty resolved dict
 
         # Act
-        result = resolver._deep_copy_replacing_instances(value, "test.path", resolved)
+        result = resolver._deep_copy_with_resolved_instances(value, "test.path", resolved)
 
         # Assert - should return None for unresolved marker
         self.assertIsNone(result)
