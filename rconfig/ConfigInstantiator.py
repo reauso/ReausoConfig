@@ -16,7 +16,8 @@ class ConfigInstantiator:
     """Instantiates Python objects from validated config dictionaries.
 
     Handles recursive instantiation of nested configs and validates
-    configs before instantiation.
+    configs before instantiation. Supports shared instances when
+    instance_targets mapping is provided from ConfigComposer.
     """
 
     def __init__(self, store: ConfigStore, validator: ConfigValidator) -> None:
@@ -27,22 +28,38 @@ class ConfigInstantiator:
         """
         self._store = store
         self._validator = validator
+        # Instance sharing: maps instance config paths to their target paths
+        self._instance_targets: dict[str, str | None] = {}
+        # Cache of instantiated objects by their config path
+        self._instantiated_cache: dict[str, Any] = {}
 
     def instantiate(
         self,
         config: dict[str, Any],
         validate: bool = True,
         config_path: str = "",
+        instance_targets: dict[str, str | None] | None = None,
     ) -> Any:
         """Create an object from a config dictionary.
 
         :param config: Config dict with _target_ key.
         :param validate: Whether to validate before instantiation.
         :param config_path: Current path for error messages.
+        :param instance_targets: Optional mapping from config paths to their
+                                 target paths for instance sharing. When two
+                                 paths share the same target, they get the
+                                 same Python object instance.
         :return: Instantiated object.
         :raises ValidationError: If config is invalid (when validate=True).
         :raises InstantiationError: If instantiation fails.
         """
+        # Set up instance sharing for this instantiation
+        if instance_targets is not None:
+            self._instance_targets = instance_targets
+        else:
+            self._instance_targets = {}
+        self._instantiated_cache = {}
+
         if validate:
             result = self._validator.validate(config, config_path)
             if not result.valid:
@@ -56,7 +73,11 @@ class ConfigInstantiator:
         kwargs = self._process_arguments(config, config_path)
 
         try:
-            return reference.target_class(**kwargs)
+            instance = reference.target_class(**kwargs)
+            # Cache this instance for potential sharing
+            if config_path:
+                self._instantiated_cache[config_path] = instance
+            return instance
         except Exception as e:
             raise InstantiationError(target_name, str(e), config_path)
 
@@ -105,15 +126,26 @@ class ConfigInstantiator:
         :param expected_type: Expected type from parent's type hint.
         :return: Processed value (instantiated if nested config).
         """
+        # Check if this path is an instance reference
+        if config_path in self._instance_targets:
+            target_path = self._instance_targets[config_path]
+            if target_path is None:
+                # _instance_: null
+                return None
+            # Check if the target has already been instantiated
+            if target_path in self._instantiated_cache:
+                return self._instantiated_cache[target_path]
+            # If not instantiated yet, we'll instantiate it now and it will be cached
+
         # Explicit nested config with _target_
         if self._is_nested_config(value):
-            return self.instantiate(value, validate=True, config_path=config_path)
+            return self._instantiate_nested(value, config_path)
 
         # Implicit nested config - dict without _target_ where type can be inferred
         if self._could_be_implicit_nested(value, expected_type):
             augmented = self._augment_with_inferred_target(value, expected_type)
             if augmented is not None:
-                return self.instantiate(augmented, validate=True, config_path=config_path)
+                return self._instantiate_nested(augmented, config_path)
 
         if isinstance(value, list):
             return [
@@ -128,6 +160,48 @@ class ConfigInstantiator:
             }
 
         return value
+
+    def _instantiate_nested(
+        self,
+        config: dict[str, Any],
+        config_path: str,
+    ) -> Any:
+        """Instantiate a nested config, with caching for instance sharing.
+
+        :param config: Config dict with _target_ key.
+        :param config_path: Current path for error messages and caching.
+        :return: Instantiated object.
+        """
+        # Determine the canonical path for caching
+        # If this is an instance reference, use the target path for caching
+        cache_path = config_path
+        if config_path in self._instance_targets:
+            target_path = self._instance_targets[config_path]
+            if target_path is not None:
+                cache_path = target_path
+
+        # Check cache first
+        if cache_path in self._instantiated_cache:
+            return self._instantiated_cache[cache_path]
+
+        # Validate before instantiation
+        result = self._validator.validate(config, config_path)
+        if not result.valid:
+            raise result.errors[0]
+
+        target_name = config[TARGET_KEY]
+        reference = self._store.known_references[target_name]
+
+        # Process arguments, instantiating nested configs
+        kwargs = self._process_arguments(config, config_path)
+
+        try:
+            instance = reference.target_class(**kwargs)
+            # Cache this instance for potential sharing
+            self._instantiated_cache[cache_path] = instance
+            return instance
+        except Exception as e:
+            raise InstantiationError(target_name, str(e), config_path)
 
     def _is_nested_config(self, value: Any) -> bool:
         """Check if a value is a nested config (dict with _target_)."""

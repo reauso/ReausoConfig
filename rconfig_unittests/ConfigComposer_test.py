@@ -1378,6 +1378,75 @@ trainer:
         self.assertEqual(result["trainer"]["model"]["_target_"], "ResNet")
         self.assertEqual(result["trainer"]["model"]["layers"], 50)
 
+    def test_compose__InstanceTargetsProperty__ReturnsCorrectMapping(self):
+        """Test that instance_targets property returns the resolved paths."""
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+shared:
+  database:
+    _target_: Database
+    url: "postgres://localhost"
+service_a:
+  db:
+    _instance_: /shared.database
+service_b:
+  db:
+    _instance_: /shared.database
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        composer.compose(entry)
+        targets = composer.instance_targets
+
+        # Assert
+        self.assertEqual(targets["service_a.db"], "shared.database")
+        self.assertEqual(targets["service_b.db"], "shared.database")
+
+    def test_compose__InstanceTargetsNull__ReturnsNoneInMapping(self):
+        """Test that _instance_: null is tracked correctly."""
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+service:
+  db:
+    _instance_: null
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        composer.compose(entry)
+        targets = composer.instance_targets
+
+        # Assert
+        self.assertIn("service.db", targets)
+        self.assertIsNone(targets["service.db"])
+
+    def test_compose__InstanceTargetsChain__ReturnsResolvedTarget(self):
+        """Test that chained instances resolve to the final target."""
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+database:
+  _target_: Database
+  url: "postgres://localhost"
+alias:
+  _instance_: database
+final:
+  _instance_: alias
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        composer.compose(entry)
+        targets = composer.instance_targets
+
+        # Assert
+        # Both alias and final resolve to the same ultimate target
+        self.assertEqual(targets["alias"], "database")
+        self.assertEqual(targets["final"], "database")
+
 
 class InstanceProvenanceTests(TestCase):
     """Tests for provenance tracking with _instance_."""

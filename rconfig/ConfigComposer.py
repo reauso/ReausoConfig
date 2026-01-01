@@ -99,7 +99,10 @@ class ConfigComposer:
         # Track the current file's root path for relative _instance_ resolution
         self._current_file_config_path: str = ""
         # Map from config path to instance info: {config_path: (instance_path, file, line)}
-        self._instance_refs: dict[str, tuple[str, str, int]] = {}
+        self._instance_refs: dict[str, tuple[str | None, str, int]] = {}
+        # Map from config path to the resolved target path for instance sharing
+        # Used by ConfigInstantiator to share objects
+        self._instance_targets: dict[str, str | None] = {}
 
     def compose(self, path: Path) -> dict[str, Any]:
         """Compose a config file by resolving all _ref_ references.
@@ -122,6 +125,7 @@ class ConfigComposer:
         # Clear loading stack and instance refs for fresh composition
         self._loading_stack = []
         self._instance_refs = {}
+        self._instance_targets = {}
         self._provenance = None
         self._track_provenance = False
         self._current_file_config_path = ""
@@ -136,6 +140,27 @@ class ConfigComposer:
         config = self._resolve_all_instances(config)
 
         return config
+
+    @property
+    def instance_targets(self) -> dict[str, str | None]:
+        """Get the mapping of instance paths to their resolved target paths.
+
+        This is used by ConfigInstantiator to share instantiated objects.
+        Each key is a config path where an _instance_ reference was found,
+        and the value is the target config path it resolves to (or None for null).
+
+        Example::
+
+            composer = ConfigComposer()
+            config = composer.compose(Path("app.yaml"))
+            # {
+            #   "service_a.db": "shared.database",
+            #   "service_b.db": "shared.database",  # Same target = shared object
+            #   "service_c.db": None,               # _instance_: null
+            # }
+            targets = composer.instance_targets
+        """
+        return self._instance_targets.copy()
 
     def compose_with_provenance(self, path: Path) -> Provenance:
         """Compose a config file and track the origin of each value.
@@ -164,6 +189,7 @@ class ConfigComposer:
         # Clear loading stack and initialize provenance tracking
         self._loading_stack = []
         self._instance_refs = {}
+        self._instance_targets = {}
         self._provenance = Provenance()
         self._track_provenance = True
         self._current_file_config_path = ""
@@ -758,6 +784,7 @@ class ConfigComposer:
             # Handle _instance_: null
             if instance_path is None:
                 resolved[config_path] = None
+                self._instance_targets[config_path] = None
                 resolving.discard(config_path)
                 # Track provenance for null instance
                 if self._track_provenance and self._provenance is not None:
@@ -802,8 +829,12 @@ class ConfigComposer:
             # Get the actual value from the resolved path
             if chain_ends_with_null:
                 value = None
+                # Track that this instance resolves to null
+                self._instance_targets[config_path] = None
             else:
                 value = self._get_value_at_path(config, current_target)
+                # Track the final target for instance sharing
+                self._instance_targets[config_path] = current_target
             resolved[config_path] = value
 
             # Track provenance with instance chain
