@@ -48,6 +48,8 @@ from .override import (
 )
 from .errors import (
     AmbiguousTargetError,
+    CircularRefError,
+    CompositionError,
     ConfigError,
     ConfigFileError,
     InstantiationError,
@@ -56,6 +58,9 @@ from .errors import (
     MergeError,
     MissingFieldError,
     OverrideError,
+    RefAtRootError,
+    RefInstanceConflictError,
+    RefResolutionError,
     TargetNotFoundError,
     TargetTypeMismatchError,
     TypeInferenceError,
@@ -218,6 +223,8 @@ __all__ = [
     "Override",
     # Exceptions
     "AmbiguousTargetError",
+    "CircularRefError",
+    "CompositionError",
     "ConfigError",
     "ConfigFileError",
     "InstantiationError",
@@ -226,6 +233,9 @@ __all__ = [
     "MergeError",
     "MissingFieldError",
     "OverrideError",
+    "RefAtRootError",
+    "RefInstanceConflictError",
+    "RefResolutionError",
     "TargetNotFoundError",
     "TargetTypeMismatchError",
     "TypeInferenceError",

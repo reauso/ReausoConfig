@@ -268,7 +268,11 @@ class InstantiationError(ConfigError):
         )
 
 
-class MergeError(ConfigError):
+class CompositionError(ConfigError):
+    """Base exception for config composition errors."""
+
+
+class MergeError(CompositionError):
     """Raised when a merge operation fails during config composition.
 
     :param message: Description of what went wrong.
@@ -279,6 +283,63 @@ class MergeError(ConfigError):
         self.path = path
         location = f" at '{path}'" if path else ""
         super().__init__(f"{message}{location}")
+
+
+class CircularRefError(CompositionError):
+    """Raised when a circular _ref_ dependency is detected.
+
+    :param chain: List of file paths forming the circular chain.
+    """
+
+    def __init__(self, chain: list[str]) -> None:
+        self.chain = chain
+        chain_str = " → ".join(chain)
+        super().__init__(f"Circular _ref_ dependency detected: {chain_str}")
+
+
+class RefResolutionError(CompositionError):
+    """Raised when a _ref_ cannot be resolved.
+
+    :param ref_path: The _ref_ path that failed to resolve.
+    :param reason: Description of what went wrong.
+    :param config_path: Path in config where error occurred.
+    """
+
+    def __init__(self, ref_path: str, reason: str, config_path: str = "") -> None:
+        self.ref_path = ref_path
+        self.reason = reason
+        self.config_path = config_path
+
+        location = f" at '{config_path}'" if config_path else ""
+        super().__init__(f"Failed to resolve _ref_ '{ref_path}'{location}: {reason}")
+
+
+class RefAtRootError(CompositionError):
+    """Raised when _ref_ is used at the root level of a config file.
+
+    :param file_path: The file where _ref_ was used at root.
+    """
+
+    def __init__(self, file_path: str) -> None:
+        self.file_path = file_path
+        super().__init__(
+            f"_ref_ is not allowed at root level in '{file_path}'. "
+            f"Every config file must define an object, not a reference."
+        )
+
+
+class RefInstanceConflictError(CompositionError):
+    """Raised when _ref_ and _instance_ are used in the same block.
+
+    :param config_path: Path in config where error occurred.
+    """
+
+    def __init__(self, config_path: str = "") -> None:
+        self.config_path = config_path
+        location = f" at '{config_path}'" if config_path else ""
+        super().__init__(
+            f"Cannot use both '_ref_' and '_instance_' in the same block{location}"
+        )
 
 
 class OverrideError(ConfigError):
