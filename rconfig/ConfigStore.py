@@ -11,7 +11,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from inspect import Parameter
 from types import MappingProxyType
-from typing import Type, Any
+from typing import Any
 
 from .util import Singleton
 
@@ -64,7 +64,7 @@ class ConfigStore:
     def register(
             self,
             name: str,
-            target: Type[Any],
+            target: type[Any],
     ) -> None:
         """Register a target class under a unique name.
 

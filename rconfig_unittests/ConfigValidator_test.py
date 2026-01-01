@@ -2191,14 +2191,14 @@ class ConfigValidatorCoverageTests(TestCase):
         # The name should be the fully qualified name since "myclass" is taken
         self.assertIn(".", exact_target)  # Contains module.ClassName
 
-    def test_validate_implicit_nested__ClassTypeExtractionFails__ReturnsEmpty(self):
-        """Test _validate_implicit_nested returns empty when class extraction fails."""
+    def test_implicit_nested_errors__ClassTypeExtractionFails__ReturnsEmpty(self):
+        """Test _implicit_nested_errors returns empty when class extraction fails."""
         # Arrange - line 385
         store = self._empty_store()
         validator = ConfigValidator(store)
 
         # Generic type that _extract_class_from_hint can't handle
-        result = validator._validate_implicit_nested(
+        result = validator._implicit_nested_errors(
             {"value": 42}, list[int], "field", "path"
         )
 

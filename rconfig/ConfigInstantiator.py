@@ -76,7 +76,7 @@ class ConfigInstantiator:
         reference = self._store.known_references[target_name]
 
         # Process arguments, instantiating nested configs
-        kwargs = self._process_arguments(config, config_path)
+        kwargs = self._processed_arguments(config, config_path)
 
         try:
             instance = reference.target_class(**kwargs)
@@ -87,12 +87,12 @@ class ConfigInstantiator:
         except Exception as e:
             raise InstantiationError(target_name, str(e), config_path)
 
-    def _process_arguments(
+    def _processed_arguments(
         self,
         config: dict[str, Any],
         config_path: str,
     ) -> dict[str, Any]:
-        """Process config arguments, recursively instantiating nested configs.
+        """Return processed config arguments with nested configs instantiated.
 
         :param config: Config dict to process.
         :param config_path: Current path for error messages.
@@ -115,22 +115,22 @@ class ConfigInstantiator:
 
             field_path = f"{config_path}.{key}" if config_path else key
             expected_type = type_hints.get(key)
-            kwargs[key] = self._process_value(value, field_path, expected_type)
+            kwargs[key] = self._instantiated_value(value, field_path, expected_type)
 
         return kwargs
 
-    def _process_value(
+    def _instantiated_value(
         self,
         value: Any,
         config_path: str,
         expected_type: type | None = None,
     ) -> Any:
-        """Process a single value, instantiating if it's a nested config.
+        """Return value with nested configs instantiated.
 
         :param value: Value to process.
         :param config_path: Current path for error messages.
         :param expected_type: Expected type from parent's type hint.
-        :return: Processed value (instantiated if nested config).
+        :return: Value with nested configs instantiated.
         """
         # Check if this path is an instance reference
         if config_path in self._instance_targets:
@@ -166,13 +166,13 @@ class ConfigInstantiator:
 
         if isinstance(value, list):
             return [
-                self._process_value(item, f"{config_path}[{i}]", None)
+                self._instantiated_value(item, f"{config_path}[{i}]", None)
                 for i, item in enumerate(value)
             ]
 
         if isinstance(value, dict):
             return {
-                k: self._process_value(v, f"{config_path}.{k}", None)
+                k: self._instantiated_value(v, f"{config_path}.{k}", None)
                 for k, v in value.items()
             }
 
@@ -210,7 +210,7 @@ class ConfigInstantiator:
         reference = self._store.known_references[target_name]
 
         # Process arguments, instantiating nested configs
-        kwargs = self._process_arguments(config, config_path)
+        kwargs = self._processed_arguments(config, config_path)
 
         try:
             instance = reference.target_class(**kwargs)

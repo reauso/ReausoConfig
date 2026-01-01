@@ -52,7 +52,7 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any], path: str = "") -
                 result[key] = deep_merge(base_value, override_value, current_path)
             elif isinstance(override_value, dict) and not isinstance(base_value, dict):
                 # Override is dict, base is not - check for list operations
-                result[key] = _apply_list_operation(base_value, override_value, current_path)
+                result[key] = _list_operation_result(base_value, override_value, current_path)
             else:
                 # Scalar or list replacement - override wins
                 result[key] = _copy_value(override_value)
@@ -60,10 +60,10 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any], path: str = "") -
     return result
 
 
-def _apply_list_operation(
+def _list_operation_result(
     base_value: Any, override_dict: dict[str, Any], path: str
 ) -> Any:
-    """Apply list operations (_extend_ or _prepend_) if present.
+    """Return result of list operation (_extend_ or _prepend_) if present.
 
     :param base_value: The base value (must be a list for list operations).
     :param override_dict: The override dictionary that may contain list operations.
