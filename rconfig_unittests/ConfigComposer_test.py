@@ -1775,3 +1775,286 @@ selected:
             composer.compose(entry)
 
         self.assertIn("not found", str(ctx.exception))
+
+
+class ProvenanceErrorPathTests(TestCase):
+    """Tests for error paths when using compose_with_provenance.
+
+    These tests cover error conditions that occur in the provenance-tracking
+    code paths, which are separate from the regular compose() paths.
+    """
+
+    def setUp(self) -> None:
+        """Set up a temporary directory for test configs."""
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.config_root = Path(self.temp_dir.name)
+        clear_cache()
+
+    def tearDown(self) -> None:
+        """Clean up temporary directory."""
+        self.temp_dir.cleanup()
+        clear_cache()
+
+    def _write_config(self, rel_path: str, content: str) -> Path:
+        """Write a config file to the temp directory."""
+        path = self.config_root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        return path
+
+    def test_compose_with_provenance__RefAtRoot__RaisesRefAtRootError(self):
+        """Test _ref_ at root level raises error with provenance tracking."""
+        # Arrange - line 201
+        self._write_config("base.yaml", """_target_: Base
+value: 1
+""")
+        entry = self._write_config("app.yaml", """_ref_: base.yaml
+extra: value
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(RefAtRootError) as ctx:
+            composer.compose_with_provenance(entry)
+
+        self.assertIn("root level", str(ctx.exception))
+
+    def test_compose_with_provenance__CircularRefs__RaisesCircularRefError(self):
+        """Test circular refs detected with provenance tracking."""
+        # Arrange - lines 222-224
+        self._write_config("a.yaml", """_target_: A
+b:
+  _ref_: b.yaml
+""")
+        self._write_config("b.yaml", """_target_: B
+a:
+  _ref_: a.yaml
+""")
+        entry = self._write_config("app.yaml", """_target_: App
+nested:
+  _ref_: a.yaml
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(CircularRefError) as ctx:
+            composer.compose_with_provenance(entry)
+
+        self.assertIn("a.yaml", str(ctx.exception))
+        self.assertIn("b.yaml", str(ctx.exception))
+
+    def test_compose_with_provenance__RefInstanceConflict__RaisesError(self):
+        """Test _ref_ and _instance_ conflict with provenance tracking."""
+        # Arrange - line 554
+        self._write_config("model.yaml", """_target_: Model
+value: 1
+""")
+        entry = self._write_config("app.yaml", """_target_: App
+model:
+  _ref_: model.yaml
+  _instance_: /shared.db
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(RefInstanceConflictError) as ctx:
+            composer.compose_with_provenance(entry)
+
+        self.assertIn("_ref_", str(ctx.exception))
+        self.assertIn("_instance_", str(ctx.exception))
+
+    def test_compose_with_provenance__InvalidInstanceType__RaisesError(self):
+        """Test invalid _instance_ type (non-string) with provenance tracking."""
+        # Arrange - lines 588-591
+        entry = self._write_config("app.yaml", """_target_: App
+service:
+  db:
+    _instance_: 123
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(InstanceResolutionError) as ctx:
+            composer.compose_with_provenance(entry)
+
+        self.assertIn("must be a string or null", str(ctx.exception))
+
+    def test_compose_with_provenance__NonStringRef__RaisesError(self):
+        """Test non-string _ref_ with provenance tracking."""
+        # Arrange - line 625
+        entry = self._write_config("app.yaml", """_target_: App
+model:
+  _ref_: 123
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(RefResolutionError) as ctx:
+            composer.compose_with_provenance(entry)
+
+        self.assertIn("must be a string", str(ctx.exception))
+
+    def test_compose_with_provenance__RefFileNotFound__RaisesError(self):
+        """Test file not found error wrapped in RefResolutionError with provenance."""
+        # Arrange - lines 640-641
+        entry = self._write_config("app.yaml", """_target_: App
+model:
+  _ref_: does_not_exist.yaml
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(RefResolutionError) as ctx:
+            composer.compose_with_provenance(entry)
+
+        self.assertIn("does_not_exist.yaml", str(ctx.exception))
+        self.assertIn("file not found", str(ctx.exception))
+
+    def test_compose_with_provenance__RefAtRootOfReferencedFile__RaisesError(self):
+        """Test _ref_ at root of referenced file with provenance tracking."""
+        # Arrange - line 645
+        self._write_config("base.yaml", """value: 1
+""")
+        self._write_config("broken.yaml", """_ref_: base.yaml
+extra: 2
+""")
+        entry = self._write_config("app.yaml", """_target_: App
+model:
+  _ref_: broken.yaml
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(RefAtRootError) as ctx:
+            composer.compose_with_provenance(entry)
+
+        self.assertIn("broken.yaml", str(ctx.exception))
+
+    def test_compose_with_provenance__NullTargetOverride__RaisesError(self):
+        """Test overriding _target_ to null with provenance tracking."""
+        # Arrange - line 654
+        self._write_config("model.yaml", """_target_: Model
+value: 1
+""")
+        entry = self._write_config("app.yaml", """_target_: App
+model:
+  _ref_: model.yaml
+  _target_: null
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(RefResolutionError) as ctx:
+            composer.compose_with_provenance(entry)
+
+        self.assertIn("_target_", str(ctx.exception))
+        self.assertIn("null", str(ctx.exception))
+
+    def test_compose_with_provenance__NestedLists__TracksProvenance(self):
+        """Test nested lists with provenance tracking."""
+        # Arrange - lines 711-714, 716
+        entry = self._write_config("app.yaml", """_target_: App
+matrix:
+  -
+    - value: nested
+    - value: item
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+
+        # Assert
+        self.assertIsNotNone(prov.get("matrix"))
+
+    def test_compose_with_provenance__ChainedInstanceCycle__RaisesError(self):
+        """Test circular chained instance references."""
+        # Arrange - lines 769, 773, 777-778
+        entry = self._write_config("app.yaml", """_target_: App
+a:
+  _instance_: b
+b:
+  _instance_: c
+c:
+  _instance_: a
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(CircularInstanceError) as ctx:
+            composer.compose_with_provenance(entry)
+
+        # Should detect the cycle
+        error_str = str(ctx.exception)
+        self.assertTrue("a" in error_str or "b" in error_str or "c" in error_str)
+
+
+class ConfigComposerInternalMethodTests(TestCase):
+    """Tests for internal ConfigComposer methods to improve coverage."""
+
+    def setUp(self) -> None:
+        """Set up a temporary directory for test configs."""
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.config_root = Path(self.temp_dir.name)
+        clear_cache()
+
+    def tearDown(self) -> None:
+        """Clean up temporary directory."""
+        self.temp_dir.cleanup()
+        clear_cache()
+
+    def _write_config(self, rel_path: str, content: str) -> Path:
+        """Write a config file to the temp directory."""
+        path = self.config_root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        return path
+
+    def test_get_line_number__RegularDict__ReturnsNone(self):
+        """Test _get_line_number with a regular dict (no CommentedMap)."""
+        # Arrange - lines 739-741
+        composer = ConfigComposer(self.config_root)
+        regular_dict = {"key": "value"}
+
+        # Act
+        result = composer._get_line_number(regular_dict, "key")
+
+        # Assert
+        self.assertIsNone(result)
+
+    def test_get_value_at_path__EmptyPath__ReturnsConfig(self):
+        """Test _get_value_at_path with empty path returns config itself."""
+        # Arrange - line 927
+        composer = ConfigComposer(self.config_root)
+        config = {"key": "value", "nested": {"inner": 42}}
+
+        # Act
+        result = composer._get_value_at_path(config, "")
+
+        # Assert
+        self.assertEqual(result, config)
+
+    def test_get_value_at_path__NonDictKey__RaisesTypeError(self):
+        """Test _get_value_at_path with key access on non-dict."""
+        # Arrange - line 941
+        composer = ConfigComposer(self.config_root)
+        config = {"key": "string_value"}
+
+        # Act & Assert
+        with self.assertRaises(TypeError) as ctx:
+            composer._get_value_at_path(config, "key.subkey")
+
+        self.assertIn("non-dict", str(ctx.exception))
+
+    def test_deep_copy_replacing_instances__UnresolvedMarker__ReturnsNone(self):
+        """Test _deep_copy_replacing_instances with unresolved _instance_ marker."""
+        # Arrange - line 998
+        composer = ConfigComposer(self.config_root)
+        value = {"_instance_": "some.path"}  # marker not in resolved dict
+        resolved = {}  # empty resolved dict
+
+        # Act
+        result = composer._deep_copy_replacing_instances(value, "test.path", resolved)
+
+        # Assert - should return None for unresolved marker
+        self.assertIsNone(result)
