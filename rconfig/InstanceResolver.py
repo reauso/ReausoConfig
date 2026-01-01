@@ -179,7 +179,7 @@ class InstanceResolver:
             resolve_instance_at_path(config_path)
 
         # Replace markers in config with resolved values
-        return self._replace_instance_markers(config, resolved)
+        return self._config_with_resolved_instances(config, resolved)
 
     def _resolve_instance_path(
         self,
@@ -223,27 +223,27 @@ class InstanceResolver:
 
         return target_path
 
-    def _replace_instance_markers(
+    def _config_with_resolved_instances(
         self,
         config: dict[str, Any],
         resolved: dict[str, Any],
     ) -> dict[str, Any]:
-        """Replace all _instance_ markers with resolved values.
+        """Return config with all _instance_ markers replaced with resolved values.
 
         :param config: The config with markers.
         :param resolved: Map of config paths to resolved values.
         :return: Config with markers replaced.
         """
-        result = self._deep_copy_replacing_instances(config, "", resolved)
+        result = self._deep_copy_with_resolved_instances(config, "", resolved)
         return result
 
-    def _deep_copy_replacing_instances(
+    def _deep_copy_with_resolved_instances(
         self,
         value: Any,
         path: str,
         resolved: dict[str, Any],
     ) -> Any:
-        """Deep copy a value, replacing _instance_ markers with resolved values.
+        """Return deep copy of value with _instance_ markers replaced by resolved values.
 
         :param value: The value to copy.
         :param path: Current path in config.
@@ -262,7 +262,7 @@ class InstanceResolver:
             result = {}
             for key, val in value.items():
                 child_path = f"{path}.{key}" if path else key
-                result[key] = self._deep_copy_replacing_instances(
+                result[key] = self._deep_copy_with_resolved_instances(
                     val, child_path, resolved
                 )
             return result
@@ -272,7 +272,7 @@ class InstanceResolver:
             for i, item in enumerate(value):
                 item_path = f"{path}[{i}]"
                 result.append(
-                    self._deep_copy_replacing_instances(item, item_path, resolved)
+                    self._deep_copy_with_resolved_instances(item, item_path, resolved)
                 )
             return result
 

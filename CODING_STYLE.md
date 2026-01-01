@@ -1,0 +1,477 @@
+# Coding Style Guide
+
+This guide documents the coding conventions for this project, derived from:
+- **Clean Code** by Robert C. Martin
+- **Clean Architecture** by Robert C. Martin
+- **The Art of Unit Testing** by Roy Osherove
+- **SOLID Principles**
+
+---
+
+## Table of Contents
+
+1. [SOLID Principles](#solid-principles)
+2. [Method Naming Conventions](#method-naming-conventions)
+3. [Class Design](#class-design)
+4. [Error Handling](#error-handling)
+5. [Unit Tests](#unit-tests)
+6. [Integration Tests](#integration-tests)
+
+---
+
+## SOLID Principles
+
+Keep these principles in mind when designing and implementing code.
+
+### Single Responsibility Principle (SRP)
+
+Each class should have one, and only one, reason to change.
+
+```python
+# Good - Each class has a single responsibility
+class ConfigStore:
+    """Only manages registration and lookup of config references."""
+
+class ConfigValidator:
+    """Only validates configurations."""
+
+class ConfigInstantiator:
+    """Only instantiates objects from configurations."""
+```
+
+### Open/Closed Principle (OCP)
+
+Classes should be open for extension but closed for modification.
+
+```python
+# Good - Extensible through registration, not modification
+class ConfigStore:
+    def register(self, name: str, target: type) -> None:
+        """Extend behavior by registering new targets."""
+```
+
+### Liskov Substitution Principle (LSP)
+
+Subtypes must be substitutable for their base types.
+
+```python
+# Good - All ValidationError subtypes can be used where ValidationError is expected
+class ValidationError(ConfigError): ...
+class MissingFieldError(ValidationError): ...
+class TypeMismatchError(ValidationError): ...
+```
+
+### Interface Segregation Principle (ISP)
+
+Clients should not be forced to depend on interfaces they don't use.
+
+```python
+# Good - Return read-only views instead of full mutable objects
+@property
+def known_references(self) -> MappingProxyType[str, ConfigReference]:
+    """Clients only need to read, not modify."""
+    return MappingProxyType(self._known_references)
+```
+
+### Dependency Inversion Principle (DIP)
+
+Depend on abstractions, not concretions. Inject dependencies via constructor.
+
+```python
+# Good - Dependencies injected, easy to test with mocks
+class ConfigInstantiator:
+    def __init__(self, store: ConfigStore, validator: ConfigValidator) -> None:
+        self._store = store
+        self._validator = validator
+```
+
+---
+
+## Method Naming Conventions
+
+Method names should clearly communicate their purpose.
+
+### Methods That Return Values
+
+The name should describe **what is returned**, not the process.
+
+#### Noun-based Names
+
+Use for methods that collect, find, or retrieve existing things:
+
+```python
+# Good - describes what is returned
+def _type_errors() -> list[ValidationError]: ...
+def _missing_field_errors() -> list[MissingFieldError]: ...
+def _target_not_found_error() -> TargetNotFoundError | None: ...
+
+# Bad - describes the process
+def _validate_types() -> list[ValidationError]: ...
+def _check_required_fields() -> list[MissingFieldError]: ...
+```
+
+#### Past Participle Names
+
+Use for methods that transform or produce something new:
+
+```python
+# Good - indicates transformation occurred
+def _processed_arguments() -> dict[str, Any]: ...
+def _instantiated_value() -> Any: ...
+def _resolved_dict() -> dict[str, Any]: ...
+
+# Bad - describes the action
+def _process_arguments() -> dict[str, Any]: ...
+def _walk_dict() -> dict[str, Any]: ...
+```
+
+### Methods That Perform Actions (No Return Value)
+
+Use **imperative verbs**:
+
+```python
+def register(self, name: str, target: type) -> None: ...
+def clear_cache() -> None: ...
+```
+
+### Boolean-Returning Methods
+
+Use predicates that read naturally as questions:
+
+```python
+# Good
+def _is_nested_config(self, value: Any) -> bool: ...
+def _type_matches(self, value: Any, expected_type: type) -> bool: ...
+
+# Bad
+def _validate(self) -> bool: ...
+def _check_errors(self) -> bool: ...
+```
+
+### Summary Table
+
+| Returns | Naming Pattern | Example |
+|---------|----------------|---------|
+| Collection of items | Noun (plural) | `_type_errors()` |
+| Single item or None | Noun (singular) | `_target_not_found_error()` |
+| Transformed data | Past participle | `_resolved_config()` |
+| Boolean | Predicate (`is_`, `has_`, `_matches`) | `_is_valid()` |
+| Nothing (void) | Imperative verb | `register()` |
+
+---
+
+## Class Design
+
+### Method Organization
+
+Organize methods in this order:
+
+1. Special methods (`__init__`, `__post_init__`, etc.)
+2. Properties (`@property`)
+3. Public methods (API)
+4. Private helper methods (prefixed with `_`)
+
+### Immutable Data Structures
+
+Use frozen dataclasses for value objects:
+
+```python
+@dataclass(frozen=True, kw_only=True)
+class ConfigReference:
+    """Immutable reference to a configuration class."""
+    name: str
+    target_class: type[Any]
+```
+
+### Read-Only Views
+
+Return `MappingProxyType` for internal collections to prevent mutation:
+
+```python
+@property
+def known_references(self) -> MappingProxyType[str, ConfigReference]:
+    return MappingProxyType(self._known_references)
+```
+
+### Type Hints
+
+Use modern Python 3.9+ type hint syntax:
+
+| Old Style (typing module) | Modern Style (built-in) |
+|---------------------------|-------------------------|
+| `Type[X]` | `type[X]` |
+| `Optional[X]` | `X \| None` |
+| `List[X]` | `list[X]` |
+| `Dict[K, V]` | `dict[K, V]` |
+| `Tuple[X, Y]` | `tuple[X, Y]` |
+| `Set[X]` | `set[X]` |
+
+---
+
+## Error Handling
+
+### Fail Fast (Default Approach)
+
+For most code, fail immediately when an error is detected. This makes debugging easier and prevents cascading failures.
+
+```python
+# Good - Fail fast with guard clauses
+def instantiate(self, config: dict[str, Any]) -> Any:
+    if TARGET_KEY not in config:
+        raise MissingFieldError(TARGET_KEY, "(root)")
+
+    target_name = config[TARGET_KEY]
+    if target_name not in self._store.known_references:
+        raise TargetNotFoundError(target_name)
+
+    # Happy path continues here
+    ...
+```
+
+### Error Accumulation (Validation Only)
+
+**Exception:** When validating configuration structure, accumulate all errors to give users complete feedback in one pass.
+
+```python
+# Good - Accumulate errors only for validation
+def validate(self, config: dict[str, Any]) -> ValidationResult:
+    errors: list[ValidationError] = []
+
+    # Collect all validation errors
+    errors.extend(self._missing_field_errors(config, reference))
+    errors.extend(self._type_errors(config, reference))
+
+    return ValidationResult(valid=len(errors) == 0, errors=errors)
+```
+
+### Guard Clauses
+
+Prefer guard clauses (early returns) over nested conditionals:
+
+```python
+# Good - Guard clauses reduce nesting
+def _implicit_nested_errors(self, value: dict, expected_type: type) -> list[ValidationError]:
+    class_type = extract_class_from_hint(expected_type)
+
+    if class_type is None:
+        return []
+
+    # Main logic here with reduced nesting
+    ...
+
+# Bad - Deep nesting
+def _implicit_nested_errors(self, value: dict, expected_type: type) -> list[ValidationError]:
+    class_type = extract_class_from_hint(expected_type)
+
+    if class_type is not None:
+        # Main logic buried in nesting
+        ...
+```
+
+### Custom Exceptions
+
+Create specific exception types with rich context:
+
+```python
+class TypeMismatchError(ValidationError):
+    """Raised when a config value doesn't match the expected type."""
+
+    def __init__(
+        self,
+        field: str,
+        expected: type | str,
+        actual: type,
+        config_path: str = "",
+    ) -> None:
+        self.field = field
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"Type mismatch for field '{field}': expected {expected}, got {actual.__name__}",
+            config_path,
+        )
+```
+
+---
+
+## Unit Tests
+
+Based on **The Art of Unit Testing** by Roy Osherove.
+
+### Test Naming Convention
+
+Use the descriptive naming pattern:
+
+```
+test_<MethodName>__<Scenario>__<ExpectedBehavior>
+```
+
+Examples:
+
+```python
+def test_validate__ValidConfig__ReturnsValidResult(self): ...
+def test_validate__MissingTarget__ReturnsError(self): ...
+def test_instantiate__NestedConfig__InstantiatesRecursively(self): ...
+```
+
+### AAA Structure
+
+Every test follows the **Arrange-Act-Assert** pattern with explicit comments:
+
+```python
+def test_validate__ValidConfig__ReturnsValidResult(self):
+    """Test that valid config returns a valid result."""
+    # Arrange
+    store = self._empty_store()
+
+    @dataclass
+    class Model:
+        hidden_size: int
+        dropout: float = 0.1
+
+    store.register("model", Model)
+    validator = ConfigValidator(store)
+    config = {"_target_": "model", "hidden_size": 256}
+
+    # Act
+    result = validator.validate(config)
+
+    # Assert
+    self.assertTrue(result.valid)
+    self.assertEqual(len(result.errors), 0)
+```
+
+For exception testing, combine Act & Assert:
+
+```python
+def test_instantiate__MissingRequiredField__RaisesError(self):
+    """Test that missing required field raises MissingFieldError."""
+    # Arrange
+    store = self._empty_store()
+    # ... setup ...
+
+    # Act & Assert
+    with self.assertRaises(MissingFieldError) as ctx:
+        instantiator.instantiate(config)
+
+    self.assertEqual(ctx.exception.field, "required_value")
+```
+
+### Test Isolation with Mocks
+
+Use mocks to isolate the unit under test from its dependencies:
+
+```python
+from unittest.mock import patch
+
+def test_validate__TypeHintsUnavailable__SkipsTypeValidation(self):
+    """Test that validation continues when type hints fail."""
+    # Arrange
+    store = self._empty_store()
+    # ... setup ...
+
+    # Act
+    with patch(
+        "rconfig.ConfigValidator.get_type_hints",
+        side_effect=NameError("name 'NonExistentType' is not defined"),
+    ):
+        result = validator.validate(config)
+
+    # Assert
+    self.assertTrue(result.valid)
+```
+
+### Test Class Organization
+
+Group tests by behavior domain:
+
+```python
+class ConfigValidatorTests(unittest.TestCase):
+    """Basic validation functionality tests."""
+
+class ConfigValidatorEdgeCaseTests(unittest.TestCase):
+    """Edge cases and boundary conditions."""
+
+class ConfigValidatorImplicitTargetTests(unittest.TestCase):
+    """Tests for implicit target inference."""
+```
+
+### Helper Methods
+
+Use helper methods to reduce test setup duplication:
+
+```python
+class ConfigValidatorTests(unittest.TestCase):
+
+    def _empty_store(self) -> ConfigStore:
+        """Create a clean ConfigStore for testing."""
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+```
+
+---
+
+## Integration Tests
+
+### File-Based Test Setup
+
+Use `setUp` and `tearDown` for temporary resources:
+
+```python
+class ConfigComposerIntegrationTests(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.config_root = Path(self.temp_dir.name)
+        clear_cache()
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+        clear_cache()
+
+    def _write_config(self, name: str, content: dict[str, Any]) -> Path:
+        """Write a config file to the temporary directory."""
+        path = self.config_root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            yaml.dump(content, f)
+        return path
+```
+
+### Integration Test Naming
+
+Follow the same naming convention as unit tests:
+
+```python
+def test_compose__RefChainThreeDeep__ResolvesCorrectly(self): ...
+def test_compose__CircularRef__RaisesCircularRefError(self): ...
+def test_instantiate__SharedInstance__ReturnsSameObject(self): ...
+```
+
+### End-to-End Scenarios
+
+Test complete workflows:
+
+```python
+def test_compose_and_instantiate__CompleteWorkflow__ProducesValidObject(self):
+    """Test full workflow from YAML to instantiated object."""
+    # Arrange
+    self._write_config("model.yaml", {
+        "_target_": "transformer",
+        "hidden_size": 512,
+        "encoder": {"_ref_": "encoder.yaml"},
+    })
+    self._write_config("encoder.yaml", {
+        "_target_": "encoder",
+        "layers": 6,
+    })
+
+    # Act
+    config = compose(self.config_root / "model.yaml")
+    model = instantiate(config)
+
+    # Assert
+    self.assertIsInstance(model, Transformer)
+    self.assertEqual(model.hidden_size, 512)
+```

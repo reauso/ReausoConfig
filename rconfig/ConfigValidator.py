@@ -77,7 +77,7 @@ class ConfigValidator:
         target_name = config[TARGET_KEY]
 
         # Check target is registered
-        target_error = self._validate_target_exists(target_name, config_path)
+        target_error = self._target_not_found_error(target_name, config_path)
         if target_error:
             errors.append(target_error)
             return ValidationResult(valid=False, errors=errors)
@@ -85,31 +85,31 @@ class ConfigValidator:
         reference = self._store.known_references[target_name]
 
         # Validate required fields
-        missing_errors = self._validate_required_fields(config, reference, config_path)
+        missing_errors = self._missing_field_errors(config, reference, config_path)
         errors.extend(missing_errors)
 
         # Validate types
-        type_errors = self._validate_types(config, reference, config_path)
+        type_errors = self._type_errors(config, reference, config_path)
         errors.extend(type_errors)
 
         return ValidationResult(valid=len(errors) == 0, errors=errors)
 
-    def _validate_target_exists(
+    def _target_not_found_error(
         self, target: str, config_path: str
     ) -> TargetNotFoundError | None:
-        """Check if target is registered in the ConfigStore."""
+        """Return TargetNotFoundError if target is not registered, else None."""
         if target not in self._store.known_references:
             available = list(self._store.known_references.keys())
             return TargetNotFoundError(target, available, config_path)
         return None
 
-    def _validate_required_fields(
+    def _missing_field_errors(
         self,
         config: dict[str, Any],
         reference: ConfigReference,
         config_path: str,
     ) -> list[MissingFieldError]:
-        """Check that all required fields are present in config."""
+        """Return list of MissingFieldError for any required fields not present."""
         errors: list[MissingFieldError] = []
 
         for param_name, param in reference.decisive_init_parameters.items():
@@ -127,13 +127,13 @@ class ConfigValidator:
 
         return errors
 
-    def _validate_types(
+    def _type_errors(
         self,
         config: dict[str, Any],
         reference: ConfigReference,
         config_path: str,
     ) -> list[ValidationError]:
-        """Validate that config values match expected types."""
+        """Return list of type validation errors for config values."""
         errors: list[ValidationError] = []
 
         try:
@@ -184,14 +184,14 @@ class ConfigValidator:
             elif could_be_implicit_nested(value, expected_type):
                 # Try to infer target or report error
                 errors.extend(
-                    self._validate_implicit_nested(
+                    self._implicit_nested_errors(
                         value, expected_type, param_name, field_path
                     )
                 )
 
             else:
                 # Validate regular type
-                type_error = self._check_type(
+                type_error = self._type_mismatch_error(
                     param_name, value, expected_type, field_path
                 )
                 if type_error:
@@ -203,14 +203,14 @@ class ConfigValidator:
         """Check if a value is a nested config (dict with _target_)."""
         return isinstance(value, dict) and TARGET_KEY in value
 
-    def _validate_implicit_nested(
+    def _implicit_nested_errors(
         self,
         value: dict[str, Any],
         expected_type: type,
         field_name: str,
         field_path: str,
     ) -> list[ValidationError]:
-        """Validate an implicit nested config (dict without _target_).
+        """Return validation errors for an implicit nested config (dict without _target_).
 
         If the type is concrete, infers the target and validates.
         If the type is ambiguous, returns an appropriate error.
@@ -308,14 +308,14 @@ class ConfigValidator:
 
         return errors
 
-    def _check_type(
+    def _type_mismatch_error(
         self,
         field_name: str,
         value: Any,
         expected_type: type,
         config_path: str,
     ) -> TypeMismatchError | None:
-        """Check if value matches expected type."""
+        """Return TypeMismatchError if value doesn't match expected type, else None."""
         if self._type_matches(value, expected_type):
             return None
 
@@ -369,7 +369,7 @@ class ConfigValidator:
 
             # Implicit nested config (dict without _target_ matching class type)
             if isinstance(value, dict) and is_class_type(expected_type):
-                return True  # Validated by _validate_implicit_nested
+                return True  # Validated by _implicit_nested_errors
 
             # Direct type check
             return isinstance(value, expected_type)

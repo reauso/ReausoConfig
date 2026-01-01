@@ -174,14 +174,14 @@ class CompositionWalker:
 
         try:
             config = _load_file_cached(path_str)
-            resolved = self._walk_dict(
+            resolved = self._resolved_dict(
                 config, path.parent, parent_config_path, path_str
             )
             return resolved
         finally:
             self._loading_stack.pop()
 
-    def _walk_dict(
+    def _resolved_dict(
         self,
         config: dict[str, Any],
         current_dir: Path,
@@ -190,7 +190,7 @@ class CompositionWalker:
         skip_keys: set[str] | None = None,
         skip_provenance_for: set[str] | None = None,
     ) -> dict[str, Any]:
-        """Recursively walk a dict, resolving _ref_ references.
+        """Return dict with all _ref_ references resolved.
 
         :param config: The config dictionary to process.
         :param current_dir: Directory of the current file (for relative paths).
@@ -213,12 +213,12 @@ class CompositionWalker:
             should_record = key not in skip_provenance_for
 
             if isinstance(value, dict):
-                resolved_value = self._walk_dict_value(
+                resolved_value = self._resolved_dict_value(
                     value, current_dir, current_path, file_path
                 )
                 result[key] = resolved_value
             elif isinstance(value, list):
-                result[key] = self._walk_list(
+                result[key] = self._resolved_list(
                     value, current_dir, current_path, file_path
                 )
                 # Record provenance for the list key itself
@@ -232,14 +232,14 @@ class CompositionWalker:
 
         return result
 
-    def _walk_dict_value(
+    def _resolved_dict_value(
         self,
         value: dict[str, Any],
         current_dir: Path,
         config_path: str,
         file_path: str,
     ) -> dict[str, Any]:
-        """Walk a dict value, handling _ref_ or _instance_ if present.
+        """Return resolved dict value, handling _ref_ or _instance_ if present.
 
         :param value: The dict value to process.
         :param current_dir: Directory of the current file.
@@ -260,8 +260,8 @@ class CompositionWalker:
             # Collect _instance_ reference for later resolution
             return self._collect_instance_marker(value, config_path, file_path)
         else:
-            # No _ref_ or _instance_, just recursively walk
-            return self._walk_dict(value, current_dir, config_path, file_path)
+            # No _ref_ or _instance_, just recursively resolve
+            return self._resolved_dict(value, current_dir, config_path, file_path)
 
     def _collect_instance_marker(
         self,
@@ -358,7 +358,7 @@ class CompositionWalker:
             scalar_override_keys = {
                 k for k in override_keys if not isinstance(value[k], (dict, list))
             }
-            overrides = self._walk_dict(
+            overrides = self._resolved_dict(
                 value,
                 current_dir,
                 config_path,
@@ -446,14 +446,14 @@ class CompositionWalker:
 
         return resolved
 
-    def _walk_list(
+    def _resolved_list(
         self,
         items: list[Any],
         current_dir: Path,
         config_path: str,
         file_path: str,
     ) -> list[Any]:
-        """Walk _ref_ references within a list.
+        """Return list with all _ref_ references resolved.
 
         :param items: The list to process.
         :param current_dir: Directory of the current file.
@@ -465,13 +465,13 @@ class CompositionWalker:
         for i, item in enumerate(items):
             item_path = f"{config_path}[{i}]"
             if isinstance(item, dict):
-                resolved_item = self._walk_dict_value(
+                resolved_item = self._resolved_dict_value(
                     item, current_dir, item_path, file_path
                 )
                 result.append(resolved_item)
             elif isinstance(item, list):
                 result.append(
-                    self._walk_list(item, current_dir, item_path, file_path)
+                    self._resolved_list(item, current_dir, item_path, file_path)
                 )
             else:
                 result.append(item)
