@@ -822,3 +822,442 @@ class ConfigInstantiatorHelperMethodTests(TestCase):
         )
 
         self.assertFalse(result)
+
+
+class ConfigInstantiatorSharedInstanceTests(TestCase):
+    """Tests for shared instance instantiation via instance_targets."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+        validator = ConfigValidator(store)
+        return ConfigInstantiator(store, validator)
+
+    def test_instantiate__TwoFieldsSameTarget__ShareSameObject(self):
+        """Test that two _instance_ references to the same target share the object."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Database:
+            url: str
+
+        @dataclass
+        class ServiceA:
+            db: Database
+
+        @dataclass
+        class ServiceB:
+            db: Database
+
+        @dataclass
+        class App:
+            shared_db: Database
+            service_a: ServiceA
+            service_b: ServiceB
+
+        store.register("database", Database)
+        store.register("service_a", ServiceA)
+        store.register("service_b", ServiceB)
+        store.register("app", App)
+        instantiator = self._create_instantiator(store)
+
+        # Simulate composed config where _instance_ has been resolved
+        # by copying the referenced value
+        config = {
+            "_target_": "app",
+            "shared_db": {
+                "_target_": "database",
+                "url": "postgres://localhost",
+            },
+            "service_a": {
+                "_target_": "service_a",
+                "db": {
+                    "_target_": "database",
+                    "url": "postgres://localhost",
+                },
+            },
+            "service_b": {
+                "_target_": "service_b",
+                "db": {
+                    "_target_": "database",
+                    "url": "postgres://localhost",
+                },
+            },
+        }
+
+        # Instance targets indicate that service_a.db and service_b.db
+        # both reference shared_db
+        instance_targets = {
+            "service_a.db": "shared_db",
+            "service_b.db": "shared_db",
+        }
+
+        # Act
+        result = instantiator.instantiate(
+            config, validate=True, instance_targets=instance_targets
+        )
+
+        # Assert
+        self.assertIsInstance(result, App)
+        self.assertIsInstance(result.shared_db, Database)
+        self.assertIsInstance(result.service_a, ServiceA)
+        self.assertIsInstance(result.service_b, ServiceB)
+
+        # The key assertion: all three db fields point to the SAME object
+        self.assertIs(result.service_a.db, result.shared_db)
+        self.assertIs(result.service_b.db, result.shared_db)
+        self.assertIs(result.service_a.db, result.service_b.db)
+
+    def test_instantiate__InstanceToNull__ReturnsNone(self):
+        """Test that _instance_: null returns None."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Service:
+            db: Optional["Database"]  # noqa: F821
+
+        @dataclass
+        class Database:
+            url: str
+
+        store.register("database", Database)
+        store.register("service", Service)
+        instantiator = self._create_instantiator(store)
+
+        config = {
+            "_target_": "service",
+            "db": None,  # Already resolved to None by composer
+        }
+
+        instance_targets = {
+            "db": None,  # _instance_: null
+        }
+
+        # Act
+        result = instantiator.instantiate(
+            config, validate=False, instance_targets=instance_targets
+        )
+
+        # Assert
+        self.assertIsNone(result.db)
+
+    def test_instantiate__NoInstanceTargets__WorksNormally(self):
+        """Test that without instance_targets, instantiation works as before."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            a: Inner
+            b: Inner
+
+        store.register("inner", Inner)
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+
+        config = {
+            "_target_": "outer",
+            "a": {"_target_": "inner", "value": 1},
+            "b": {"_target_": "inner", "value": 2},
+        }
+
+        # Act - no instance_targets
+        result = instantiator.instantiate(config)
+
+        # Assert - different objects even with same structure
+        self.assertIsInstance(result.a, Inner)
+        self.assertIsInstance(result.b, Inner)
+        self.assertIsNot(result.a, result.b)  # Different objects
+        self.assertEqual(result.a.value, 1)
+        self.assertEqual(result.b.value, 2)
+
+    def test_instantiate__ChainedInstances__AllShareSameObject(self):
+        """Test that chained instances (A->B->C) all share the same object."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Database:
+            url: str
+
+        @dataclass
+        class Container:
+            original: Database
+            alias: Database
+            final: Database
+
+        store.register("database", Database)
+        store.register("container", Container)
+        instantiator = self._create_instantiator(store)
+
+        # Config after composition (all fields have same config)
+        config = {
+            "_target_": "container",
+            "original": {"_target_": "database", "url": "postgres://localhost"},
+            "alias": {"_target_": "database", "url": "postgres://localhost"},
+            "final": {"_target_": "database", "url": "postgres://localhost"},
+        }
+
+        # alias -> original, final -> original (chain resolved)
+        instance_targets = {
+            "alias": "original",
+            "final": "original",
+        }
+
+        # Act
+        result = instantiator.instantiate(
+            config, validate=True, instance_targets=instance_targets
+        )
+
+        # Assert
+        self.assertIs(result.alias, result.original)
+        self.assertIs(result.final, result.original)
+
+    def test_instantiate__NestedInstanceSharing__WorksCorrectly(self):
+        """Test instance sharing works in deeply nested structures."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Cache:
+            size: int
+
+        @dataclass
+        class ServiceA:
+            cache: Cache
+
+        @dataclass
+        class ServiceB:
+            cache: Cache
+
+        @dataclass
+        class ServiceContainer:
+            service_a: ServiceA
+            service_b: ServiceB
+
+        @dataclass
+        class App:
+            shared_cache: Cache
+            services: ServiceContainer
+
+        store.register("cache", Cache)
+        store.register("service_a", ServiceA)
+        store.register("service_b", ServiceB)
+        store.register("service_container", ServiceContainer)
+        store.register("app", App)
+        instantiator = self._create_instantiator(store)
+
+        config = {
+            "_target_": "app",
+            "shared_cache": {"_target_": "cache", "size": 100},
+            "services": {
+                "_target_": "service_container",
+                "service_a": {
+                    "_target_": "service_a",
+                    "cache": {"_target_": "cache", "size": 100},
+                },
+                "service_b": {
+                    "_target_": "service_b",
+                    "cache": {"_target_": "cache", "size": 100},
+                },
+            },
+        }
+
+        instance_targets = {
+            "services.service_a.cache": "shared_cache",
+            "services.service_b.cache": "shared_cache",
+        }
+
+        # Act
+        result = instantiator.instantiate(
+            config, validate=True, instance_targets=instance_targets
+        )
+
+        # Assert
+        self.assertIs(result.services.service_a.cache, result.shared_cache)
+        self.assertIs(result.services.service_b.cache, result.shared_cache)
+
+    def test_instantiate__InstanceInList__SharesCorrectly(self):
+        """Test instance sharing works with list indexing."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Database:
+            name: str
+
+        @dataclass
+        class App:
+            primary_db: Database
+            replicas: list
+
+        store.register("database", Database)
+        store.register("app", App)
+        instantiator = self._create_instantiator(store)
+
+        config = {
+            "_target_": "app",
+            "primary_db": {"_target_": "database", "name": "primary"},
+            "replicas": [
+                {"_target_": "database", "name": "primary"},  # _instance_: primary_db
+                {"_target_": "database", "name": "replica"},  # Not an instance
+            ],
+        }
+
+        instance_targets = {
+            "replicas[0]": "primary_db",
+        }
+
+        # Act
+        result = instantiator.instantiate(
+            config, validate=True, instance_targets=instance_targets
+        )
+
+        # Assert
+        self.assertIs(result.replicas[0], result.primary_db)
+        self.assertIsNot(result.replicas[1], result.primary_db)
+
+    def test_instantiate__TargetInstantiatedBeforeInstance__SharesCorrectly(self):
+        """Test that when target is instantiated first, instances share it."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Database:
+            url: str
+
+        @dataclass
+        class App:
+            db: Database  # Instantiated first
+            db_alias: Database  # Instance of db
+
+        store.register("database", Database)
+        store.register("app", App)
+        instantiator = self._create_instantiator(store)
+
+        config = {
+            "_target_": "app",
+            "db": {"_target_": "database", "url": "postgres://localhost"},
+            "db_alias": {"_target_": "database", "url": "postgres://localhost"},
+        }
+
+        instance_targets = {
+            "db_alias": "db",
+        }
+
+        # Act
+        result = instantiator.instantiate(
+            config, validate=True, instance_targets=instance_targets
+        )
+
+        # Assert
+        self.assertIs(result.db_alias, result.db)
+
+    def test_instantiate__InstanceReferencesNestedTarget__SharesCorrectly(self):
+        """Test instance references to a nested path work correctly."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Database:
+            url: str
+
+        @dataclass
+        class Services:
+            db: Database
+
+        @dataclass
+        class App:
+            services: Services
+            shared_db: Database  # Instance of services.db
+
+        store.register("database", Database)
+        store.register("services", Services)
+        store.register("app", App)
+        instantiator = self._create_instantiator(store)
+
+        config = {
+            "_target_": "app",
+            "services": {
+                "_target_": "services",
+                "db": {"_target_": "database", "url": "postgres://localhost"},
+            },
+            "shared_db": {"_target_": "database", "url": "postgres://localhost"},
+        }
+
+        # shared_db references services.db
+        instance_targets = {
+            "shared_db": "services.db",
+        }
+
+        # Act
+        result = instantiator.instantiate(
+            config, validate=True, instance_targets=instance_targets
+        )
+
+        # Assert
+        self.assertIs(result.shared_db, result.services.db)
+
+    def test_instantiate__NestedInstantiationError__RaisesWithPath(self):
+        """Test that instantiation errors in nested configs include the path."""
+        # Arrange
+        store = self._empty_store()
+
+        class FailingClass:
+            def __init__(self, value: int):
+                raise ValueError("Intentional failure")
+
+        @dataclass
+        class Container:
+            failing: "FailingClass"
+
+        store.register("failing", FailingClass)
+        store.register("container", Container)
+        instantiator = self._create_instantiator(store)
+
+        config = {
+            "_target_": "container",
+            "failing": {"_target_": "failing", "value": 42},
+        }
+
+        # _instantiate_nested is used for nested configs
+        # Act & Assert
+        with self.assertRaises(InstantiationError) as context:
+            instantiator.instantiate(config)
+
+        self.assertEqual(context.exception.target, "failing")
+        self.assertEqual(context.exception.config_path, "failing")
+
+    def test_instantiate__TopLevelWithConfigPath__CachesCorrectly(self):
+        """Test that top-level instantiate with config_path caches correctly."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        instantiator = self._create_instantiator(store)
+
+        config = {"_target_": "model", "value": 42}
+
+        # Act - Call with a config_path
+        result = instantiator.instantiate(
+            config, validate=True, config_path="root_model"
+        )
+
+        # Assert
+        self.assertIsInstance(result, Model)
+        self.assertEqual(result.value, 42)
+        # Check that it was cached
+        self.assertEqual(instantiator._instantiated_cache.get("root_model"), result)
