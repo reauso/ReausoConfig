@@ -23,6 +23,7 @@ from .errors import (
     RefResolutionError,
 )
 from .loaders.yaml_loader import YamlConfigLoader
+from .path_utils import build_child_path
 from .Provenance import Provenance
 
 
@@ -208,7 +209,7 @@ class CompositionWalker:
             if key in skip_keys:
                 continue
 
-            current_path = f"{config_path}.{key}" if config_path else key
+            current_path = build_child_path(config_path, key)
             line = self._get_line_number(config, key)
             should_record = key not in skip_provenance_for
 
@@ -388,7 +389,7 @@ class CompositionWalker:
         :param file_path: Path to the current file.
         """
         for key in override_keys:
-            override_path = f"{config_path}.{key}" if config_path else key
+            override_path = build_child_path(config_path, key)
             line = self._get_line_number(value, key)
             if line is not None:
                 # Check if this is overriding something from the referenced file
@@ -463,7 +464,7 @@ class CompositionWalker:
         """
         result = []
         for i, item in enumerate(items):
-            item_path = f"{config_path}[{i}]"
+            item_path = build_child_path(config_path, i)
             if isinstance(item, dict):
                 resolved_item = self._resolved_dict_value(
                     item, current_dir, item_path, file_path

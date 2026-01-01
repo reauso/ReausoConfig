@@ -10,7 +10,7 @@ from typing import Any
 
 from .CompositionWalker import InstanceMarker
 from .errors import CircularInstanceError, InstanceResolutionError
-from .path_utils import get_value_at_path
+from .path_utils import build_child_path, get_value_at_path
 from .Provenance import InstanceRef, Provenance
 
 
@@ -270,7 +270,7 @@ class InstanceResolver:
         elif isinstance(value, list):
             result = []
             for i, item in enumerate(value):
-                item_path = f"{path}[{i}]"
+                item_path = build_child_path(path, i)
                 result.append(
                     self._deep_copy_with_resolved_instances(item, item_path, resolved)
                 )

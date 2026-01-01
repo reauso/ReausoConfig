@@ -85,6 +85,14 @@ class ConfigStore:
         """
         del self._known_references[name]
 
+    def clear(self) -> None:
+        """Clear all registered references.
+
+        This is primarily intended for testing purposes to reset the store
+        between test cases.
+        """
+        self._known_references.clear()
+
     @property
     def known_references(self) -> MappingProxyType[str, ConfigReference]:
         """Read-only mapping of all registered configuration references."""

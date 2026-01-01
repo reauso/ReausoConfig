@@ -10,6 +10,7 @@ from typing import Any, get_type_hints
 from rconfig.ConfigStore import ConfigStore
 from rconfig.ConfigValidator import ConfigValidator
 from rconfig.errors import InstantiationError
+from rconfig.path_utils import build_child_path
 from rconfig.type_utils import (
     TARGET_KEY,
     could_be_implicit_nested,
@@ -113,7 +114,7 @@ class ConfigInstantiator:
             if key == TARGET_KEY:
                 continue
 
-            field_path = f"{config_path}.{key}" if config_path else key
+            field_path = build_child_path(config_path, key)
             expected_type = type_hints.get(key)
             kwargs[key] = self._instantiated_value(value, field_path, expected_type)
 
@@ -166,13 +167,13 @@ class ConfigInstantiator:
 
         if isinstance(value, list):
             return [
-                self._instantiated_value(item, f"{config_path}[{i}]", None)
+                self._instantiated_value(item, build_child_path(config_path, i), None)
                 for i, item in enumerate(value)
             ]
 
         if isinstance(value, dict):
             return {
-                k: self._instantiated_value(v, f"{config_path}.{k}", None)
+                k: self._instantiated_value(v, build_child_path(config_path, k), None)
                 for k, v in value.items()
             }
 
