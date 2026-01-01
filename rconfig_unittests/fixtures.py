@@ -123,7 +123,7 @@ def mock_filesystem(fs: MockFileSystem) -> Generator[None, None, None]:
         return Path(normalized)
 
     with (
-        patch("rconfig.CompositionWalker._load_file_cached", fs.load),
+        patch("rconfig.composition.Walker._load_file_cached", fs.load),
         patch.object(Path, "exists", mock_exists),
         patch.object(Path, "resolve", mock_resolve),
     ):
