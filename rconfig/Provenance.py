@@ -8,6 +8,8 @@ and override information.
 from dataclasses import dataclass, field
 from typing import Iterator
 
+from .path_utils import build_child_path
+
 
 @dataclass
 class InstanceRef:
@@ -183,7 +185,7 @@ class Provenance:
         """
         prefix = "  " * indent
         for i, item in enumerate(items):
-            item_path = f"{path}[{i}]"
+            item_path = build_child_path(path, i)
             entry = self._entries.get(item_path)
             annotation = self._format_annotation(entry)
 

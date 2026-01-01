@@ -12,10 +12,29 @@ __all__ = [
     "PathNavigationError",
     "navigate_path",
     "get_value_at_path",
+    "build_child_path",
 ]
 
 # Regex for parsing instance paths with list indices
 PATH_SEGMENT_RE = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
+
+
+def build_child_path(parent: str, key: str | int) -> str:
+    """Build a child config path from a parent path and a key or index.
+
+    Examples:
+        - build_child_path("", "model") -> "model"
+        - build_child_path("model", "layers") -> "model.layers"
+        - build_child_path("model.layers", 0) -> "model.layers[0]"
+        - build_child_path("callbacks", 0) -> "callbacks[0]"
+
+    :param parent: The parent path (may be empty string for root level).
+    :param key: The child key (str for dict key, int for list index).
+    :return: The combined child path.
+    """
+    if isinstance(key, int):
+        return f"{parent}[{key}]"
+    return f"{parent}.{key}" if parent else key
 
 
 def parse_path_segments(path: str) -> list[str | int]:

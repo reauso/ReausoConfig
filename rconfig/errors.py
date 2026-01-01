@@ -8,6 +8,15 @@ from pathlib import Path
 from typing import Any
 
 
+def _format_location(config_path: str) -> str:
+    """Format a config path for error messages.
+
+    :param config_path: Path in config (e.g., "model.encoder").
+    :return: Formatted location string or empty string if path is empty.
+    """
+    return f" at '{config_path}'" if config_path else ""
+
+
 class ConfigError(Exception):
     """Base exception for all ReausoConfig errors."""
 
@@ -43,7 +52,7 @@ class TargetNotFoundError(ConfigError):
         self.available = available
         self.config_path = config_path
 
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         available_str = ", ".join(f"'{name}'" for name in available) if available else "(none)"
         super().__init__(
             f"Target '{target}'{location} is not registered. "
@@ -74,7 +83,7 @@ class MissingFieldError(ValidationError):
         self.field = field
         self.target = target
 
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         super().__init__(
             f"Missing required field '{field}' for target '{target}'{location}",
             config_path,
@@ -102,7 +111,7 @@ class TypeMismatchError(ValidationError):
         self.actual = actual
 
         expected_name = expected if isinstance(expected, str) else expected.__name__
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         super().__init__(
             f"Type mismatch for field '{field}'{location}: "
             f"expected {expected_name}, got {actual.__name__}",
@@ -136,7 +145,7 @@ class AmbiguousTargetError(ValidationError):
         self.available_targets = available_targets
         self.is_abstract = is_abstract
 
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         type_name = (
             expected_type.__name__
             if hasattr(expected_type, "__name__")
@@ -188,7 +197,7 @@ class TargetTypeMismatchError(ValidationError):
         self.target_class = target_class
         self.expected_type = expected_type
 
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         expected_name = (
             expected_type.__name__
             if hasattr(expected_type, "__name__")
@@ -230,7 +239,7 @@ class TypeInferenceError(ValidationError):
         self.inferred_type = inferred_type
         self.validation_errors = validation_errors
 
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         type_name = (
             inferred_type.__name__
             if hasattr(inferred_type, "__name__")
@@ -262,7 +271,7 @@ class InstantiationError(ConfigError):
         self.reason = reason
         self.config_path = config_path
 
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         super().__init__(
             f"Failed to instantiate target '{target}'{location}: {reason}"
         )
@@ -281,7 +290,7 @@ class MergeError(CompositionError):
 
     def __init__(self, message: str, path: str = "") -> None:
         self.path = path
-        location = f" at '{path}'" if path else ""
+        location = _format_location(path)
         super().__init__(f"{message}{location}")
 
 
@@ -310,7 +319,7 @@ class RefResolutionError(CompositionError):
         self.reason = reason
         self.config_path = config_path
 
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         super().__init__(f"Failed to resolve _ref_ '{ref_path}'{location}: {reason}")
 
 
@@ -336,7 +345,7 @@ class RefInstanceConflictError(CompositionError):
 
     def __init__(self, config_path: str = "") -> None:
         self.config_path = config_path
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         super().__init__(
             f"Cannot use both '_ref_' and '_instance_' in the same block{location}"
         )
@@ -355,7 +364,7 @@ class InstanceResolutionError(CompositionError):
         self.reason = reason
         self.config_path = config_path
 
-        location = f" at '{config_path}'" if config_path else ""
+        location = _format_location(config_path)
         super().__init__(
             f"Failed to resolve _instance_ '{instance_path}'{location}: {reason}"
         )
