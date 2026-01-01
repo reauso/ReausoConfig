@@ -7,6 +7,12 @@ that support dot notation and list indexing.
 import re
 from typing import Any
 
+__all__ = [
+    "parse_path_segments",
+    "PathNavigationError",
+    "navigate_path",
+    "get_value_at_path",
+]
 
 # Regex for parsing instance paths with list indices
 PATH_SEGMENT_RE = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
@@ -35,6 +41,68 @@ def parse_path_segments(path: str) -> list[str | int]:
     return segments
 
 
+class PathNavigationError(Exception):
+    """Error during path navigation with context about the failure location."""
+
+    def __init__(self, message: str, segment_index: int, path: list[str | int]) -> None:
+        self.message = message
+        self.segment_index = segment_index
+        self.path = path
+        super().__init__(message)
+
+
+def navigate_path(
+    config: Any,
+    path: list[str | int],
+    stop_before_last: bool = False,
+) -> Any:
+    """Navigate a config structure following a path of segments.
+
+    :param config: The starting dict/list.
+    :param path: List of keys (str) and indices (int).
+    :param stop_before_last: If True, stop before the final segment (for parent access).
+    :return: The value at the path (or parent if stop_before_last).
+    :raises PathNavigationError: If navigation fails, with context about failure location.
+    """
+    if not path:
+        return config
+
+    current = config
+    end_index = len(path) - 1 if stop_before_last else len(path)
+
+    for i, segment in enumerate(path[:end_index]):
+        if isinstance(segment, int):
+            if not isinstance(current, list):
+                raise PathNavigationError(
+                    f"Cannot index into non-list at position {i}",
+                    segment_index=i,
+                    path=path,
+                )
+            if segment < 0 or segment >= len(current):
+                raise PathNavigationError(
+                    f"List index {segment} out of range (list has {len(current)} elements)",
+                    segment_index=i,
+                    path=path,
+                )
+            current = current[segment]
+        else:
+            if not isinstance(current, dict):
+                raise PathNavigationError(
+                    f"Cannot access key '{segment}' on non-dict at position {i}",
+                    segment_index=i,
+                    path=path,
+                )
+            if segment not in current:
+                raise PathNavigationError(
+                    f"Key '{segment}' not found",
+                    segment_index=i,
+                    path=path,
+                )
+            current = current[segment]
+
+    return current
+
+
 def get_value_at_path(config: dict[str, Any], path: str) -> Any:
     """Get a value from the config at the given path.
 
@@ -53,19 +121,15 @@ def get_value_at_path(config: dict[str, Any], path: str) -> Any:
     if not path:
         return config
 
-    current = config
     segments = parse_path_segments(path)
-
-    for segment in segments:
-        if isinstance(segment, int):
-            # List index
-            if not isinstance(current, list):
-                raise TypeError(f"Cannot index into non-list at '{path}'")
-            current = current[segment]
-        else:
-            # Dict key
-            if not isinstance(current, dict):
-                raise TypeError(f"Cannot access key on non-dict at '{path}'")
-            current = current[segment]
-
-    return current
+    try:
+        return navigate_path(config, segments)
+    except PathNavigationError as e:
+        # Convert to original error types for backwards compatibility
+        if "non-list" in e.message or "non-dict" in e.message:
+            raise TypeError(f"{e.message.split(' at position')[0]} at '{path}'") from e
+        elif "not found" in e.message:
+            raise KeyError(e.message) from e
+        elif "out of range" in e.message:
+            raise IndexError(e.message) from e
+        raise
