@@ -6,6 +6,12 @@ from unittest.mock import MagicMock, patch
 
 from rconfig.ConfigStore import ConfigStore
 from rconfig.ConfigValidator import ConfigValidator, ValidationResult
+from rconfig.type_utils import (
+    could_be_implicit_nested,
+    find_registered_subclasses,
+    is_class_type,
+    is_concrete_type,
+)
 from rconfig.errors import (
     AmbiguousTargetError,
     InvalidOverridePathError,
@@ -1978,26 +1984,20 @@ class IsClassTypeTests(TestCase):
         return store
 
     def test_isClassType__GenericType__ReturnsFalse(self):
-        store = self._empty_store()
-        validator = ConfigValidator(store)
-
-        # Generic types have an origin, should return False at line 203-204
-        self.assertFalse(validator._is_class_type(list[int]))
-        self.assertFalse(validator._is_class_type(dict[str, int]))
-        self.assertFalse(validator._is_class_type(Optional[int]))
+        # Generic types have an origin, should return False
+        self.assertFalse(is_class_type(list[int]))
+        self.assertFalse(is_class_type(dict[str, int]))
+        self.assertFalse(is_class_type(Optional[int]))
 
     def test_isClassType__NonTypeObject__ReturnsFalse(self):
-        store = self._empty_store()
-        validator = ConfigValidator(store)
-
-        # Non-type objects should return False at line 207-208
-        self.assertFalse(validator._is_class_type("not a type"))  # type: ignore
-        self.assertFalse(validator._is_class_type(42))  # type: ignore
-        self.assertFalse(validator._is_class_type(None))  # type: ignore
+        # Non-type objects should return False
+        self.assertFalse(is_class_type("not a type"))  # type: ignore
+        self.assertFalse(is_class_type(42))  # type: ignore
+        self.assertFalse(is_class_type(None))  # type: ignore
 
 
 class FindRegisteredSubclassesTests(TestCase):
-    """Tests for _find_registered_subclasses error handling (lines 271-273)."""
+    """Tests for find_registered_subclasses error handling."""
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
@@ -2013,8 +2013,6 @@ class FindRegisteredSubclassesTests(TestCase):
         # Register Base normally
         store.register("base", Base)
 
-        validator = ConfigValidator(store)
-
         # Mock issubclass to raise TypeError for our test
         original_issubclass = issubclass
 
@@ -2023,9 +2021,9 @@ class FindRegisteredSubclassesTests(TestCase):
                 raise TypeError("Mock TypeError")
             return original_issubclass(cls, classinfo)
 
-        with patch("rconfig.ConfigValidator.issubclass", side_effect=mock_issubclass):
+        with patch("rconfig.type_utils.issubclass", side_effect=mock_issubclass):
             # This should not raise, just skip the problematic class
-            result = validator._find_registered_subclasses(Base)
+            result = find_registered_subclasses(store, Base)
 
         # Result should be empty since the TypeError was caught
         self.assertIsInstance(result, list)
@@ -2142,32 +2140,21 @@ class TypeReprTests(TestCase):
 
 
 class CouldBeImplicitNestedTests(TestCase):
-    """Tests for _could_be_implicit_nested edge cases (lines 335, 337)."""
-
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
-        store._known_references.clear()
-        return store
+    """Tests for could_be_implicit_nested edge cases."""
 
     def test_couldBeImplicit__DictWithTarget__ReturnsFalse(self):
-        store = self._empty_store()
-        validator = ConfigValidator(store)
-
         @dataclass
         class Model:
             value: int
 
-        result = validator._could_be_implicit_nested(
+        result = could_be_implicit_nested(
             {"_target_": "model", "value": 42}, Model
         )
 
         self.assertFalse(result)
 
     def test_couldBeImplicit__NoneExpectedType__ReturnsFalse(self):
-        store = self._empty_store()
-        validator = ConfigValidator(store)
-
-        result = validator._could_be_implicit_nested({"value": 42}, None)
+        result = could_be_implicit_nested({"value": 42}, None)
 
         self.assertFalse(result)
 
@@ -2182,7 +2169,6 @@ class ConfigValidatorCoverageTests(TestCase):
 
     def test_is_concrete_type__NameCollision__UsesFullyQualifiedName(self):
         """Test auto-registration with name collision uses fully qualified name."""
-        # Arrange - line 339
         store = self._empty_store()
 
         @dataclass
@@ -2195,13 +2181,12 @@ class ConfigValidatorCoverageTests(TestCase):
             other: str
 
         store.register("myclass", AnotherMyClass)
-        validator = ConfigValidator(store)
 
         # Act - this should trigger name collision handling
-        is_concrete, exact_target, matching = validator._is_concrete_type(MyClass)
+        is_concrete_result, exact_target, matching = is_concrete_type(store, MyClass)
 
         # Assert - should use fully qualified name due to collision
-        self.assertTrue(is_concrete)
+        self.assertTrue(is_concrete_result)
         self.assertIsNotNone(exact_target)
         # The name should be the fully qualified name since "myclass" is taken
         self.assertIn(".", exact_target)  # Contains module.ClassName
