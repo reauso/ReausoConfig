@@ -22,7 +22,7 @@ from .errors import (
     RefInstanceConflictError,
     RefResolutionError,
 )
-from .loaders.yaml_loader import YamlConfigLoader
+from .loaders import get_loader
 from .path_utils import build_child_path
 from .Provenance import Provenance
 
@@ -31,9 +31,6 @@ from .Provenance import Provenance
 _REF_KEY = "_ref_"
 _INSTANCE_KEY = "_instance_"
 _TARGET_KEY = "_target_"
-
-# Shared yaml loader instance for position-aware loading
-_yaml_loader = YamlConfigLoader()
 
 def set_cache_size(size: int) -> None:
     """Set the LRU cache size for loaded config files.
@@ -53,7 +50,9 @@ def _load_file_cached(path: str) -> CommentedMap:
     :return: CommentedMap with line number information.
     :raises ConfigFileError: If file cannot be loaded.
     """
-    return _yaml_loader.load_with_positions(Path(path))
+    path_obj = Path(path)
+    loader = get_loader(path_obj)
+    return loader.load_with_positions(path_obj)
 
 
 def clear_cache() -> None:

@@ -212,14 +212,9 @@ def parse_cli_arg(arg: str) -> Override | None:
     # Check for remove operation (no value required)
     if arg.startswith("~"):
         key = arg[1:]
-        if not key or "=" in key:
-            # ~key=value is invalid for remove, but ~key is valid
-            if "=" not in key:
-                try:
-                    path, operation = parse_override_key(arg)
-                    return Override(path=path, value=None, operation=operation)
-                except InvalidOverrideSyntaxError:
-                    return None
+        # Reject ~key=value syntax (remove doesn't take a value)
+        if "=" in key:
+            return None
         try:
             path, operation = parse_override_key(arg)
             return Override(path=path, value=None, operation=operation)
@@ -326,30 +321,6 @@ def _navigate_to_parent(config: dict[str, Any], path: list[str | int]) -> Any:
         raise KeyError(f"{e.message} at path {e.path[:e.segment_index+1]}") from e
 
 
-def _validate_list_access(current: Any, index: int) -> None:
-    """Validate that current is a list and index is in range.
-
-    :param current: Container to validate.
-    :param index: List index to access.
-    :raises KeyError: If current is not a list or index is out of range.
-    """
-    if not isinstance(current, list):
-        raise KeyError(f"Cannot access index {index} on non-list")
-    if index < 0 or index >= len(current):
-        raise KeyError(f"List index {index} out of range")
-
-
-def _validate_dict_access(current: Any, key: str) -> None:
-    """Validate that current is a dict.
-
-    :param current: Container to validate.
-    :param key: Dict key being accessed.
-    :raises KeyError: If current is not a dict.
-    """
-    if not isinstance(current, dict):
-        raise KeyError(f"Cannot access key '{key}' on non-dict")
-
-
 def _apply_set(current: Any, final_key: str | int, value: Any) -> None:
     """Apply a set operation to the target location.
 
@@ -359,10 +330,14 @@ def _apply_set(current: Any, final_key: str | int, value: Any) -> None:
     :raises KeyError: If the target location is invalid.
     """
     if isinstance(final_key, int):
-        _validate_list_access(current, final_key)
+        if not isinstance(current, list):
+            raise KeyError(f"Cannot access index {final_key} on non-list")
+        if final_key < 0 or final_key >= len(current):
+            raise KeyError(f"List index {final_key} out of range")
         current[final_key] = value
     else:
-        _validate_dict_access(current, final_key)
+        if not isinstance(current, dict):
+            raise KeyError(f"Cannot access key '{final_key}' on non-dict")
         current[final_key] = value
 
 
@@ -377,7 +352,8 @@ def _apply_add(current: Any, final_key: str | int, value: Any) -> None:
     """
     if isinstance(final_key, int):
         raise ValueError("Cannot use add operation with list index")
-    _validate_dict_access(current, final_key)
+    if not isinstance(current, dict):
+        raise KeyError(f"Cannot access key '{final_key}' on non-dict")
     if final_key not in current:
         current[final_key] = [value]
     elif isinstance(current[final_key], list):
@@ -394,10 +370,14 @@ def _apply_remove(current: Any, final_key: str | int) -> None:
     :raises KeyError: If the target doesn't exist or location is invalid.
     """
     if isinstance(final_key, int):
-        _validate_list_access(current, final_key)
+        if not isinstance(current, list):
+            raise KeyError(f"Cannot access index {final_key} on non-list")
+        if final_key < 0 or final_key >= len(current):
+            raise KeyError(f"List index {final_key} out of range")
         del current[final_key]
     else:
-        _validate_dict_access(current, final_key)
+        if not isinstance(current, dict):
+            raise KeyError(f"Cannot access key '{final_key}' on non-dict")
         if final_key not in current:
             raise KeyError(f"Key '{final_key}' not found for removal")
         del current[final_key]
