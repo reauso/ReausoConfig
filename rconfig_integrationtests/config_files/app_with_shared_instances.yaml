@@ -1,0 +1,14 @@
+_target_: app
+shared_cache:
+  _target_: cache
+  size: 100
+
+service_a:
+  _target_: service_a
+  cache:
+    _instance_: shared_cache
+
+service_b:
+  _target_: service_b
+  cache:
+    _instance_: shared_cache
