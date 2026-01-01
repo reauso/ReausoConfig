@@ -13,7 +13,6 @@ model:
 
 # Training configuration
 training:
-  _target_: training_config
   epochs: 100
   save_every: 10
   log:
@@ -21,7 +20,6 @@ training:
 
 # Evaluation configuration
 evaluation:
-  _target_: eval_config
   metrics: [accuracy, f1, precision, recall]
   log:
     _instance_: logger

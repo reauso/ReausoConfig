@@ -132,15 +132,6 @@ class MLTrainingIntegrationTests(TestCase):
     def setUp(self):
         """Clear store and register all targets before each test."""
         rc._store._known_references.clear()
-        rc.register("logger", Logger)
-        rc.register("optimizer", Optimizer)
-        rc.register("scheduler", Scheduler)
-        rc.register("augmentation", Augmentation)
-        rc.register("dataset", Dataset)
-        rc.register("resnet", ResNet)
-        rc.register("vgg", VGG)
-        rc.register("training_config", TrainingConfig)
-        rc.register("eval_config", EvalConfig)
         rc.register("trainer_app", TrainerApp)
 
     def tearDown(self):
@@ -282,16 +273,8 @@ class MLTrainingVGGTests(TestCase):
     def setUp(self):
         """Clear store and register all targets before each test."""
         rc._store._known_references.clear()
-        rc.register("logger", Logger)
-        rc.register("optimizer", Optimizer)
-        rc.register("scheduler", Scheduler)
-        rc.register("augmentation", Augmentation)
-        rc.register("dataset", Dataset)
-        rc.register("resnet", ResNet)
-        rc.register("vgg", VGG)
-        rc.register("training_config", TrainingConfig)
-        rc.register("eval_config", EvalConfig)
         rc.register("trainer_app", TrainerAppVGG)
+        rc.register("vgg", VGG)
 
     def tearDown(self):
         """Clear cache after each test."""
@@ -323,16 +306,8 @@ class MLTrainingRefCompositionTests(TestCase):
     def setUp(self):
         """Clear store and register all targets before each test."""
         rc._store._known_references.clear()
-        rc.register("logger", Logger)
-        rc.register("optimizer", Optimizer)
-        rc.register("scheduler", Scheduler)
-        rc.register("augmentation", Augmentation)
-        rc.register("dataset", Dataset)
-        rc.register("resnet", ResNet)
-        rc.register("vgg", VGG)
-        rc.register("training_config", TrainingConfig)
-        rc.register("eval_config", EvalConfig)
         rc.register("trainer_app", TrainerApp)
+        rc.register("resnet", ResNet)
 
     def tearDown(self):
         """Clear cache after each test."""
@@ -382,15 +357,6 @@ class MLTrainingInstanceSharingTests(TestCase):
     def setUp(self):
         """Clear store and register all targets before each test."""
         rc._store._known_references.clear()
-        rc.register("logger", Logger)
-        rc.register("optimizer", Optimizer)
-        rc.register("scheduler", Scheduler)
-        rc.register("augmentation", Augmentation)
-        rc.register("dataset", Dataset)
-        rc.register("resnet", ResNet)
-        rc.register("vgg", VGG)
-        rc.register("training_config", TrainingConfig)
-        rc.register("eval_config", EvalConfig)
         rc.register("trainer_app", TrainerApp)
 
     def tearDown(self):
@@ -433,16 +399,8 @@ class MLTrainingProvenanceTests(TestCase):
     def setUp(self):
         """Clear store and register all targets before each test."""
         rc._store._known_references.clear()
-        rc.register("logger", Logger)
-        rc.register("optimizer", Optimizer)
-        rc.register("scheduler", Scheduler)
-        rc.register("augmentation", Augmentation)
-        rc.register("dataset", Dataset)
-        rc.register("resnet", ResNet)
-        rc.register("vgg", VGG)
-        rc.register("training_config", TrainingConfig)
-        rc.register("eval_config", EvalConfig)
         rc.register("trainer_app", TrainerApp)
+        rc.register("resnet", ResNet)
 
     def tearDown(self):
         """Clear cache after each test."""
@@ -522,3 +480,171 @@ class MLTrainingProvenanceTests(TestCase):
             self.assertIsInstance(path, str)
             self.assertIsNotNone(entry.file)
             self.assertIsInstance(entry.line, int)
+
+
+class MLTrainingAutoRegistrationTests(TestCase):
+    """Integration tests for auto-registration with file-based configs."""
+
+    def setUp(self):
+        """Clear store and register minimal targets before each test."""
+        rc._store._known_references.clear()
+        # Only register the root target - rely on auto-registration for nested types
+
+    def tearDown(self):
+        """Clear cache after each test."""
+        rc.clear_cache()
+
+    # === SUCCESS CASES ===
+
+    def test_validate__MinimalRegistration__AutoRegistersNestedTypes(self):
+        """Only register root target, nested types auto-register from _ref_ files."""
+        # Arrange
+        rc.register("trainer_app", TrainerApp)
+        config_path = ML_CONFIG_DIR / "app.yaml"
+
+        # Act
+        result = rc.validate(config_path)
+
+        # Assert
+        self.assertTrue(result.valid)
+        # Verify nested types were auto-registered
+        self.assertIn("resnet", rc._store._known_references)
+
+    def test_instantiate__FullAppMinimalRegistration__AllTypesCorrect(self):
+        """Full app.yaml with minimal pre-registration still works."""
+        # Arrange
+        rc.register("trainer_app", TrainerApp)
+        config_path = ML_CONFIG_DIR / "app.yaml"
+
+        # Act
+        app = rc.instantiate(config_path, cli_overrides=False)
+
+        # Assert
+        self.assertIsInstance(app, TrainerApp)
+        self.assertIsInstance(app.model, ResNet)
+        self.assertIsInstance(app.model.optimizer, Optimizer)
+        self.assertIsInstance(app.model.scheduler, Scheduler)
+        self.assertIsInstance(app.logger, Logger)
+        self.assertIsInstance(app.dataset, Dataset)
+
+    def test_instantiate__RefChainAutoRegistration__PreservesValues(self):
+        """Auto-registered types from _ref_ chain have correct values."""
+        # Arrange
+        rc.register("trainer_app", TrainerApp)
+        config_path = ML_CONFIG_DIR / "app.yaml"
+
+        # Act
+        app = rc.instantiate(config_path, cli_overrides=False)
+
+        # Assert - verify values from _ref_ chain are correct
+        self.assertEqual(app.model.optimizer.type, "adam")
+        self.assertEqual(app.model.optimizer.learning_rate, 0.01)  # Override from resnet.yaml
+        self.assertEqual(app.model.scheduler.warmup_epochs, 5)  # From base scheduler
+
+    def test_validate__ResNetDirectly__AutoRegistersOptimizerScheduler(self):
+        """Loading resnet.yaml directly auto-registers Optimizer and Scheduler."""
+        # Arrange
+        rc.register("resnet", ResNet)
+        config_path = ML_CONFIG_DIR / "models" / "resnet.yaml"
+
+        # Act
+        result = rc.validate(config_path)
+
+        # Assert
+        self.assertTrue(result.valid)
+        # Optimizer and Scheduler should be auto-registered from _ref_ files
+        self.assertIn("optimizer", rc._store._known_references)
+        self.assertIn("scheduler", rc._store._known_references)
+
+    # === ERROR CASES ===
+
+    def test_validate__ExplicitTargetTypeMismatch__ReturnsError(self):
+        """Config with _target_ that doesn't match expected type fails."""
+        # Arrange
+        rc.register("trainer_app", TrainerApp)
+        # Create a config dict with wrong _target_ for model field
+        config = {
+            "_target_": "trainer_app",
+            "logger": {"_target_": "logger", "level": "INFO", "output_dir": "/tmp"},
+            "dataset": {
+                "_target_": "dataset",
+                "name": "cifar10",
+                "root": "/data",
+                "batch_size": 32,
+                "num_workers": 4,
+                "augmentation": {"random_crop": True, "horizontal_flip": True},
+            },
+            "model": {
+                "_target_": "wrong_model",  # Wrong target name!
+                "layers": 50,
+            },
+            "training": {
+                "_target_": "trainingconfig",
+                "epochs": 100,
+                "save_every": 10,
+                "log": {"_instance_": "logger"},
+            },
+            "evaluation": {
+                "_target_": "evalconfig",
+                "metrics": ["accuracy"],
+                "log": {"_instance_": "logger"},
+                "data": {"_instance_": "dataset"},
+            },
+        }
+
+        # Act
+        from rconfig.errors import TargetNotFoundError
+
+        result = rc._validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        self.assertIsInstance(result.errors[0], TargetNotFoundError)
+        self.assertEqual(result.errors[0].target, "wrong_model")
+
+    def test_validate__MissingRequiredFieldInNestedConfig__ReturnsError(self):
+        """Nested config missing required fields returns proper error."""
+        # Arrange
+        rc.register("trainer_app", TrainerApp)
+        from rconfig.errors import MissingFieldError
+
+        # Config with missing 'layers' field in model
+        config = {
+            "_target_": "trainer_app",
+            "logger": {"_target_": "logger", "level": "INFO", "output_dir": "/tmp"},
+            "dataset": {
+                "_target_": "dataset",
+                "name": "cifar10",
+                "root": "/data",
+                "batch_size": 32,
+                "num_workers": 4,
+                "augmentation": {"random_crop": True, "horizontal_flip": True},
+            },
+            "model": {
+                "_target_": "resnet",
+                # Missing 'layers' field!
+                "pretrained": False,
+                "optimizer": {"_target_": "optimizer", "type": "adam", "learning_rate": 0.01, "weight_decay": 0.0001, "betas": [0.9, 0.999]},
+                "scheduler": {"_target_": "scheduler", "type": "cosine", "warmup_epochs": 5, "min_lr": 0.00001},
+            },
+            "training": {
+                "_target_": "trainingconfig",
+                "epochs": 100,
+                "save_every": 10,
+                "log": {"_instance_": "logger"},
+            },
+            "evaluation": {
+                "_target_": "evalconfig",
+                "metrics": ["accuracy"],
+                "log": {"_instance_": "logger"},
+                "data": {"_instance_": "dataset"},
+            },
+        }
+
+        # Act
+        result = rc._validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        self.assertIsInstance(result.errors[0], MissingFieldError)
+        self.assertEqual(result.errors[0].field, "layers")
