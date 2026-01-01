@@ -13,9 +13,10 @@ This guide documents the coding conventions for this project, derived from:
 1. [SOLID Principles](#solid-principles)
 2. [Method Naming Conventions](#method-naming-conventions)
 3. [Class Design](#class-design)
-4. [Error Handling](#error-handling)
-5. [Unit Tests](#unit-tests)
-6. [Integration Tests](#integration-tests)
+4. [Code Hygiene](#code-hygiene)
+5. [Error Handling](#error-handling)
+6. [Unit Tests](#unit-tests)
+7. [Integration Tests](#integration-tests)
 
 ---
 
@@ -205,6 +206,64 @@ Use modern Python 3.9+ type hint syntax:
 | `Dict[K, V]` | `dict[K, V]` |
 | `Tuple[X, Y]` | `tuple[X, Y]` |
 | `Set[X]` | `set[X]` |
+
+---
+
+## Code Hygiene
+
+### Avoid Dead Code
+
+Remove code that is not used. Dead code creates confusion and maintenance burden.
+
+```python
+# Bad - unused helper function
+def _validate_list_access(current: Any, index: int) -> None:
+    if not isinstance(current, list):
+        raise KeyError(f"Cannot access index {index} on non-list")
+
+def _apply_set(current: Any, key: str | int, value: Any) -> None:
+    if isinstance(key, int):
+        _validate_list_access(current, key)  # Only call site
+        current[key] = value
+
+# Good - inline small helpers used only once
+def _apply_set(current: Any, key: str | int, value: Any) -> None:
+    if isinstance(key, int):
+        if not isinstance(current, list):
+            raise KeyError(f"Cannot access index {key} on non-list")
+        current[key] = value
+```
+
+### Helper Function Guidelines
+
+- **Inline** helpers that are used only once and are short (< 5 lines)
+- **Extract** helpers when logic is reused in multiple places
+- **Extract** helpers when the logic is complex enough to benefit from a descriptive name
+
+### Use Extension Points
+
+When providing extensibility APIs (like custom loaders), ensure they are actually used in the main code path:
+
+```python
+# Bad - registry exists but main code bypasses it
+_yaml_loader = YamlConfigLoader()
+
+def _load_file(path: Path) -> dict:
+    return _yaml_loader.load(path)  # Custom loaders never used!
+
+# Good - use the registry so extensions work
+def _load_file(path: Path) -> dict:
+    loader = get_loader(path)  # Respects registered loaders
+    return loader.load(path)
+```
+
+### No Scratch Files in Repository
+
+Development scratch files, debug scripts, and temporary code should not be committed:
+
+- Use `.gitignore` for local scratch files
+- Keep experiments in separate branches
+- Remove `print()` debugging statements before committing
 
 ---
 
