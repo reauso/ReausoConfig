@@ -7,6 +7,13 @@ from unittest.mock import MagicMock, patch
 from rconfig.ConfigStore import ConfigStore
 from rconfig.ConfigValidator import ConfigValidator
 from rconfig.ConfigInstantiator import ConfigInstantiator
+from rconfig.type_utils import (
+    could_be_implicit_nested,
+    find_exact_match,
+    find_registered_subclasses,
+    is_class_type,
+    is_concrete_type,
+)
 from rconfig.errors import (
     AmbiguousTargetError,
     InstantiationError,
@@ -1157,7 +1164,7 @@ class ConfigInstantiatorAutoRegistrationTests(TestCase):
 
 
 class ConfigInstantiatorHelperMethodTests(TestCase):
-    """Tests for helper methods to improve coverage (lines 149, 153, 226-227, 236, 259)."""
+    """Tests for helper methods in type_utils used by ConfigInstantiator."""
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
@@ -1168,50 +1175,43 @@ class ConfigInstantiatorHelperMethodTests(TestCase):
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
-    # --- _is_class_type tests (lines 148-149, 152-153) ---
+    # --- is_class_type tests ---
     def test_isClassType__GenericType__ReturnsFalse(self):
-        """Test generic types return False (line 148-149)."""
-        store = self._empty_store()
-        instantiator = self._create_instantiator(store)
-
+        """Test generic types return False."""
         # Generic types have origin, should return False
-        self.assertFalse(instantiator._is_class_type(list[int]))
-        self.assertFalse(instantiator._is_class_type(dict[str, int]))
-        self.assertFalse(instantiator._is_class_type(Optional[int]))
+        self.assertFalse(is_class_type(list[int]))
+        self.assertFalse(is_class_type(dict[str, int]))
+        self.assertFalse(is_class_type(Optional[int]))
 
     def test_isClassType__NonTypeObject__ReturnsFalse(self):
-        """Test non-type objects return False (line 152-153)."""
-        store = self._empty_store()
-        instantiator = self._create_instantiator(store)
-
+        """Test non-type objects return False."""
         # Non-type objects should return False
-        self.assertFalse(instantiator._is_class_type("not a type"))  # type: ignore
-        self.assertFalse(instantiator._is_class_type(42))  # type: ignore
-        self.assertFalse(instantiator._is_class_type(None))  # type: ignore
+        self.assertFalse(is_class_type("not a type"))  # type: ignore
+        self.assertFalse(is_class_type(42))  # type: ignore
+        self.assertFalse(is_class_type(None))  # type: ignore
 
-    # --- _find_registered_subclasses TypeError handling (lines 226-227) ---
+    # --- find_registered_subclasses TypeError handling ---
     def test_findSubclasses__IssubclassTypeError__HandledGracefully(self):
-        """Test TypeError in issubclass is handled (lines 226-227)."""
+        """Test TypeError in issubclass is handled."""
         store = self._empty_store()
 
         class Base:
             pass
 
         store.register("base", Base)
-        instantiator = self._create_instantiator(store)
 
         # Mock issubclass to raise TypeError
         with patch(
-            "rconfig.ConfigInstantiator.issubclass",
+            "rconfig.type_utils.issubclass",
             side_effect=TypeError("Mock TypeError"),
         ):
-            result = instantiator._find_registered_subclasses(Base)
+            result = find_registered_subclasses(store, Base)
 
         self.assertIsInstance(result, list)
 
-    # --- _is_concrete_type with abstract class (line 235-236) ---
+    # --- is_concrete_type with abstract class ---
     def test_isConcreteType__AbstractClass__ReturnsFalseNone(self):
-        """Test abstract class returns (False, None) (line 235-236)."""
+        """Test abstract class returns (False, None, matching)."""
         store = self._empty_store()
 
         class AbstractBase(ABC):
@@ -1219,38 +1219,32 @@ class ConfigInstantiatorHelperMethodTests(TestCase):
             def method(self) -> None:
                 pass
 
-        instantiator = self._create_instantiator(store)
+        is_concrete_result, target, matching = is_concrete_type(store, AbstractBase)
 
-        is_concrete, target = instantiator._is_concrete_type(AbstractBase)
-
-        self.assertFalse(is_concrete)
+        self.assertFalse(is_concrete_result)
         self.assertIsNone(target)
 
-    # --- _augment_with_inferred_target when class_type is None (line 258-259) ---
+    # --- _augment_with_inferred_target when class_type is None ---
     def test_augmentWithInferredTarget__NoClassType__ReturnsNone(self):
-        """Test when _extract_class_from_hint returns None (line 258-259)."""
+        """Test when extract_class_from_hint returns None."""
         store = self._empty_store()
         instantiator = self._create_instantiator(store)
 
-        # list[int] is a generic type, _extract_class_from_hint returns None
+        # list[int] is a generic type, extract_class_from_hint returns None
         result = instantiator._augment_with_inferred_target(
             {"value": 42}, list[int]
         )
 
         self.assertIsNone(result)
 
-    # --- _could_be_implicit_nested edge cases (line 204-205) ---
+    # --- could_be_implicit_nested edge cases ---
     def test_couldBeImplicit__DictWithTarget__ReturnsFalse(self):
-        """Test dict with _target_ returns False (line 204-205)."""
-        store = self._empty_store()
-
+        """Test dict with _target_ returns False."""
         @dataclass
         class Model:
             value: int
 
-        instantiator = self._create_instantiator(store)
-
-        result = instantiator._could_be_implicit_nested(
+        result = could_be_implicit_nested(
             {"_target_": "model", "value": 42}, Model
         )
 
@@ -1775,25 +1769,21 @@ class ConfigInstantiatorCoverageTests(TestCase):
         self.assertIs(result.db1, result.db2)
 
     def test_find_exact_match__NoMatch__ReturnsNone(self):
-        """Test _find_exact_match returns None when no exact match found."""
-        # Arrange - line 302
+        """Test find_exact_match returns None when no exact match found."""
         store = self._empty_store()
 
         @dataclass
         class UnregisteredClass:
             value: int
 
-        instantiator = self._create_instantiator(store)
-
         # Act
-        result = instantiator._find_exact_match(UnregisteredClass)
+        result = find_exact_match(store, UnregisteredClass)
 
         # Assert
         self.assertIsNone(result)
 
     def test_is_concrete_type__NameCollision__UsesFullyQualifiedName(self):
         """Test auto-registration with name collision uses fully qualified name."""
-        # Arrange - lines 329-340
         store = self._empty_store()
 
         @dataclass
@@ -1806,13 +1796,12 @@ class ConfigInstantiatorCoverageTests(TestCase):
             other: str
 
         store.register("myclass", AnotherMyClass)
-        instantiator = self._create_instantiator(store)
 
         # Act - this should trigger name collision handling
-        is_concrete, inferred_target = instantiator._is_concrete_type(MyClass)
+        is_concrete_result, inferred_target, matching = is_concrete_type(store, MyClass)
 
         # Assert - should use fully qualified name due to collision
-        self.assertTrue(is_concrete)
+        self.assertTrue(is_concrete_result)
         self.assertIsNotNone(inferred_target)
         # The name should be the fully qualified name since "myclass" is taken
         self.assertIn(".", inferred_target)  # Contains module.ClassName

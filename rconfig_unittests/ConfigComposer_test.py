@@ -732,19 +732,22 @@ class ConfigComposerInternalTests(TestCase):
 
     def test_resolve_file_path__AbsolutePathWithoutConfigRoot__RaisesRefResolutionError(self):
         # Arrange
+        from rconfig.CompositionWalker import CompositionWalker
+        from rconfig.Provenance import Provenance
+
         self._write_config("model.yaml", """
 _target_: Model
 value: 1
 """)
-        # Create composer without config_root and manually call internal method
-        composer = ConfigComposer()
-        # Note: _config_root is None by default
+        # Create walker with config_root=None
+        provenance = Provenance()
+        walker = CompositionWalker(config_root=None, provenance=provenance)
 
         # Act & Assert
-        with self.assertRaises(RefResolutionError) as ctx:
-            composer._resolve_file_path("/model.yaml", self.config_root, "test.path")
+        with self.assertRaises(RefResolutionError) as ctx_err:
+            walker._resolve_file_path("/model.yaml", self.config_root, "test.path")
 
-        self.assertIn("without config root", str(ctx.exception))
+        self.assertIn("without config root", str(ctx_err.exception))
 
 
 class CompositionErrorTests(TestCase):
@@ -2012,49 +2015,59 @@ class ConfigComposerInternalMethodTests(TestCase):
 
     def test_get_line_number__RegularDict__ReturnsNone(self):
         """Test _get_line_number with a regular dict (no CommentedMap)."""
-        # Arrange - lines 739-741
-        composer = ConfigComposer(self.config_root)
+        # Arrange
+        from rconfig.CompositionWalker import CompositionWalker
+        from rconfig.Provenance import Provenance
+
+        provenance = Provenance()
+        walker = CompositionWalker(config_root=self.config_root, provenance=provenance)
         regular_dict = {"key": "value"}
 
         # Act
-        result = composer._get_line_number(regular_dict, "key")
+        result = walker._get_line_number(regular_dict, "key")
 
         # Assert
         self.assertIsNone(result)
 
     def test_get_value_at_path__EmptyPath__ReturnsConfig(self):
-        """Test _get_value_at_path with empty path returns config itself."""
-        # Arrange - line 927
-        composer = ConfigComposer(self.config_root)
+        """Test get_value_at_path with empty path returns config itself."""
+        # Arrange
+        from rconfig.path_utils import get_value_at_path
+
         config = {"key": "value", "nested": {"inner": 42}}
 
         # Act
-        result = composer._get_value_at_path(config, "")
+        result = get_value_at_path(config, "")
 
         # Assert
         self.assertEqual(result, config)
 
     def test_get_value_at_path__NonDictKey__RaisesTypeError(self):
-        """Test _get_value_at_path with key access on non-dict."""
-        # Arrange - line 941
-        composer = ConfigComposer(self.config_root)
+        """Test get_value_at_path with key access on non-dict."""
+        # Arrange
+        from rconfig.path_utils import get_value_at_path
+
         config = {"key": "string_value"}
 
         # Act & Assert
         with self.assertRaises(TypeError) as ctx:
-            composer._get_value_at_path(config, "key.subkey")
+            get_value_at_path(config, "key.subkey")
 
         self.assertIn("non-dict", str(ctx.exception))
 
     def test_deep_copy_replacing_instances__UnresolvedMarker__ReturnsNone(self):
         """Test _deep_copy_replacing_instances with unresolved _instance_ marker."""
-        # Arrange - line 998
-        composer = ConfigComposer(self.config_root)
+        # Arrange
+        from rconfig.InstanceResolver import InstanceResolver
+        from rconfig.Provenance import Provenance
+
+        provenance = Provenance()
+        resolver = InstanceResolver(provenance)
         value = {"_instance_": "some.path"}  # marker not in resolved dict
         resolved = {}  # empty resolved dict
 
         # Act
-        result = composer._deep_copy_replacing_instances(value, "test.path", resolved)
+        result = resolver._deep_copy_replacing_instances(value, "test.path", resolved)
 
         # Assert - should return None for unresolved marker
         self.assertIsNone(result)
