@@ -208,6 +208,53 @@ encoder:
   layers: 6
 ```
 
+#### Auto-registration of Explicit Targets
+
+When a nested config has an explicit `_target_` that matches the expected type's class name (case-insensitive), the class is automatically registered if not already:
+
+```python
+@dataclass
+class ResNet:
+    layers: int
+    pretrained: bool
+
+@dataclass
+class TrainerConfig:
+    model: ResNet  # Type hint provides the class
+    epochs: int
+
+rc.register("trainer", TrainerConfig)
+# Note: ResNet is NOT registered manually
+```
+
+```yaml
+_target_: trainer
+model:
+  _target_: resnet  # Auto-registers ResNet (matches class name)
+  layers: 50
+  pretrained: false
+epochs: 100
+```
+
+This is useful with `_ref_` composition - referenced files can specify their own `_target_` without pre-registration:
+
+```yaml
+# models/resnet.yaml (referenced via _ref_)
+_target_: resnet
+layers: 50
+pretrained: false
+```
+
+**Auto-registration requirements:**
+- Parent field must have a type hint
+- `_target_` name must match the type hint's class name (case-insensitive)
+- The class must not be abstract
+- The type hint must be a single class (not `Union[A, B]`)
+
+**When auto-registration fails:**
+- `TargetNotFoundError`: Target name doesn't match expected class
+- `AmbiguousTargetError`: Type is abstract or has multiple implementations
+
 ### Config Composition with `_ref_`
 
 Load configurations from other files and merge them:

@@ -12,6 +12,9 @@ from rconfig.errors import (
     InstantiationError,
     MissingFieldError,
     TargetNotFoundError,
+    TargetTypeMismatchError,
+    TypeInferenceError,
+    TypeMismatchError,
 )
 
 
@@ -619,8 +622,8 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
         self.assertIsInstance(result.item, dict)
         self.assertEqual(result.item, {"value": 10})
 
-    def test_instantiate__NotRegisteredType_ImplicitNested__StaysAsDict(self):
-        """Test dict when expected type not registered stays as dict (line 217)."""
+    def test_instantiate__NotRegisteredType_ImplicitNested__AutoRegistersAndInstantiates(self):
+        """Test unregistered concrete type is auto-registered and instantiated."""
         store = self._empty_store()
 
         @dataclass
@@ -636,13 +639,47 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
         instantiator = self._create_instantiator(store)
         config = {
             "_target_": "outer",
-            "inner": {"value": 42},  # Can't infer because Inner not registered
+            "inner": {"value": 42},
         }
 
-        result = instantiator.instantiate(config, validate=False)
+        result = instantiator.instantiate(config)
 
-        # Inner stays as dict since it couldn't be inferred
-        self.assertIsInstance(result.inner, dict)
+        # Inner should be auto-registered and instantiated
+        self.assertIsInstance(result.inner, Inner)
+        self.assertEqual(result.inner.value, 42)
+        # Verify Inner was auto-registered
+        self.assertIn("inner", store._known_references)
+
+    def test_instantiate__DeeplyNestedUnregistered__AutoRegistersAll(self):
+        """Test deeply nested unregistered types are all auto-registered."""
+        store = self._empty_store()
+
+        @dataclass
+        class Level3:
+            value: int
+
+        @dataclass
+        class Level2:
+            level3: Level3
+
+        @dataclass
+        class Level1:
+            level2: Level2
+
+        store.register("level1", Level1)  # Only top level registered
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "level1",
+            "level2": {
+                "level3": {"value": 99}
+            },
+        }
+
+        result = instantiator.instantiate(config)
+
+        self.assertIsInstance(result.level2, Level2)
+        self.assertIsInstance(result.level2.level3, Level3)
+        self.assertEqual(result.level2.level3.value, 99)
 
     def test_instantiate__GenericTypeHint__SkipsImplicitInference(self):
         """Test generic types like list[X] don't trigger implicit inference (line 149)."""
@@ -721,6 +758,402 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
 
         self.assertIsInstance(result.inner, Inner)
         self.assertEqual(result.inner.value, 42)
+
+    # === Additional TargetTypeMismatchError Tests ===
+
+    def test_instantiate__ExplicitTarget_SiblingClass__RaisesTargetTypeMismatchError(self):
+        """Instantiation with sibling class target fails during validation."""
+        # Arrange
+        store = self._empty_store()
+
+        class Base:
+            def __init__(self, value: int) -> None:
+                self.value = value
+
+        class ChildA(Base):
+            pass
+
+        class ChildB(Base):
+            pass
+
+        @dataclass
+        class Container:
+            item: ChildA
+
+        store.register("child_a", ChildA)
+        store.register("child_b", ChildB)
+        store.register("container", Container)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "container",
+            "item": {"_target_": "child_b", "value": 10},
+        }
+
+        # Act & Assert
+        with self.assertRaises(TargetTypeMismatchError) as ctx:
+            instantiator.instantiate(config)
+
+        self.assertEqual(ctx.exception.field, "item")
+        self.assertEqual(ctx.exception.target, "child_b")
+
+    def test_instantiate__ExplicitTarget_WrongTypeNested__RaisesTargetTypeMismatchError(self):
+        """Deeply nested wrong type target raises error during instantiation."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class WrongType:
+            name: str
+
+        @dataclass
+        class CorrectType:
+            value: int
+
+        @dataclass
+        class Middle:
+            inner: CorrectType
+
+        @dataclass
+        class Outer:
+            middle: Middle
+
+        store.register("wrong_type", WrongType)
+        store.register("correct_type", CorrectType)
+        store.register("middle", Middle)
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "middle": {
+                "_target_": "middle",
+                "inner": {"_target_": "wrong_type", "name": "test"},
+            },
+        }
+
+        # Act & Assert
+        with self.assertRaises(TargetTypeMismatchError) as ctx:
+            instantiator.instantiate(config)
+
+        self.assertEqual(ctx.exception.field, "inner")
+        self.assertIn("middle.inner", ctx.exception.config_path)
+
+    # === Additional TypeInferenceError Tests ===
+
+    def test_instantiate__ImplicitNested_TypeMismatch__RaisesTypeInferenceError(self):
+        """Implicit nested with wrong field type raises TypeInferenceError."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("inner", Inner)
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"value": "not_an_int"},
+        }
+
+        # Act & Assert
+        with self.assertRaises(TypeInferenceError) as ctx:
+            instantiator.instantiate(config)
+
+        self.assertEqual(ctx.exception.field, "inner")
+        self.assertEqual(ctx.exception.inferred_type, Inner)
+        self.assertEqual(len(ctx.exception.validation_errors), 1)
+        self.assertIsInstance(ctx.exception.validation_errors[0], TypeMismatchError)
+
+    def test_instantiate__ImplicitNested_MultipleErrors__RaisesTypeInferenceError(self):
+        """Implicit nested with multiple issues raises TypeInferenceError."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            required_a: int
+            required_b: str
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("inner", Inner)
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {},  # Missing both required fields
+        }
+
+        # Act & Assert
+        with self.assertRaises(TypeInferenceError) as ctx:
+            instantiator.instantiate(config)
+
+        self.assertEqual(len(ctx.exception.validation_errors), 2)
+        for wrapped_error in ctx.exception.validation_errors:
+            self.assertIsInstance(wrapped_error, MissingFieldError)
+
+
+class ConfigInstantiatorAutoRegistrationTests(TestCase):
+    """Tests for auto-registration during instantiation."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store._known_references.clear()
+        return store
+
+    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+        validator = ConfigValidator(store)
+        return ConfigInstantiator(store, validator)
+
+    # === SUCCESS CASES ===
+
+    def test_instantiate__ExplicitTargetMatchesTypeHint__AutoRegistersAndInstantiates(self):
+        """Explicit _target_ matching type hint auto-registers and creates instance."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("outer", Outer)
+        # Inner is NOT registered
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner", "value": 42},
+        }
+
+        # Act
+        result = instantiator.instantiate(config)
+
+        # Assert
+        self.assertIsInstance(result, Outer)
+        self.assertIsInstance(result.inner, Inner)
+        self.assertEqual(result.inner.value, 42)
+        self.assertIn("inner", store._known_references)
+
+    def test_instantiate__NestedExplicitTargets__AutoRegistersAndInstantiatesAll(self):
+        """Deeply nested configs with explicit targets all get auto-registered."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Level3:
+            value: int
+
+        @dataclass
+        class Level2:
+            level3: Level3
+
+        @dataclass
+        class Level1:
+            level2: Level2
+
+        store.register("level1", Level1)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "level1",
+            "level2": {
+                "_target_": "level2",
+                "level3": {"_target_": "level3", "value": 99},
+            },
+        }
+
+        # Act
+        result = instantiator.instantiate(config)
+
+        # Assert
+        self.assertIsInstance(result, Level1)
+        self.assertIsInstance(result.level2, Level2)
+        self.assertIsInstance(result.level2.level3, Level3)
+        self.assertEqual(result.level2.level3.value, 99)
+        self.assertIn("level2", store._known_references)
+        self.assertIn("level3", store._known_references)
+
+    def test_instantiate__MixedImplicitExplicit__HandlesCorrectly(self):
+        """Some nested use implicit inference, others use explicit auto-registration."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class ImplicitType:
+            value: int
+
+        @dataclass
+        class ExplicitType:
+            name: str
+
+        @dataclass
+        class Container:
+            implicit_field: ImplicitType
+            explicit_field: ExplicitType
+
+        # Register ImplicitType for implicit inference, but NOT ExplicitType
+        store.register("implicittype", ImplicitType)
+        store.register("container", Container)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "container",
+            "implicit_field": {"value": 10},  # No _target_ - uses implicit inference
+            "explicit_field": {"_target_": "explicittype", "name": "test"},  # Explicit
+        }
+
+        # Act
+        result = instantiator.instantiate(config)
+
+        # Assert
+        self.assertIsInstance(result.implicit_field, ImplicitType)
+        self.assertIsInstance(result.explicit_field, ExplicitType)
+        self.assertEqual(result.implicit_field.value, 10)
+        self.assertEqual(result.explicit_field.name, "test")
+
+    def test_instantiate__ExplicitTargetCaseInsensitive__AutoRegisters(self):
+        """Target name is matched case-insensitively against class name."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class MyInner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: MyInner
+
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "myinner", "value": 42},  # lowercase
+        }
+
+        # Act
+        result = instantiator.instantiate(config)
+
+        # Assert
+        self.assertIsInstance(result.inner, MyInner)
+        self.assertEqual(result.inner.value, 42)
+
+    # === ERROR CASES ===
+
+    def test_instantiate__ExplicitTargetMismatchesTypeHint__RaisesTargetNotFoundError(self):
+        """Explicit _target_ not matching type hint fails with TargetNotFoundError."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "wrong_name", "value": 42},
+        }
+
+        # Act & Assert
+        with self.assertRaises(TargetNotFoundError) as context:
+            instantiator.instantiate(config)
+
+        self.assertEqual(context.exception.target, "wrong_name")
+
+    def test_instantiate__ExplicitTargetMissingField__RaisesMissingFieldError(self):
+        """Auto-registered target with missing required field fails."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            required_value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner"},  # Missing required_value
+        }
+
+        # Act & Assert
+        with self.assertRaises(MissingFieldError) as context:
+            instantiator.instantiate(config)
+
+        self.assertEqual(context.exception.field, "required_value")
+
+    def test_instantiate__ExplicitTargetConstructorFails__RaisesInstantiationError(self):
+        """Auto-registered target that fails during construction."""
+        # Arrange
+        store = self._empty_store()
+
+        class FailingClass:
+            def __init__(self, value: int) -> None:
+                raise ValueError("Construction failed!")
+
+        @dataclass
+        class Container:
+            item: FailingClass
+
+        store.register("container", Container)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "container",
+            "item": {"_target_": "failingclass", "value": 10},
+        }
+
+        # Act & Assert
+        with self.assertRaises(InstantiationError) as context:
+            instantiator.instantiate(config)
+
+        self.assertEqual(context.exception.target, "failingclass")
+        self.assertIn("Construction failed!", context.exception.reason)
+
+    def test_instantiate__ExplicitTargetWithOptionalType__AutoRegisters(self):
+        """Optional[SomeClass] type hint with matching _target_ auto-registers."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Optional[Inner]
+
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner", "value": 42},
+        }
+
+        # Act
+        result = instantiator.instantiate(config)
+
+        # Assert
+        self.assertIsInstance(result.inner, Inner)
+        self.assertEqual(result.inner.value, 42)
+        self.assertIn("inner", store._known_references)
 
 
 class ConfigInstantiatorHelperMethodTests(TestCase):

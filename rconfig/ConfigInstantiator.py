@@ -139,6 +139,17 @@ class ConfigInstantiator:
 
         # Explicit nested config with _target_
         if self._is_nested_config(value):
+            # Auto-register target if not registered but we have expected type
+            # Only auto-register if target name matches expected class name
+            target_name = value[TARGET_KEY]
+            if target_name not in self._store.known_references:
+                class_type = self._extract_class_from_hint(expected_type)
+                if (
+                    class_type is not None
+                    and not inspect.isabstract(class_type)
+                    and target_name.lower() == class_type.__name__.lower()
+                ):
+                    self._store.register(target_name, class_type)
             return self._instantiate_nested(value, config_path)
 
         # Implicit nested config - dict without _target_ where type can be inferred
@@ -315,8 +326,18 @@ class ConfigInstantiator:
         if exact_match is not None:
             if len(matching_targets) == 1 and matching_targets[0] == exact_match:
                 return (True, exact_match)
+            return (False, None)  # Multiple matches - ambiguous
 
-        return (False, None)
+        # No exact match registered
+        if len(matching_targets) == 0:
+            # No subclasses registered - auto-register the class
+            target_name = cls.__name__.lower()
+            if target_name in self._store._known_references:
+                target_name = f"{cls.__module__}.{cls.__name__}"
+            self._store.register(target_name, cls)
+            return (True, target_name)
+
+        return (False, None)  # Subclasses registered but not class itself
 
     def _augment_with_inferred_target(
         self,

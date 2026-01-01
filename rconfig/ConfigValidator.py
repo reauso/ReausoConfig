@@ -153,6 +153,18 @@ class ConfigValidator:
 
             # Check if value is an explicit nested config (has _target_)
             if self._is_nested_config(value):
+                # Auto-register target if not registered but we have expected type
+                # Only auto-register if target name matches expected class name
+                target_name = value[TARGET_KEY]
+                if target_name not in self._store.known_references:
+                    class_type = self._extract_class_from_hint(expected_type)
+                    if (
+                        class_type is not None
+                        and not inspect.isabstract(class_type)
+                        and target_name.lower() == class_type.__name__.lower()
+                    ):
+                        self._store.register(target_name, class_type)
+
                 # Recursively validate nested config
                 nested_result = self.validate(value, field_path)
                 errors.extend(nested_result.errors)
@@ -292,7 +304,8 @@ class ConfigValidator:
 
         A type is concrete if:
         1. It is not abstract (no @abstractmethod decorators)
-        2. It has exactly one registered target matching it (itself)
+        2. It has exactly one registered target matching it, OR
+        3. No targets are registered for this type (auto-register it)
 
         :param cls: Class to check.
         :return: Tuple of (is_concrete, exact_target_name, all_matching_targets)
@@ -317,8 +330,18 @@ class ConfigValidator:
                 # Ambiguous: there are subclasses registered too
                 return (False, None, matching_targets)
         else:
-            # No exact match registered - ambiguous
-            return (False, None, matching_targets)
+            # No exact match registered
+            if len(matching_targets) == 0:
+                # No subclasses registered - auto-register the class
+                target_name = cls.__name__.lower()
+                # Avoid name collision
+                if target_name in self._store._known_references:
+                    target_name = f"{cls.__module__}.{cls.__name__}"
+                self._store.register(target_name, cls)
+                return (True, target_name, [target_name])
+            else:
+                # Subclasses registered but not the class itself - ambiguous
+                return (False, None, matching_targets)
 
     def _could_be_implicit_nested(
         self, value: Any, expected_type: type | None
