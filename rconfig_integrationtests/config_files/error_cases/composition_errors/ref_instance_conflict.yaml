@@ -1,0 +1,11 @@
+_target_: resnet
+layers: 50
+pretrained: false
+optimizer:
+  _ref_: ../../ml_training/base/optimizer.yaml
+  _instance_: some_path
+scheduler:
+  _target_: scheduler
+  type: cosine
+  warmup_epochs: 5
+  min_lr: 0.00001
