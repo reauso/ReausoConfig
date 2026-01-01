@@ -48,10 +48,12 @@ from .override import (
 )
 from .errors import (
     AmbiguousTargetError,
+    CircularInstanceError,
     CircularRefError,
     CompositionError,
     ConfigError,
     ConfigFileError,
+    InstanceResolutionError,
     InstantiationError,
     InvalidOverridePathError,
     InvalidOverrideSyntaxError,
@@ -223,10 +225,12 @@ __all__ = [
     "Override",
     # Exceptions
     "AmbiguousTargetError",
+    "CircularInstanceError",
     "CircularRefError",
     "CompositionError",
     "ConfigError",
     "ConfigFileError",
+    "InstanceResolutionError",
     "InstantiationError",
     "InvalidOverridePathError",
     "InvalidOverrideSyntaxError",
