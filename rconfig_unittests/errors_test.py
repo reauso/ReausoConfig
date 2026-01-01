@@ -7,6 +7,7 @@ from rconfig.errors import (
     ConfigError,
     ConfigFileError,
     InstantiationError,
+    MergeError,
     MissingFieldError,
     TargetNotFoundError,
     TargetTypeMismatchError,
@@ -139,6 +140,26 @@ class TypeMismatchErrorTests(TestCase):
         # Assert
         self.assertEqual(error.config_path, "model.param")
         self.assertIn("at 'model.param'", str(error))
+
+
+class MergeErrorTests(TestCase):
+    def test_MergeError__WithPath__IncludesPathInMessage(self):
+        # Act
+        error = MergeError("Something went wrong", path="config.model.layers")
+
+        # Assert
+        self.assertIsInstance(error, ConfigError)
+        self.assertIn("Something went wrong", str(error))
+        self.assertIn("config.model.layers", str(error))
+        self.assertEqual(error.path, "config.model.layers")
+
+    def test_MergeError__WithoutPath__NoLocationInMessage(self):
+        # Act
+        error = MergeError("Something went wrong")
+
+        # Assert
+        self.assertEqual(str(error), "Something went wrong")
+        self.assertEqual(error.path, "")
 
 
 class InstantiationErrorTests(TestCase):
