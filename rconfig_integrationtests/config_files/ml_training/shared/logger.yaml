@@ -1,0 +1,3 @@
+_target_: logger
+level: INFO
+output_dir: /logs
