@@ -35,15 +35,17 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, TypeVar, overload
 
-from .ConfigStore import ConfigStore, ConfigReference
-from .ConfigValidator import ConfigValidator, ValidationResult
-from .ConfigInstantiator import ConfigInstantiator
-from .ConfigComposer import (
+from .store import ConfigStore, ConfigReference
+from .validation import ConfigValidator, ValidationResult
+from .instantiation import ConfigInstantiator
+from .composition import (
     ConfigComposer,
     set_cache_size,
     clear_cache,
+    Provenance,
+    ProvenanceEntry,
+    InstanceRef,
 )
-from .Provenance import Provenance, ProvenanceEntry, InstanceRef
 from .override import (
     Override,
     apply_overrides,
@@ -246,9 +248,14 @@ def get_provenance(path: Path) -> Provenance:
     return composer.compose_with_provenance(path)
 
 
-# Public API
+# Public API - Minimal root exports
+# For classes like ConfigStore, ConfigValidator, etc., import from submodules:
+#   from rconfig.store import ConfigStore
+#   from rconfig.validation import ConfigValidator
+#   from rconfig.composition import ConfigComposer, Provenance
+#   from rconfig.override import Override
 __all__ = [
-    # Module-level API (primary)
+    # Module-level API functions (primary interface)
     "register",
     "unregister",
     "validate",
@@ -257,18 +264,7 @@ __all__ = [
     "get_provenance",
     "set_cache_size",
     "clear_cache",
-    # Classes for advanced usage
-    "ConfigStore",
-    "ConfigReference",
-    "ConfigValidator",
-    "ValidationResult",
-    "ConfigInstantiator",
-    "ConfigComposer",
-    "Provenance",
-    "ProvenanceEntry",
-    "InstanceRef",
-    "Override",
-    # Exceptions
+    # Exceptions (available at root for convenience)
     "AmbiguousTargetError",
     "CircularInstanceError",
     "CircularRefError",
