@@ -38,7 +38,12 @@ from typing import Any, TypeVar, overload
 from .ConfigStore import ConfigStore, ConfigReference
 from .ConfigValidator import ConfigValidator, ValidationResult
 from .ConfigInstantiator import ConfigInstantiator
-from .loaders import load_config as _load_config
+from .ConfigComposer import (
+    ConfigComposer,
+    set_cache_size,
+    clear_cache,
+)
+from .Provenance import Provenance, ProvenanceEntry, InstanceRef
 from .override import (
     Override,
     apply_overrides,
@@ -108,6 +113,9 @@ def unregister(name: str) -> None:
 def validate(path: Path) -> ValidationResult:
     """Validate a config file without instantiating (dry-run).
 
+    Composes the config (resolving _ref_ and _instance_ references) before
+    validating against registered targets.
+
     :param path: Path to config file.
     :return: ValidationResult with any errors found.
 
@@ -118,7 +126,8 @@ def validate(path: Path) -> ValidationResult:
             for error in result.errors:
                 print(error)
     """
-    config = _load_config(path)
+    composer = ConfigComposer()
+    config = composer.compose(path)
     return _validator.validate(config)
 
 
@@ -147,7 +156,11 @@ def instantiate(
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
 ) -> T | Any:
-    """Load, validate, and instantiate a config file.
+    """Load, compose, validate, and instantiate a config file.
+
+    Composes the config (resolving _ref_ and _instance_ references), applies
+    any overrides, validates against registered targets, and instantiates
+    the final object tree.
 
     :param path: Path to config file.
     :param expected_type: Optional type for type-safe returns.
@@ -155,6 +168,10 @@ def instantiate(
     :param cli_overrides: Whether to parse CLI overrides from sys.argv (default True).
     :return: Instantiated object (typed if expected_type provided).
     :raises ConfigFileError: If file cannot be loaded.
+    :raises CircularRefError: If circular _ref_ references are detected.
+    :raises CircularInstanceError: If circular _instance_ references are detected.
+    :raises RefResolutionError: If a _ref_ cannot be resolved.
+    :raises InstanceResolutionError: If an _instance_ path cannot be resolved.
     :raises ValidationError: If config is invalid.
     :raises InvalidOverridePathError: If an override path doesn't exist.
     :raises InvalidOverrideSyntaxError: If an override string is malformed.
@@ -174,7 +191,10 @@ def instantiate(
         # Disable CLI overrides (for tests)
         model = rc.instantiate(Path("config.yaml"), cli_overrides=False)
     """
-    config = _load_config(path)
+    # Compose config (resolve _ref_ and _instance_)
+    composer = ConfigComposer()
+    config = composer.compose(path)
+    instance_targets = composer.instance_targets
 
     # Collect all overrides
     all_overrides: list[Override] = []
@@ -197,7 +217,7 @@ def instantiate(
     if all_overrides:
         config = apply_overrides(config, all_overrides)
 
-    return _instantiator.instantiate(config)
+    return _instantiator.instantiate(config, instance_targets=instance_targets)
 
 
 def known_references() -> MappingProxyType[str, ConfigReference]:
@@ -208,6 +228,24 @@ def known_references() -> MappingProxyType[str, ConfigReference]:
     return _store.known_references
 
 
+def get_provenance(path: Path) -> Provenance:
+    """Compose a config file and track the origin of each value.
+
+    :param path: Path to the entry-point config file.
+    :return: Provenance object with origin information for each config value.
+
+    Example::
+
+        prov = rc.get_provenance(Path("trainer.yaml"))
+        print(prov)  # Shows config with file:line annotations
+        entry = prov.get("model.layers")  # Get specific origin info
+        for path, entry in prov.items():
+            print(f"{path}: {entry.file}:{entry.line}")
+    """
+    composer = ConfigComposer()
+    return composer.compose_with_provenance(path)
+
+
 # Public API
 __all__ = [
     # Module-level API (primary)
@@ -216,12 +254,19 @@ __all__ = [
     "validate",
     "instantiate",
     "known_references",
+    "get_provenance",
+    "set_cache_size",
+    "clear_cache",
     # Classes for advanced usage
     "ConfigStore",
     "ConfigReference",
     "ConfigValidator",
     "ValidationResult",
     "ConfigInstantiator",
+    "ConfigComposer",
+    "Provenance",
+    "ProvenanceEntry",
+    "InstanceRef",
     "Override",
     # Exceptions
     "AmbiguousTargetError",

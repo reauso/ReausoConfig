@@ -1,0 +1,6 @@
+_target_: trainer
+model:
+  _ref_: models/resnet.yaml
+  dropout: 0.2
+epochs: 10
+learning_rate: 0.001
