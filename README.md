@@ -208,6 +208,61 @@ encoder:
   layers: 6
 ```
 
+### Config Composition with `_ref_`
+
+Load configurations from other files and merge them:
+
+```yaml
+# models/resnet.yaml
+_target_: model
+hidden_size: 256
+dropout: 0.1
+
+# trainer.yaml
+_target_: trainer
+model:
+  _ref_: models/resnet.yaml  # Load from file
+  dropout: 0.2               # Override: merged on top
+epochs: 10
+```
+
+**Path resolution:**
+- `models/resnet.yaml` - Relative to current file
+- `./local.yaml` - Explicit relative
+- `../shared/base.yaml` - Parent directory
+- `/models/resnet.yaml` - Absolute from config root
+
+**Deep merge:** Sibling keys override values from the referenced file.
+
+### Instance Sharing with `_instance_`
+
+Share object instances across your config:
+
+```yaml
+_target_: app
+shared_cache:
+  _target_: cache
+  size: 100
+
+service_a:
+  _target_: service
+  cache:
+    _instance_: shared_cache  # Same object as shared_cache
+
+service_b:
+  _target_: service
+  cache:
+    _instance_: shared_cache  # Same object, shared with service_a
+```
+
+**Path resolution:**
+- `shared_cache` - Relative to config root
+- `/shared.database` - Absolute from composed root
+- `databases[0]` - List indexing supported
+
+**Special values:**
+- `_instance_: null` - Passes `None` to constructor
+
 ## API Reference
 
 ### `rc.register(name, target)`
@@ -267,6 +322,37 @@ for name, ref in refs.items():
     print(f"{name}: {ref.target_class}")
 ```
 
+### `rc.get_provenance(path)`
+
+Track the origin of each config value (useful for debugging):
+
+```python
+prov = rc.get_provenance(Path("trainer.yaml"))
+print(prov)  # Shows config with file:line annotations
+
+entry = prov.get("model.dropout")
+print(f"{entry.file}:{entry.line}")  # trainer.yaml:5
+if entry.overrode:
+    print(f"Overrode: {entry.overrode}")  # models/resnet.yaml:3
+```
+
+### `rc.set_cache_size(size)`
+
+Configure the LRU cache for loaded config files:
+
+```python
+rc.set_cache_size(100)  # Cache up to 100 files
+rc.set_cache_size(0)    # Unlimited (default)
+```
+
+### `rc.clear_cache()`
+
+Clear the config file cache:
+
+```python
+rc.clear_cache()
+```
+
 ## Advanced Usage
 
 ### Using Classes Directly
@@ -315,18 +401,26 @@ ReausoConfig provides a hierarchy of exceptions:
 
 ```
 ConfigError (base)
-├── ConfigFileError           # File loading issues
-├── TargetNotFoundError       # Unknown _target_
-├── ValidationError           # Validation failures
-│   ├── MissingFieldError         # Required field missing
-│   ├── TypeMismatchError         # Wrong type provided
-│   ├── AmbiguousTargetError      # Cannot infer type (abstract/multiple impls)
-│   ├── TargetTypeMismatchError   # Explicit _target_ wrong type
-│   └── TypeInferenceError        # Inferred type validation failed
-├── OverrideError             # Override-related errors
-│   ├── InvalidOverridePathError  # Override path doesn't exist
-│   └── InvalidOverrideSyntaxError # Override string malformed
-└── InstantiationError        # Object creation failed
+├── ConfigFileError               # File loading issues
+├── TargetNotFoundError           # Unknown _target_
+├── ValidationError               # Validation failures
+│   ├── MissingFieldError             # Required field missing
+│   ├── TypeMismatchError             # Wrong type provided
+│   ├── AmbiguousTargetError          # Cannot infer type (abstract/multiple impls)
+│   ├── TargetTypeMismatchError       # Explicit _target_ wrong type
+│   └── TypeInferenceError            # Inferred type validation failed
+├── CompositionError              # Config composition issues
+│   ├── CircularRefError              # Circular _ref_ detected
+│   ├── RefResolutionError            # Cannot resolve _ref_ path
+│   ├── RefAtRootError                # _ref_ at root level
+│   ├── RefInstanceConflictError      # Both _ref_ and _instance_ in same block
+│   ├── CircularInstanceError         # Circular _instance_ detected
+│   ├── InstanceResolutionError       # Cannot resolve _instance_ path
+│   └── MergeError                    # Deep merge failed
+├── OverrideError                 # Override-related errors
+│   ├── InvalidOverridePathError      # Override path doesn't exist
+│   └── InvalidOverrideSyntaxError    # Override string malformed
+└── InstantiationError            # Object creation failed
 ```
 
 Example error handling:
@@ -360,6 +454,9 @@ except InstantiationError as e:
 - **Simple API**: Just `register`, `validate`, `instantiate`
 - **Type validation**: Catches type mismatches before instantiation
 - **Implicit target inference**: Omit `_target_` for concrete nested types
+- **Config composition**: Load and merge configs from files with `_ref_`
+- **Instance sharing**: Share objects across config with `_instance_`
+- **Provenance tracking**: Debug where each config value originated
 - **Lightweight**: Focused feature set, no bloat
 - **Pure Python output**: Instantiated objects have no framework dependency
 
@@ -367,14 +464,12 @@ except InstantiationError as e:
 
 - **Early stage**: Some features from the vision are not yet implemented
 - **No interpolation**: Cannot reference other config values with `${...}` (planned)
-- **No config composition**: Cannot merge multiple config files (planned)
 
 ## Roadmap
 
 See [VISION.md](VISION.md) for planned features including:
 
 - Value interpolation (`${model.learning_rate}`)
-- Config composition and defaults
 - Environment variable support
 - Config groups
 

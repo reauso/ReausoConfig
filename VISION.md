@@ -59,18 +59,17 @@ run_training(app.model, app.dataset)
 python main.py model.learning_rate=0.01 dataset.batch_size=64
 ```
 
-### 4. Compose Configurations
+### ✓ 4. Compose Configurations
 
 ```yaml
-# config/experiment.yaml
-defaults:
-  - model: resnet50
-  - dataset: imagenet
-  - optimizer: adam
-
-# Experiment-specific overrides
+# config/trainer.yaml
+_target_: trainer
 model:
-  pretrained: true
+  _ref_: models/resnet.yaml   # Load from file
+  pretrained: true            # Override: merged on top
+optimizer:
+  _ref_: optimizers/adam.yaml
+  lr: 0.01
 ```
 
 ### 5. Reference Values Across Config
@@ -83,11 +82,14 @@ dataset:
   path: ${env:DATA_PATH}      # Environment variable
 ```
 
-### 6. Include Other Files
+### ✓ 6. Include Other Files
 
 ```yaml
-model: !include models/resnet.yaml
-dataset: !include datasets/imagenet.yaml
+# Use _ref_ to include and merge configs from other files
+model:
+  _ref_: models/resnet.yaml
+dataset:
+  _ref_: datasets/imagenet.yaml
 ```
 
 ### 7. Provide Runtime Parameters
@@ -117,10 +119,11 @@ app = config.instantiate(num_workers=os.cpu_count())
 - Reports type mismatches before instantiation
 - Uses Python's `inspect` module for introspection
 
-### (partial) Hierarchical Configs
+### ✓ Hierarchical Configs
 - ✓ Nest configs within configs
-- Include external files
-- Compose from defaults
+- ✓ Include external files via `_ref_`
+- ✓ Compose from referenced configs
+- ✓ Share instances via `_instance_`
 
 ### ✓ CLI Override System
 - ✓ Dot notation for nested values: `model.optimizer.lr=0.01`
@@ -218,11 +221,11 @@ hidden_size: 512  # Override base
 
 ## Challenges to Address
 
-### 1. Dependency Resolution
+### ✓ 1. Dependency Resolution
 When config A references config B which references config C:
-- What order do we instantiate?
-- How do we detect circular dependencies?
-- When does a reference mean "the value" vs "the object"?
+- ✓ Topological sort determines instantiation order
+- ✓ Circular `_ref_` and `_instance_` references are detected and error
+- ✓ `_ref_` loads config (new instance), `_instance_` shares object
 
 ### 2. Runtime Parameters
 Values that can't be in config files (e.g., `num_workers = cpu_count()`):
@@ -253,17 +256,29 @@ When to resolve `${references}`:
 - At instantiation time? (order matters)
 - Lazily on access? (complexity)
 
-### 6. Config vs Instance Identity
+### ✓ 6. Config vs Instance Identity
 ```yaml
-# Are these the same object or two instances?
+# _ref_ creates separate instances
 trainer:
-  model: !include model.yaml
-
+  model:
+    _ref_: model.yaml    # New instance
 evaluator:
-  model: !include model.yaml
+  model:
+    _ref_: model.yaml    # Another new instance
+
+# _instance_ shares the same object
+shared_model:
+  _target_: model
+  hidden_size: 256
+trainer:
+  model:
+    _instance_: shared_model  # Same object
+evaluator:
+  model:
+    _instance_: shared_model  # Same object as trainer.model
 ```
 
-Should repeated includes create shared or separate instances?
+✓ `_ref_` creates new instances, `_instance_` shares objects.
 
 ### 7. Backwards Compatibility
 As the library evolves:
@@ -318,4 +333,4 @@ To keep the library focused and simple:
 
 ---
 
-*Vision Document v1.0 - 2025-12-31*
+*Vision Document v1.1 - 2026-01-01*
