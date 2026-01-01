@@ -1,0 +1,4 @@
+_target_: resnet
+layers: 50
+  - this is invalid yaml syntax
+pretrained: false

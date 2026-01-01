@@ -1,0 +1,5 @@
+_target_: trainingconfig
+epochs: 100
+save_every: 10
+log:
+  _instance_: nonexistent_logger_path

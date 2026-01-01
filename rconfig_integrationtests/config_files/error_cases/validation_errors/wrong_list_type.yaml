@@ -1,0 +1,14 @@
+_target_: evalconfig
+metrics: "accuracy"  # Wrong! Should be list[str], not str
+log:
+  _target_: logger
+  level: INFO
+  output_dir: /tmp/logs
+data:
+  _target_: dataset
+  name: cifar10
+  root: /data
+  batch_size: 32
+  num_workers: 4
+  augmentation:
+    _target_: augmentation
