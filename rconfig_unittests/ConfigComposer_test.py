@@ -10,9 +10,11 @@ from rconfig.ConfigComposer import (
     set_cache_size,
 )
 from rconfig.errors import (
+    CircularInstanceError,
     CircularRefError,
     CompositionError,
     ConfigFileError,
+    InstanceResolutionError,
     RefAtRootError,
     RefInstanceConflictError,
     RefResolutionError,
@@ -986,3 +988,721 @@ value: 42
         # Assert
         self.assertIsNotNone(prov.get("_target_"))
         self.assertIsNotNone(prov.get("value"))
+
+
+class ConfigComposerInstanceTests(TestCase):
+    """Tests for _instance_ resolution in ConfigComposer."""
+
+    def setUp(self) -> None:
+        """Set up a temporary directory for test configs."""
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.config_root = Path(self.temp_dir.name)
+        clear_cache()
+
+    def tearDown(self) -> None:
+        """Clean up temporary directory."""
+        self.temp_dir.cleanup()
+        clear_cache()
+
+    def _write_config(self, rel_path: str, content: str) -> Path:
+        """Write a config file to the temp directory."""
+        path = self.config_root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        return path
+
+    def test_compose__BasicInstanceSameFile__SharesValue(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+database:
+  _target_: Database
+  url: "postgres://localhost"
+service:
+  _target_: Service
+  db:
+    _instance_: database
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["database"]["_target_"], "Database")
+        self.assertEqual(result["service"]["db"]["_target_"], "Database")
+        self.assertEqual(result["service"]["db"]["url"], "postgres://localhost")
+
+    def test_compose__InstanceAbsolutePath__ResolvesFromRoot(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+shared:
+  database:
+    _target_: Database
+    url: "postgres://localhost"
+service:
+  db:
+    _instance_: /shared.database
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["service"]["db"]["_target_"], "Database")
+
+    def test_compose__InstanceRelativePath__ResolvesFromFileRoot(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+database:
+  _target_: Database
+  url: "postgres://localhost"
+service:
+  db:
+    _instance_: database
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["service"]["db"]["_target_"], "Database")
+
+    def test_compose__InstanceWithDotSlash__SameAsRelative(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+cache:
+  _target_: Cache
+  size: 100
+handler:
+  c:
+    _instance_: ./cache
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["handler"]["c"]["_target_"], "Cache")
+        self.assertEqual(result["handler"]["c"]["size"], 100)
+
+    def test_compose__InstanceForwardReference__WorksCorrectly(self):
+        # Arrange - reference defined later in file
+        entry = self._write_config("app.yaml", """
+_target_: App
+service:
+  db:
+    _instance_: database
+database:
+  _target_: Database
+  url: "postgres://localhost"
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["service"]["db"]["_target_"], "Database")
+
+    def test_compose__InstanceToObjectWithTarget__SharesObject(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+model:
+  _target_: Model
+  layers: 50
+trainer:
+  model:
+    _instance_: model
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["trainer"]["model"]["_target_"], "Model")
+        self.assertEqual(result["trainer"]["model"]["layers"], 50)
+
+    def test_compose__InstanceToDictWithoutTarget__SharesDict(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+config:
+  batch_size: 32
+  learning_rate: 0.001
+trainer:
+  options:
+    _instance_: config
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["trainer"]["options"]["batch_size"], 32)
+        self.assertEqual(result["trainer"]["options"]["learning_rate"], 0.001)
+
+    def test_compose__InstanceToPrimitive__SharesValue(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+base_lr: 0.001
+optimizer:
+  lr:
+    _instance_: base_lr
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["optimizer"]["lr"], 0.001)
+
+    def test_compose__InstanceToNonExistentPath__RaisesError(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+service:
+  db:
+    _instance_: nonexistent
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(InstanceResolutionError) as ctx:
+            composer.compose(entry)
+
+        self.assertIn("nonexistent", str(ctx.exception))
+        self.assertIn("not found", str(ctx.exception))
+
+    def test_compose__InstanceCircular__RaisesCircularInstanceError(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+a:
+  _instance_: b
+b:
+  _instance_: a
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(CircularInstanceError) as ctx:
+            composer.compose(entry)
+
+        # Should show the cycle
+        self.assertIn("a", str(ctx.exception))
+        self.assertIn("b", str(ctx.exception))
+
+    def test_compose__InstanceChaining__ResolvesTransitively(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+database:
+  _target_: Database
+alias:
+  _instance_: database
+service:
+  db:
+    _instance_: alias
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["service"]["db"]["_target_"], "Database")
+
+    def test_compose__InstanceNull__ReturnsNone(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+service:
+  db:
+    _instance_: null
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertIsNone(result["service"]["db"])
+
+    def test_compose__InstanceInListItems__EachItemResolved(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+db1:
+  _target_: Database
+  name: primary
+db2:
+  _target_: Database
+  name: replica
+services:
+  - _instance_: db1
+  - _instance_: db2
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(len(result["services"]), 2)
+        self.assertEqual(result["services"][0]["name"], "primary")
+        self.assertEqual(result["services"][1]["name"], "replica")
+
+    def test_compose__InstanceWithListIndexing__ResolvesCorrectly(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+databases:
+  - _target_: Database
+    name: primary
+  - _target_: Database
+    name: replica
+writer:
+  db:
+    _instance_: /databases[0]
+reader:
+  db:
+    _instance_: databases[1]
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["writer"]["db"]["name"], "primary")
+        self.assertEqual(result["reader"]["db"]["name"], "replica")
+
+    def test_compose__InstanceCrossFileViaAbsolutePath__Works(self):
+        # Arrange
+        self._write_config("shared/database.yaml", """
+_target_: Database
+url: "postgres://localhost"
+""")
+        self._write_config("services/user.yaml", """
+_target_: UserService
+db:
+  _instance_: /shared.database
+""")
+        entry = self._write_config("app.yaml", """
+_target_: App
+shared:
+  database:
+    _ref_: shared/database.yaml
+services:
+  user:
+    _ref_: services/user.yaml
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["services"]["user"]["db"]["_target_"], "Database")
+
+    def test_compose__InstanceCombinedWithRef__RaisesConflictError(self):
+        # Arrange
+        self._write_config("model.yaml", """
+_target_: Model
+""")
+        entry = self._write_config("app.yaml", """
+_target_: App
+model:
+  _ref_: model.yaml
+  _instance_: /shared.db
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(RefInstanceConflictError):
+            composer.compose(entry)
+
+    def test_compose__InstanceNonStringPath__RaisesError(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+service:
+  db:
+    _instance_: 123
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(InstanceResolutionError) as ctx:
+            composer.compose(entry)
+
+        self.assertIn("must be a string or null", str(ctx.exception))
+
+    def test_compose__InstanceToPathInsideRefdFile__Works(self):
+        # Arrange
+        self._write_config("models.yaml", """
+_target_: ModelConfig
+resnet:
+  _target_: ResNet
+  layers: 50
+vgg:
+  _target_: VGG
+  layers: 16
+""")
+        entry = self._write_config("app.yaml", """
+_target_: App
+models:
+  _ref_: models.yaml
+trainer:
+  model:
+    _instance_: /models.resnet
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["trainer"]["model"]["_target_"], "ResNet")
+        self.assertEqual(result["trainer"]["model"]["layers"], 50)
+
+
+class InstanceProvenanceTests(TestCase):
+    """Tests for provenance tracking with _instance_."""
+
+    def setUp(self) -> None:
+        """Set up a temporary directory for test configs."""
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.config_root = Path(self.temp_dir.name)
+        clear_cache()
+
+    def tearDown(self) -> None:
+        """Clean up temporary directory."""
+        self.temp_dir.cleanup()
+        clear_cache()
+
+    def _write_config(self, rel_path: str, content: str) -> Path:
+        """Write a config file to the temp directory."""
+        path = self.config_root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        return path
+
+    def test_provenance__InstanceReference__TracksInstanceChain(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """_target_: App
+database:
+  _target_: Database
+service:
+  db:
+    _instance_: database
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+
+        # Assert
+        db_entry = prov.get("service.db")
+        self.assertIsNotNone(db_entry)
+        self.assertIsNotNone(db_entry.instance)
+        self.assertEqual(len(db_entry.instance), 1)
+        self.assertEqual(db_entry.instance[0].path, "database")
+
+    def test_provenance__InstanceChain__TracksFullChain(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """_target_: App
+database:
+  _target_: Database
+alias:
+  _instance_: database
+service:
+  db:
+    _instance_: alias
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+
+        # Assert
+        db_entry = prov.get("service.db")
+        self.assertIsNotNone(db_entry)
+        self.assertIsNotNone(db_entry.instance)
+        # Chain: service.db -> alias -> database
+        self.assertEqual(len(db_entry.instance), 2)
+        self.assertEqual(db_entry.instance[0].path, "alias")
+        self.assertEqual(db_entry.instance[1].path, "database")
+
+    def test_provenance__InstanceNull__TracksCorrectly(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """_target_: App
+service:
+  db:
+    _instance_: null
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        prov = composer.compose_with_provenance(entry)
+
+        # Assert
+        db_entry = prov.get("service.db")
+        self.assertIsNotNone(db_entry)
+        self.assertIn("app.yaml", db_entry.file)
+
+
+class InstanceErrorTests(TestCase):
+    """Tests for _instance_ error classes."""
+
+    def test_InstanceResolutionError__IncludesAllInfo(self):
+        # Act
+        error = InstanceResolutionError("database", "path not found", "service.db")
+
+        # Assert
+        self.assertEqual(error.instance_path, "database")
+        self.assertEqual(error.reason, "path not found")
+        self.assertEqual(error.config_path, "service.db")
+        self.assertIn("database", str(error))
+        self.assertIn("path not found", str(error))
+        self.assertIn("service.db", str(error))
+
+    def test_CircularInstanceError__FormatsChainCorrectly(self):
+        # Act
+        error = CircularInstanceError(["a", "b", "a"])
+
+        # Assert
+        self.assertEqual(error.chain, ["a", "b", "a"])
+        self.assertIn("a → b → a", str(error))
+
+
+class InstanceEdgeCaseTests(TestCase):
+    """Edge case tests for _instance_ resolution."""
+
+    def setUp(self) -> None:
+        """Set up a temporary directory for test configs."""
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.config_root = Path(self.temp_dir.name)
+        clear_cache()
+
+    def tearDown(self) -> None:
+        """Clean up temporary directory."""
+        self.temp_dir.cleanup()
+        clear_cache()
+
+    def _write_config(self, rel_path: str, content: str) -> Path:
+        """Write a config file to the temp directory."""
+        path = self.config_root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        return path
+
+    def test_compose__InstanceNestedListAccess__WorksCorrectly(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+matrix:
+  - - name: cell00
+    - name: cell01
+  - - name: cell10
+    - name: cell11
+first:
+  _instance_: matrix[0][0]
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["first"]["name"], "cell00")
+
+    def test_compose__InstanceChainEndingWithNull__ResolvesCorrectly(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+alias:
+  _instance_: null
+service:
+  db:
+    _instance_: alias
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert - chains to null should result in None
+        self.assertIsNone(result["service"]["db"])
+
+    def test_compose__InstanceMultipleRefsToSame__AllShareValue(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+shared:
+  config:
+    batch_size: 32
+a:
+  cfg:
+    _instance_: /shared.config
+b:
+  cfg:
+    _instance_: shared.config
+c:
+  cfg:
+    _instance_: /shared.config
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["a"]["cfg"]["batch_size"], 32)
+        self.assertEqual(result["b"]["cfg"]["batch_size"], 32)
+        self.assertEqual(result["c"]["cfg"]["batch_size"], 32)
+
+    def test_compose__InstanceToListItem__ReturnsListItem(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+items:
+  - first
+  - second
+  - third
+selected:
+  _instance_: items[1]
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["selected"], "second")
+
+    def test_compose__InstanceFromNestedRef__WorksCorrectly(self):
+        # Arrange - instance inside a nested _ref_
+        self._write_config("level2.yaml", """
+_target_: Level2
+value: deep
+""")
+        self._write_config("level1.yaml", """
+_target_: Level1
+inner:
+  _ref_: level2.yaml
+""")
+        entry = self._write_config("app.yaml", """
+_target_: App
+outer:
+  _ref_: level1.yaml
+ref_to_deep:
+  _instance_: /outer.inner.value
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["ref_to_deep"], "deep")
+
+    def test_compose__InstanceSelfCircular__RaisesError(self):
+        # Arrange - single node circular reference
+        entry = self._write_config("app.yaml", """
+_target_: App
+self_ref:
+  _instance_: self_ref
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(CircularInstanceError):
+            composer.compose(entry)
+
+    def test_compose__InstanceLongChain__ResolvesCorrectly(self):
+        # Arrange - long chain of instances
+        entry = self._write_config("app.yaml", """
+_target_: App
+target:
+  _target_: Target
+  value: final
+a:
+  _instance_: target
+b:
+  _instance_: a
+c:
+  _instance_: b
+d:
+  _instance_: c
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["d"]["_target_"], "Target")
+        self.assertEqual(result["d"]["value"], "final")
+
+    def test_compose__NoInstances__ReturnsConfigUnchanged(self):
+        # Arrange - no _instance_ references
+        entry = self._write_config("app.yaml", """
+_target_: App
+model:
+  _target_: Model
+  layers: 50
+""")
+
+        # Act
+        composer = ConfigComposer(self.config_root)
+        result = composer.compose(entry)
+
+        # Assert
+        self.assertEqual(result["model"]["layers"], 50)
+
+    def test_compose__InstanceIndexOutOfRange__RaisesError(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+items:
+  - first
+  - second
+selected:
+  _instance_: items[99]
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(InstanceResolutionError) as ctx:
+            composer.compose(entry)
+
+        self.assertIn("not found", str(ctx.exception))
+
+    def test_compose__InstanceToNonIndexableWithIndex__RaisesError(self):
+        # Arrange
+        entry = self._write_config("app.yaml", """
+_target_: App
+value: 42
+selected:
+  _instance_: value[0]
+""")
+
+        # Act & Assert
+        composer = ConfigComposer(self.config_root)
+        with self.assertRaises(InstanceResolutionError) as ctx:
+            composer.compose(entry)
+
+        self.assertIn("not found", str(ctx.exception))

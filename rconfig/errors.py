@@ -342,6 +342,37 @@ class RefInstanceConflictError(CompositionError):
         )
 
 
+class InstanceResolutionError(CompositionError):
+    """Raised when an _instance_ path cannot be resolved.
+
+    :param instance_path: The _instance_ path that failed to resolve.
+    :param reason: Description of what went wrong.
+    :param config_path: Path in config where error occurred.
+    """
+
+    def __init__(self, instance_path: str, reason: str, config_path: str = "") -> None:
+        self.instance_path = instance_path
+        self.reason = reason
+        self.config_path = config_path
+
+        location = f" at '{config_path}'" if config_path else ""
+        super().__init__(
+            f"Failed to resolve _instance_ '{instance_path}'{location}: {reason}"
+        )
+
+
+class CircularInstanceError(CompositionError):
+    """Raised when a circular _instance_ dependency is detected.
+
+    :param chain: List of instance paths forming the circular chain.
+    """
+
+    def __init__(self, chain: list[str]) -> None:
+        self.chain = chain
+        chain_str = " → ".join(chain)
+        super().__init__(f"Circular _instance_ dependency detected: {chain_str}")
+
+
 class OverrideError(ConfigError):
     """Base exception for override-related errors."""
 
