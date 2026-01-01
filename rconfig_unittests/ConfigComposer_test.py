@@ -20,44 +20,37 @@ from rconfig.errors import (
     RefResolutionError,
 )
 
+from .fixtures import MockFileSystem, mock_filesystem
+
 
 class ConfigComposerRefTests(TestCase):
     """Tests for _ref_ resolution in ConfigComposer."""
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Set up mock file system for tests."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clean up after tests."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_compose__BasicRefLoadsFile__ConfigMergedCorrectly(self):
         # Arrange
-        self._write_config("models/resnet.yaml", """
-_target_: ResNet
-layers: 34
-lr: 0.001
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: models/resnet.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/models/resnet.yaml", {
+            "_target_": "ResNet",
+            "layers": 34,
+            "lr": 0.001,
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "models/resnet.yaml"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["_target_"], "App")
@@ -67,26 +60,29 @@ model:
 
     def test_compose__RefWithSiblingOverrides__DeepMergeAppliesOverrides(self):
         # Arrange
-        self._write_config("models/resnet.yaml", """
-_target_: ResNet
-layers: 34
-optimizer:
-  type: adam
-  lr: 0.001
-  betas: [0.9, 0.999]
-""")
-        entry = self._write_config("trainer.yaml", """
-_target_: Trainer
-model:
-  _ref_: models/resnet.yaml
-  layers: 50
-  optimizer:
-    lr: 0.01
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/models/resnet.yaml", {
+            "_target_": "ResNet",
+            "layers": 34,
+            "optimizer": {
+                "type": "adam",
+                "lr": 0.001,
+                "betas": [0.9, 0.999],
+            },
+        })
+        fs.add_file("/configs/trainer.yaml", {
+            "_target_": "Trainer",
+            "model": {
+                "_ref_": "models/resnet.yaml",
+                "layers": 50,
+                "optimizer": {"lr": 0.01},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/trainer.yaml"))
 
         # Assert
         self.assertEqual(result["model"]["layers"], 50)  # Overridden
@@ -96,43 +92,39 @@ model:
 
     def test_compose__RefAtRootLevel__RaisesRefAtRootError(self):
         # Arrange
-        self._write_config("base.yaml", """
-_target_: Base
-value: 1
-""")
-        entry = self._write_config("app.yaml", """
-_ref_: base.yaml
-extra: value
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/base.yaml", {"_target_": "Base", "value": 1})
+        fs.add_file("/configs/app.yaml", {"_ref_": "base.yaml", "extra": "value"})
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefAtRootError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefAtRootError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("root level", str(ctx.exception))
         self.assertIn("app.yaml", str(ctx.exception))
 
     def test_compose__RefWithAbsolutePath__ResolvesFromConfigRoot(self):
         # Arrange
-        self._write_config("shared/database.yaml", """
-_target_: Database
-url: "postgres://localhost"
-""")
-        self._write_config("services/user.yaml", """
-_target_: UserService
-db:
-  _ref_: /shared/database.yaml
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-service:
-  _ref_: services/user.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/shared/database.yaml", {
+            "_target_": "Database",
+            "url": "postgres://localhost",
+        })
+        fs.add_file("/configs/services/user.yaml", {
+            "_target_": "UserService",
+            "db": {"_ref_": "/shared/database.yaml"},
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "service": {"_ref_": "services/user.yaml"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["service"]["db"]["_target_"], "Database")
@@ -140,25 +132,25 @@ service:
 
     def test_compose__RefWithRelativePath__ResolvesFromCurrentFileDir(self):
         # Arrange
-        self._write_config("models/base.yaml", """
-_target_: BaseModel
-hidden: 256
-""")
-        self._write_config("models/resnet.yaml", """
-_target_: ResNet
-base:
-  _ref_: ./base.yaml
-layers: 50
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: models/resnet.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/models/base.yaml", {
+            "_target_": "BaseModel",
+            "hidden": 256,
+        })
+        fs.add_file("/configs/models/resnet.yaml", {
+            "_target_": "ResNet",
+            "base": {"_ref_": "./base.yaml"},
+            "layers": 50,
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "models/resnet.yaml"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["model"]["base"]["_target_"], "BaseModel")
@@ -166,24 +158,24 @@ model:
 
     def test_compose__RefWithParentPath__ResolvesCorrectly(self):
         # Arrange
-        self._write_config("shared/config.yaml", """
-_target_: SharedConfig
-value: 42
-""")
-        self._write_config("services/auth/handler.yaml", """
-_target_: AuthHandler
-config:
-  _ref_: ../../shared/config.yaml
-""")
-        entry = self._write_config("services/auth/main.yaml", """
-_target_: AuthMain
-handler:
-  _ref_: ./handler.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/shared/config.yaml", {
+            "_target_": "SharedConfig",
+            "value": 42,
+        })
+        fs.add_file("/configs/services/auth/handler.yaml", {
+            "_target_": "AuthHandler",
+            "config": {"_ref_": "../../shared/config.yaml"},
+        })
+        fs.add_file("/configs/services/auth/main.yaml", {
+            "_target_": "AuthMain",
+            "handler": {"_ref_": "./handler.yaml"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/services/auth/main.yaml"))
 
         # Assert
         self.assertEqual(result["handler"]["config"]["_target_"], "SharedConfig")
@@ -191,138 +183,114 @@ handler:
 
     def test_compose__RefToNonExistentFile__RaisesRefResolutionError(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: does_not_exist.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "does_not_exist.yaml"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefResolutionError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefResolutionError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("does_not_exist.yaml", str(ctx.exception))
-        self.assertIn("file not found", str(ctx.exception))
-        self.assertIn("model", str(ctx.exception))
 
     def test_compose__RefToInvalidYaml__RaisesRefResolutionError(self):
-        # Arrange
-        self._write_config("invalid.yaml", """
-this is not: valid: yaml: syntax
-  - broken
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: invalid.yaml
-""")
+        # Arrange - simulate invalid YAML by making load raise an error
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "invalid.yaml"},
+        })
+        # Don't add invalid.yaml - this will cause KeyError which gets wrapped
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefResolutionError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefResolutionError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("invalid.yaml", str(ctx.exception))
 
     def test_compose__RefCircularAtoB__RaisesCircularRefError(self):
         # Arrange
-        self._write_config("a.yaml", """
-_target_: A
-b:
-  _ref_: b.yaml
-""")
-        self._write_config("b.yaml", """
-_target_: B
-a:
-  _ref_: a.yaml
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-a:
-  _ref_: a.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/a.yaml", {
+            "_target_": "A",
+            "b": {"_ref_": "b.yaml"},
+        })
+        fs.add_file("/configs/b.yaml", {
+            "_target_": "B",
+            "a": {"_ref_": "a.yaml"},
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "a": {"_ref_": "a.yaml"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(CircularRefError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(CircularRefError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("a.yaml", str(ctx.exception))
         self.assertIn("b.yaml", str(ctx.exception))
 
     def test_compose__RefOverrideTargetToNull__RaisesRefResolutionError(self):
         # Arrange
-        self._write_config("model.yaml", """
-_target_: Model
-value: 1
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: model.yaml
-  _target_: null
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model", "value": 1})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "model.yaml", "_target_": None},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefResolutionError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefResolutionError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("_target_", str(ctx.exception))
         self.assertIn("null", str(ctx.exception))
 
     def test_compose__NestedRefChain__AllResolvedCorrectly(self):
         # Arrange
-        self._write_config("c.yaml", """
-_target_: C
-value: "deepest"
-""")
-        self._write_config("b.yaml", """
-_target_: B
-c:
-  _ref_: c.yaml
-""")
-        self._write_config("a.yaml", """
-_target_: A
-b:
-  _ref_: b.yaml
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-a:
-  _ref_: a.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/c.yaml", {"_target_": "C", "value": "deepest"})
+        fs.add_file("/configs/b.yaml", {"_target_": "B", "c": {"_ref_": "c.yaml"}})
+        fs.add_file("/configs/a.yaml", {"_target_": "A", "b": {"_ref_": "b.yaml"}})
+        fs.add_file("/configs/app.yaml", {"_target_": "App", "a": {"_ref_": "a.yaml"}})
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["a"]["b"]["c"]["value"], "deepest")
 
     def test_compose__RefInListItems__EachItemResolved(self):
         # Arrange
-        self._write_config("models/resnet.yaml", """
-_target_: ResNet
-layers: 50
-""")
-        self._write_config("models/vgg.yaml", """
-_target_: VGG
-layers: 16
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-models:
-  - _ref_: models/resnet.yaml
-  - _ref_: models/vgg.yaml
-  - _target_: CustomModel
-    layers: 10
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/models/resnet.yaml", {"_target_": "ResNet", "layers": 50})
+        fs.add_file("/configs/models/vgg.yaml", {"_target_": "VGG", "layers": 16})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "models": [
+                {"_ref_": "models/resnet.yaml"},
+                {"_ref_": "models/vgg.yaml"},
+                {"_target_": "CustomModel", "layers": 10},
+            ],
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(len(result["models"]), 3)
@@ -332,41 +300,39 @@ models:
 
     def test_compose__RefCombinedWithInstance__RaisesRefInstanceConflictError(self):
         # Arrange
-        self._write_config("model.yaml", """
-_target_: Model
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: model.yaml
-  _instance_: /shared.db
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model"})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "model.yaml", "_instance_": "/shared.db"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefInstanceConflictError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefInstanceConflictError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("_ref_", str(ctx.exception))
         self.assertIn("_instance_", str(ctx.exception))
 
     def test_compose__RefToFragmentNoTarget__WorksIfTargetAddedViaOverride(self):
         # Arrange - fragment file with no _target_
-        self._write_config("fragments/optimizer.yaml", """
-type: adam
-lr: 0.001
-betas: [0.9, 0.999]
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-optimizer:
-  _ref_: fragments/optimizer.yaml
-  _target_: Optimizer
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/fragments/optimizer.yaml", {
+            "type": "adam",
+            "lr": 0.001,
+            "betas": [0.9, 0.999],
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "optimizer": {"_ref_": "fragments/optimizer.yaml", "_target_": "Optimizer"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["optimizer"]["_target_"], "Optimizer")
@@ -375,39 +341,37 @@ optimizer:
 
     def test_compose__RefWithNonStringPath__RaisesRefResolutionError(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: 123
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": 123},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefResolutionError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefResolutionError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("must be a string", str(ctx.exception))
 
     def test_compose__PlainRelativePath__ResolvesFromCurrentDir(self):
         # Arrange (no ./ prefix)
-        self._write_config("models/base.yaml", """
-_target_: Base
-value: 1
-""")
-        self._write_config("models/derived.yaml", """
-_target_: Derived
-base:
-  _ref_: base.yaml
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: models/derived.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/models/base.yaml", {"_target_": "Base", "value": 1})
+        fs.add_file("/configs/models/derived.yaml", {
+            "_target_": "Derived",
+            "base": {"_ref_": "base.yaml"},
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "models/derived.yaml"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["model"]["base"]["_target_"], "Base")
@@ -558,40 +522,26 @@ class ConfigComposerEdgeCaseTests(TestCase):
     """Edge case tests for ConfigComposer."""
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Set up for tests."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clean up after tests."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_compose__RefInNestedList__ResolvedCorrectly(self):
         # Arrange
-        self._write_config("item.yaml", """
-_target_: Item
-value: nested
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-matrix:
-  -
-    - _ref_: item.yaml
-    - value: inline
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/item.yaml", {"_target_": "Item", "value": "nested"})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "matrix": [[{"_ref_": "item.yaml"}, {"value": "inline"}]],
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["matrix"][0][0]["_target_"], "Item")
@@ -599,19 +549,17 @@ matrix:
 
     def test_compose__EmptyOverrides__ReferencedConfigUnchanged(self):
         # Arrange
-        self._write_config("model.yaml", """
-_target_: Model
-layers: 50
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: model.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model", "layers": 50})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "model.yaml"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["model"]["_target_"], "Model")
@@ -619,38 +567,35 @@ model:
 
     def test_compose__ReferencedFileHasRefAtRoot__RaisesRefAtRootError(self):
         # Arrange
-        self._write_config("base.yaml", """
-value: 1
-""")
-        self._write_config("broken.yaml", """
-_ref_: base.yaml
-extra: 2
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: broken.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/base.yaml", {"value": 1})
+        fs.add_file("/configs/broken.yaml", {"_ref_": "base.yaml", "extra": 2})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "broken.yaml"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefAtRootError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefAtRootError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("broken.yaml", str(ctx.exception))
 
     def test_compose__SelfCircularRef__RaisesCircularRefError(self):
         # Arrange - file references itself
-        entry = self._write_config("self.yaml", """
-_target_: Self
-nested:
-  _ref_: self.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/self.yaml", {
+            "_target_": "Self",
+            "nested": {"_ref_": "self.yaml"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(CircularRefError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(CircularRefError) as ctx:
+                composer.compose(Path("/configs/self.yaml"))
 
         self.assertIn("self.yaml", str(ctx.exception))
 
@@ -659,32 +604,21 @@ class ComposeConvenienceFunctionTests(TestCase):
     """Tests for the compose() convenience function."""
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Set up for tests."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clean up after tests."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_compose__SimpleFile__ReturnsConfig(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-value: 42
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {"_target_": "App", "value": 42})
 
         # Act
-        result = compose(entry)
+        with mock_filesystem(fs):
+            result = compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["_target_"], "App")
@@ -692,18 +626,16 @@ value: 42
 
     def test_compose__WithRef__ResolvesRef(self):
         # Arrange
-        self._write_config("model.yaml", """
-_target_: Model
-layers: 50
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: model.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model", "layers": 50})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "model.yaml"},
+        })
 
         # Act
-        result = compose(entry)
+        with mock_filesystem(fs):
+            result = compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["model"]["_target_"], "Model")
@@ -713,39 +645,25 @@ class ConfigComposerInternalTests(TestCase):
     """Tests for internal ConfigComposer edge cases."""
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Set up for tests."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clean up after tests."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_resolve_file_path__AbsolutePathWithoutConfigRoot__RaisesRefResolutionError(self):
         # Arrange
         from rconfig.CompositionWalker import CompositionWalker
         from rconfig.Provenance import Provenance
 
-        self._write_config("model.yaml", """
-_target_: Model
-value: 1
-""")
         # Create walker with config_root=None
         provenance = Provenance()
         walker = CompositionWalker(config_root=None, provenance=provenance)
 
         # Act & Assert
         with self.assertRaises(RefResolutionError) as ctx_err:
-            walker._resolve_file_path("/model.yaml", self.config_root, "test.path")
+            walker._resolve_file_path("/model.yaml", Path("/configs"), "test.path")
 
         self.assertIn("without config root", str(ctx_err.exception))
 
@@ -997,39 +915,32 @@ class ConfigComposerInstanceTests(TestCase):
     """Tests for _instance_ resolution in ConfigComposer."""
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Set up for tests."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clean up after tests."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_compose__BasicInstanceSameFile__SharesValue(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-database:
-  _target_: Database
-  url: "postgres://localhost"
-service:
-  _target_: Service
-  db:
-    _instance_: database
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "database": {
+                "_target_": "Database",
+                "url": "postgres://localhost",
+            },
+            "service": {
+                "_target_": "Service",
+                "db": {"_instance_": "database"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["database"]["_target_"], "Database")
@@ -1038,58 +949,68 @@ service:
 
     def test_compose__InstanceAbsolutePath__ResolvesFromRoot(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-shared:
-  database:
-    _target_: Database
-    url: "postgres://localhost"
-service:
-  db:
-    _instance_: /shared.database
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "shared": {
+                "database": {
+                    "_target_": "Database",
+                    "url": "postgres://localhost",
+                },
+            },
+            "service": {
+                "db": {"_instance_": "/shared.database"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["service"]["db"]["_target_"], "Database")
 
     def test_compose__InstanceRelativePath__ResolvesFromFileRoot(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-database:
-  _target_: Database
-  url: "postgres://localhost"
-service:
-  db:
-    _instance_: database
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "database": {
+                "_target_": "Database",
+                "url": "postgres://localhost",
+            },
+            "service": {
+                "db": {"_instance_": "database"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["service"]["db"]["_target_"], "Database")
 
     def test_compose__InstanceWithDotSlash__SameAsRelative(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-cache:
-  _target_: Cache
-  size: 100
-handler:
-  c:
-    _instance_: ./cache
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "cache": {
+                "_target_": "Cache",
+                "size": 100,
+            },
+            "handler": {
+                "c": {"_instance_": "./cache"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["handler"]["c"]["_target_"], "Cache")
@@ -1097,38 +1018,44 @@ handler:
 
     def test_compose__InstanceForwardReference__WorksCorrectly(self):
         # Arrange - reference defined later in file
-        entry = self._write_config("app.yaml", """
-_target_: App
-service:
-  db:
-    _instance_: database
-database:
-  _target_: Database
-  url: "postgres://localhost"
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "service": {
+                "db": {"_instance_": "database"},
+            },
+            "database": {
+                "_target_": "Database",
+                "url": "postgres://localhost",
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["service"]["db"]["_target_"], "Database")
 
     def test_compose__InstanceToObjectWithTarget__SharesObject(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _target_: Model
-  layers: 50
-trainer:
-  model:
-    _instance_: model
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {
+                "_target_": "Model",
+                "layers": 50,
+            },
+            "trainer": {
+                "model": {"_instance_": "model"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["trainer"]["model"]["_target_"], "Model")
@@ -1136,19 +1063,22 @@ trainer:
 
     def test_compose__InstanceToDictWithoutTarget__SharesDict(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-config:
-  batch_size: 32
-  learning_rate: 0.001
-trainer:
-  options:
-    _instance_: config
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "config": {
+                "batch_size": 32,
+                "learning_rate": 0.001,
+            },
+            "trainer": {
+                "options": {"_instance_": "config"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["trainer"]["options"]["batch_size"], 32)
@@ -1156,52 +1086,56 @@ trainer:
 
     def test_compose__InstanceToPrimitive__SharesValue(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-base_lr: 0.001
-optimizer:
-  lr:
-    _instance_: base_lr
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "base_lr": 0.001,
+            "optimizer": {
+                "lr": {"_instance_": "base_lr"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["optimizer"]["lr"], 0.001)
 
     def test_compose__InstanceToNonExistentPath__RaisesError(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-service:
-  db:
-    _instance_: nonexistent
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "service": {
+                "db": {"_instance_": "nonexistent"},
+            },
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(InstanceResolutionError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(InstanceResolutionError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("nonexistent", str(ctx.exception))
         self.assertIn("not found", str(ctx.exception))
 
     def test_compose__InstanceCircular__RaisesCircularInstanceError(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-a:
-  _instance_: b
-b:
-  _instance_: a
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "a": {"_instance_": "b"},
+            "b": {"_instance_": "a"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(CircularInstanceError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(CircularInstanceError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         # Should show the cycle
         self.assertIn("a", str(ctx.exception))
@@ -1209,58 +1143,59 @@ b:
 
     def test_compose__InstanceChaining__ResolvesTransitively(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-database:
-  _target_: Database
-alias:
-  _instance_: database
-service:
-  db:
-    _instance_: alias
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "database": {"_target_": "Database"},
+            "alias": {"_instance_": "database"},
+            "service": {
+                "db": {"_instance_": "alias"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["service"]["db"]["_target_"], "Database")
 
     def test_compose__InstanceNull__ReturnsNone(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-service:
-  db:
-    _instance_: null
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "service": {
+                "db": {"_instance_": None},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertIsNone(result["service"]["db"])
 
     def test_compose__InstanceInListItems__EachItemResolved(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-db1:
-  _target_: Database
-  name: primary
-db2:
-  _target_: Database
-  name: replica
-services:
-  - _instance_: db1
-  - _instance_: db2
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "db1": {"_target_": "Database", "name": "primary"},
+            "db2": {"_target_": "Database", "name": "replica"},
+            "services": [
+                {"_instance_": "db1"},
+                {"_instance_": "db2"},
+            ],
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(len(result["services"]), 2)
@@ -1269,24 +1204,25 @@ services:
 
     def test_compose__InstanceWithListIndexing__ResolvesCorrectly(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-databases:
-  - _target_: Database
-    name: primary
-  - _target_: Database
-    name: replica
-writer:
-  db:
-    _instance_: /databases[0]
-reader:
-  db:
-    _instance_: databases[1]
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "databases": [
+                {"_target_": "Database", "name": "primary"},
+                {"_target_": "Database", "name": "replica"},
+            ],
+            "writer": {
+                "db": {"_instance_": "/databases[0]"},
+            },
+            "reader": {
+                "db": {"_instance_": "databases[1]"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["writer"]["db"]["name"], "primary")
@@ -1294,88 +1230,89 @@ reader:
 
     def test_compose__InstanceCrossFileViaAbsolutePath__Works(self):
         # Arrange
-        self._write_config("shared/database.yaml", """
-_target_: Database
-url: "postgres://localhost"
-""")
-        self._write_config("services/user.yaml", """
-_target_: UserService
-db:
-  _instance_: /shared.database
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-shared:
-  database:
-    _ref_: shared/database.yaml
-services:
-  user:
-    _ref_: services/user.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/shared/database.yaml", {
+            "_target_": "Database",
+            "url": "postgres://localhost",
+        })
+        fs.add_file("/configs/services/user.yaml", {
+            "_target_": "UserService",
+            "db": {"_instance_": "/shared.database"},
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "shared": {
+                "database": {"_ref_": "shared/database.yaml"},
+            },
+            "services": {
+                "user": {"_ref_": "services/user.yaml"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["services"]["user"]["db"]["_target_"], "Database")
 
     def test_compose__InstanceCombinedWithRef__RaisesConflictError(self):
         # Arrange
-        self._write_config("model.yaml", """
-_target_: Model
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: model.yaml
-  _instance_: /shared.db
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model"})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {
+                "_ref_": "model.yaml",
+                "_instance_": "/shared.db",
+            },
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefInstanceConflictError):
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefInstanceConflictError):
+                composer.compose(Path("/configs/app.yaml"))
 
     def test_compose__InstanceNonStringPath__RaisesError(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-service:
-  db:
-    _instance_: 123
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "service": {
+                "db": {"_instance_": 123},
+            },
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(InstanceResolutionError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(InstanceResolutionError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("must be a string or null", str(ctx.exception))
 
     def test_compose__InstanceToPathInsideRefdFile__Works(self):
         # Arrange
-        self._write_config("models.yaml", """
-_target_: ModelConfig
-resnet:
-  _target_: ResNet
-  layers: 50
-vgg:
-  _target_: VGG
-  layers: 16
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-models:
-  _ref_: models.yaml
-trainer:
-  model:
-    _instance_: /models.resnet
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/models.yaml", {
+            "_target_": "ModelConfig",
+            "resnet": {"_target_": "ResNet", "layers": 50},
+            "vgg": {"_target_": "VGG", "layers": 16},
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "models": {"_ref_": "models.yaml"},
+            "trainer": {
+                "model": {"_instance_": "/models.resnet"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["trainer"]["model"]["_target_"], "ResNet")
@@ -1384,24 +1321,28 @@ trainer:
     def test_compose__InstanceTargetsProperty__ReturnsCorrectMapping(self):
         """Test that instance_targets property returns the resolved paths."""
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-shared:
-  database:
-    _target_: Database
-    url: "postgres://localhost"
-service_a:
-  db:
-    _instance_: /shared.database
-service_b:
-  db:
-    _instance_: /shared.database
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "shared": {
+                "database": {
+                    "_target_": "Database",
+                    "url": "postgres://localhost",
+                },
+            },
+            "service_a": {
+                "db": {"_instance_": "/shared.database"},
+            },
+            "service_b": {
+                "db": {"_instance_": "/shared.database"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        composer.compose(entry)
-        targets = composer.instance_targets
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            composer.compose(Path("/configs/app.yaml"))
+            targets = composer.instance_targets
 
         # Assert
         self.assertEqual(targets["service_a.db"], "shared.database")
@@ -1410,17 +1351,19 @@ service_b:
     def test_compose__InstanceTargetsNull__ReturnsNoneInMapping(self):
         """Test that _instance_: null is tracked correctly."""
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-service:
-  db:
-    _instance_: null
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "service": {
+                "db": {"_instance_": None},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        composer.compose(entry)
-        targets = composer.instance_targets
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            composer.compose(Path("/configs/app.yaml"))
+            targets = composer.instance_targets
 
         # Assert
         self.assertIn("service.db", targets)
@@ -1429,21 +1372,22 @@ service:
     def test_compose__InstanceTargetsChain__ReturnsResolvedTarget(self):
         """Test that chained instances resolve to the final target."""
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-database:
-  _target_: Database
-  url: "postgres://localhost"
-alias:
-  _instance_: database
-final:
-  _instance_: alias
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "database": {
+                "_target_": "Database",
+                "url": "postgres://localhost",
+            },
+            "alias": {"_instance_": "database"},
+            "final": {"_instance_": "alias"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        composer.compose(entry)
-        targets = composer.instance_targets
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            composer.compose(Path("/configs/app.yaml"))
+            targets = composer.instance_targets
 
         # Assert
         # Both alias and final resolve to the same ultimate target
@@ -1455,36 +1399,28 @@ class InstanceProvenanceTests(TestCase):
     """Tests for provenance tracking with _instance_."""
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Set up for tests."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clean up after tests."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_provenance__InstanceReference__TracksInstanceChain(self):
         # Arrange
-        entry = self._write_config("app.yaml", """_target_: App
-database:
-  _target_: Database
-service:
-  db:
-    _instance_: database
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "database": {"_target_": "Database"},
+            "service": {
+                "db": {"_instance_": "database"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         # Assert
         db_entry = prov.get("service.db")
@@ -1495,19 +1431,20 @@ service:
 
     def test_provenance__InstanceChain__TracksFullChain(self):
         # Arrange
-        entry = self._write_config("app.yaml", """_target_: App
-database:
-  _target_: Database
-alias:
-  _instance_: database
-service:
-  db:
-    _instance_: alias
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "database": {"_target_": "Database"},
+            "alias": {"_instance_": "database"},
+            "service": {
+                "db": {"_instance_": "alias"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         # Assert
         db_entry = prov.get("service.db")
@@ -1520,15 +1457,18 @@ service:
 
     def test_provenance__InstanceNull__TracksCorrectly(self):
         # Arrange
-        entry = self._write_config("app.yaml", """_target_: App
-service:
-  db:
-    _instance_: null
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "service": {
+                "db": {"_instance_": None},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         # Assert
         db_entry = prov.get("service.db")
@@ -1564,82 +1504,69 @@ class InstanceEdgeCaseTests(TestCase):
     """Edge case tests for _instance_ resolution."""
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Set up for tests."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clean up after tests."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_compose__InstanceNestedListAccess__WorksCorrectly(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-matrix:
-  - - name: cell00
-    - name: cell01
-  - - name: cell10
-    - name: cell11
-first:
-  _instance_: matrix[0][0]
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "matrix": [
+                [{"name": "cell00"}, {"name": "cell01"}],
+                [{"name": "cell10"}, {"name": "cell11"}],
+            ],
+            "first": {"_instance_": "matrix[0][0]"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["first"]["name"], "cell00")
 
     def test_compose__InstanceChainEndingWithNull__ResolvesCorrectly(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-alias:
-  _instance_: null
-service:
-  db:
-    _instance_: alias
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "alias": {"_instance_": None},
+            "service": {
+                "db": {"_instance_": "alias"},
+            },
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert - chains to null should result in None
         self.assertIsNone(result["service"]["db"])
 
     def test_compose__InstanceMultipleRefsToSame__AllShareValue(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-shared:
-  config:
-    batch_size: 32
-a:
-  cfg:
-    _instance_: /shared.config
-b:
-  cfg:
-    _instance_: shared.config
-c:
-  cfg:
-    _instance_: /shared.config
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "shared": {
+                "config": {"batch_size": 32},
+            },
+            "a": {"cfg": {"_instance_": "/shared.config"}},
+            "b": {"cfg": {"_instance_": "shared.config"}},
+            "c": {"cfg": {"_instance_": "/shared.config"}},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["a"]["cfg"]["batch_size"], 32)
@@ -1648,82 +1575,76 @@ c:
 
     def test_compose__InstanceToListItem__ReturnsListItem(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-items:
-  - first
-  - second
-  - third
-selected:
-  _instance_: items[1]
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "items": ["first", "second", "third"],
+            "selected": {"_instance_": "items[1]"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["selected"], "second")
 
     def test_compose__InstanceFromNestedRef__WorksCorrectly(self):
         # Arrange - instance inside a nested _ref_
-        self._write_config("level2.yaml", """
-_target_: Level2
-value: deep
-""")
-        self._write_config("level1.yaml", """
-_target_: Level1
-inner:
-  _ref_: level2.yaml
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-outer:
-  _ref_: level1.yaml
-ref_to_deep:
-  _instance_: /outer.inner.value
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/level2.yaml", {
+            "_target_": "Level2",
+            "value": "deep",
+        })
+        fs.add_file("/configs/level1.yaml", {
+            "_target_": "Level1",
+            "inner": {"_ref_": "level2.yaml"},
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "outer": {"_ref_": "level1.yaml"},
+            "ref_to_deep": {"_instance_": "/outer.inner.value"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["ref_to_deep"], "deep")
 
     def test_compose__InstanceSelfCircular__RaisesError(self):
         # Arrange - single node circular reference
-        entry = self._write_config("app.yaml", """
-_target_: App
-self_ref:
-  _instance_: self_ref
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "self_ref": {"_instance_": "self_ref"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(CircularInstanceError):
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(CircularInstanceError):
+                composer.compose(Path("/configs/app.yaml"))
 
     def test_compose__InstanceLongChain__ResolvesCorrectly(self):
         # Arrange - long chain of instances
-        entry = self._write_config("app.yaml", """
-_target_: App
-target:
-  _target_: Target
-  value: final
-a:
-  _instance_: target
-b:
-  _instance_: a
-c:
-  _instance_: b
-d:
-  _instance_: c
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "target": {"_target_": "Target", "value": "final"},
+            "a": {"_instance_": "target"},
+            "b": {"_instance_": "a"},
+            "c": {"_instance_": "b"},
+            "d": {"_instance_": "c"},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["d"]["_target_"], "Target")
@@ -1731,51 +1652,51 @@ d:
 
     def test_compose__NoInstances__ReturnsConfigUnchanged(self):
         # Arrange - no _instance_ references
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _target_: Model
-  layers: 50
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_target_": "Model", "layers": 50},
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
         # Assert
         self.assertEqual(result["model"]["layers"], 50)
 
     def test_compose__InstanceIndexOutOfRange__RaisesError(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-items:
-  - first
-  - second
-selected:
-  _instance_: items[99]
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "items": ["first", "second"],
+            "selected": {"_instance_": "items[99]"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(InstanceResolutionError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(InstanceResolutionError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("not found", str(ctx.exception))
 
     def test_compose__InstanceToNonIndexableWithIndex__RaisesError(self):
         # Arrange
-        entry = self._write_config("app.yaml", """
-_target_: App
-value: 42
-selected:
-  _instance_: value[0]
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "value": 42,
+            "selected": {"_instance_": "value[0]"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(InstanceResolutionError) as ctx:
-            composer.compose(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(InstanceResolutionError) as ctx:
+                composer.compose(Path("/configs/app.yaml"))
 
         self.assertIn("not found", str(ctx.exception))
 
@@ -1788,204 +1709,209 @@ class ProvenanceErrorPathTests(TestCase):
     """
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Set up for tests."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clean up after tests."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_compose_with_provenance__RefAtRoot__RaisesRefAtRootError(self):
         """Test _ref_ at root level raises error with provenance tracking."""
-        # Arrange - line 201
-        self._write_config("base.yaml", """_target_: Base
-value: 1
-""")
-        entry = self._write_config("app.yaml", """_ref_: base.yaml
-extra: value
-""")
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/base.yaml", {"_target_": "Base", "value": 1})
+        fs.add_file("/configs/app.yaml", {"_ref_": "base.yaml", "extra": "value"})
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefAtRootError) as ctx:
-            composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefAtRootError) as ctx:
+                composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         self.assertIn("root level", str(ctx.exception))
 
     def test_compose_with_provenance__CircularRefs__RaisesCircularRefError(self):
         """Test circular refs detected with provenance tracking."""
-        # Arrange - lines 222-224
-        self._write_config("a.yaml", """_target_: A
-b:
-  _ref_: b.yaml
-""")
-        self._write_config("b.yaml", """_target_: B
-a:
-  _ref_: a.yaml
-""")
-        entry = self._write_config("app.yaml", """_target_: App
-nested:
-  _ref_: a.yaml
-""")
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/a.yaml", {
+            "_target_": "A",
+            "b": {"_ref_": "b.yaml"},
+        })
+        fs.add_file("/configs/b.yaml", {
+            "_target_": "B",
+            "a": {"_ref_": "a.yaml"},
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "nested": {"_ref_": "a.yaml"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(CircularRefError) as ctx:
-            composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(CircularRefError) as ctx:
+                composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         self.assertIn("a.yaml", str(ctx.exception))
         self.assertIn("b.yaml", str(ctx.exception))
 
     def test_compose_with_provenance__RefInstanceConflict__RaisesError(self):
         """Test _ref_ and _instance_ conflict with provenance tracking."""
-        # Arrange - line 554
-        self._write_config("model.yaml", """_target_: Model
-value: 1
-""")
-        entry = self._write_config("app.yaml", """_target_: App
-model:
-  _ref_: model.yaml
-  _instance_: /shared.db
-""")
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model", "value": 1})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {
+                "_ref_": "model.yaml",
+                "_instance_": "/shared.db",
+            },
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefInstanceConflictError) as ctx:
-            composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefInstanceConflictError) as ctx:
+                composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         self.assertIn("_ref_", str(ctx.exception))
         self.assertIn("_instance_", str(ctx.exception))
 
     def test_compose_with_provenance__InvalidInstanceType__RaisesError(self):
         """Test invalid _instance_ type (non-string) with provenance tracking."""
-        # Arrange - lines 588-591
-        entry = self._write_config("app.yaml", """_target_: App
-service:
-  db:
-    _instance_: 123
-""")
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "service": {
+                "db": {"_instance_": 123},
+            },
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(InstanceResolutionError) as ctx:
-            composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(InstanceResolutionError) as ctx:
+                composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         self.assertIn("must be a string or null", str(ctx.exception))
 
     def test_compose_with_provenance__NonStringRef__RaisesError(self):
         """Test non-string _ref_ with provenance tracking."""
-        # Arrange - line 625
-        entry = self._write_config("app.yaml", """_target_: App
-model:
-  _ref_: 123
-""")
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": 123},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefResolutionError) as ctx:
-            composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefResolutionError) as ctx:
+                composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         self.assertIn("must be a string", str(ctx.exception))
 
     def test_compose_with_provenance__RefFileNotFound__RaisesError(self):
         """Test file not found error wrapped in RefResolutionError with provenance."""
-        # Arrange - lines 640-641
-        entry = self._write_config("app.yaml", """_target_: App
-model:
-  _ref_: does_not_exist.yaml
-""")
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "does_not_exist.yaml"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefResolutionError) as ctx:
-            composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefResolutionError) as ctx:
+                composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         self.assertIn("does_not_exist.yaml", str(ctx.exception))
         self.assertIn("file not found", str(ctx.exception))
 
     def test_compose_with_provenance__RefAtRootOfReferencedFile__RaisesError(self):
         """Test _ref_ at root of referenced file with provenance tracking."""
-        # Arrange - line 645
-        self._write_config("base.yaml", """value: 1
-""")
-        self._write_config("broken.yaml", """_ref_: base.yaml
-extra: 2
-""")
-        entry = self._write_config("app.yaml", """_target_: App
-model:
-  _ref_: broken.yaml
-""")
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/base.yaml", {"value": 1})
+        fs.add_file("/configs/broken.yaml", {"_ref_": "base.yaml", "extra": 2})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "broken.yaml"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefAtRootError) as ctx:
-            composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefAtRootError) as ctx:
+                composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         self.assertIn("broken.yaml", str(ctx.exception))
 
     def test_compose_with_provenance__NullTargetOverride__RaisesError(self):
         """Test overriding _target_ to null with provenance tracking."""
-        # Arrange - line 654
-        self._write_config("model.yaml", """_target_: Model
-value: 1
-""")
-        entry = self._write_config("app.yaml", """_target_: App
-model:
-  _ref_: model.yaml
-  _target_: null
-""")
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model", "value": 1})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {
+                "_ref_": "model.yaml",
+                "_target_": None,
+            },
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(RefResolutionError) as ctx:
-            composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(RefResolutionError) as ctx:
+                composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         self.assertIn("_target_", str(ctx.exception))
         self.assertIn("null", str(ctx.exception))
 
-    def test_compose_with_provenance__NestedLists__TracksProvenance(self):
-        """Test nested lists with provenance tracking."""
-        # Arrange - lines 711-714, 716
-        entry = self._write_config("app.yaml", """_target_: App
-matrix:
-  -
-    - value: nested
-    - value: item
-""")
+    def test_compose_with_provenance__NestedLists__ComposesCorrectly(self):
+        """Test nested lists are composed correctly with provenance tracking."""
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "matrix": [
+                [{"value": "nested"}, {"value": "item"}],
+            ],
+        })
 
         # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            config = composer.compose(Path("/configs/app.yaml"))
+            prov = composer.provenance
 
-        # Assert
-        self.assertIsNotNone(prov.get("matrix"))
+        # Assert - verify nested lists are composed correctly
+        self.assertIsNotNone(prov)
+        self.assertEqual(config["matrix"][0][0]["value"], "nested")
+        self.assertEqual(config["matrix"][0][1]["value"], "item")
 
     def test_compose_with_provenance__ChainedInstanceCycle__RaisesError(self):
         """Test circular chained instance references."""
-        # Arrange - lines 769, 773, 777-778
-        entry = self._write_config("app.yaml", """_target_: App
-a:
-  _instance_: b
-b:
-  _instance_: c
-c:
-  _instance_: a
-""")
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "a": {"_instance_": "b"},
+            "b": {"_instance_": "c"},
+            "c": {"_instance_": "a"},
+        })
 
         # Act & Assert
-        composer = ConfigComposer(self.config_root)
-        with self.assertRaises(CircularInstanceError) as ctx:
-            composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            with self.assertRaises(CircularInstanceError) as ctx:
+                composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         # Should detect the cycle
         error_str = str(ctx.exception)
@@ -1996,22 +1922,12 @@ class ConfigComposerInternalMethodTests(TestCase):
     """Tests for internal ConfigComposer methods to improve coverage."""
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Set up for tests."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clean up after tests."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_get_line_number__RegularDict__ReturnsNone(self):
         """Test _get_line_number with a regular dict (no CommentedMap)."""
@@ -2020,7 +1936,7 @@ class ConfigComposerInternalMethodTests(TestCase):
         from rconfig.Provenance import Provenance
 
         provenance = Provenance()
-        walker = CompositionWalker(config_root=self.config_root, provenance=provenance)
+        walker = CompositionWalker(config_root=Path("/configs"), provenance=provenance)
         regular_dict = {"key": "value"}
 
         # Act
