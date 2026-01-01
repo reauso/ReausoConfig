@@ -4,7 +4,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from unittest.case import TestCase
+from unittest import TestCase
 
 import rconfig as rc
 from rconfig import (
@@ -30,7 +30,7 @@ from rconfig import (
 class ModuleLevelAPITests(TestCase):
     def setUp(self):
         # Clear the store before each test
-        rc._store._known_references.clear()
+        rc._store.clear()
 
     def test_register__TargetClass__AddsToKnownReferences(self):
         # Arrange
@@ -169,7 +169,7 @@ class ExportsTests(TestCase):
 
 class IntegrationTests(TestCase):
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store.clear()
 
     def test_full_workflow__YamlFileToInstance__Works(self):
         # Arrange
@@ -230,7 +230,7 @@ epochs: 10
 
 class InstantiateWithOverridesTests(TestCase):
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store.clear()
 
     def test_instantiate__WithDictOverrides__AppliesOverrides(self):
         # Arrange
@@ -373,7 +373,7 @@ class ApiCliOverridesTests(TestCase):
 
     def setUp(self):
         # Clear the store before each test
-        rc._store._known_references.clear()
+        rc._store.clear()
 
     def test_instantiate__WithCliOverrides__AppliesOverrides(self):
         """Test instantiate with cli_overrides=True reads from sys.argv."""

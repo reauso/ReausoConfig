@@ -4,6 +4,7 @@ import unittest
 
 from rconfig.path_utils import (
     PathNavigationError,
+    build_child_path,
     get_value_at_path,
     navigate_path,
     parse_path_segments,
@@ -221,6 +222,34 @@ class GetValueAtPathErrorTests(unittest.TestCase):
             get_value_at_path(config, "value.nested")
 
         self.assertIn("non-dict", str(ctx.exception))
+
+
+class BuildChildPathTests(unittest.TestCase):
+    """Tests for build_child_path function."""
+
+    def test_buildChildPath__EmptyParentWithStringKey__ReturnsKey(self):
+        result = build_child_path("", "model")
+        self.assertEqual(result, "model")
+
+    def test_buildChildPath__NonEmptyParentWithStringKey__ReturnsDotSeparated(self):
+        result = build_child_path("model", "layers")
+        self.assertEqual(result, "model.layers")
+
+    def test_buildChildPath__EmptyParentWithIntIndex__ReturnsBracketNotation(self):
+        result = build_child_path("", 0)
+        self.assertEqual(result, "[0]")
+
+    def test_buildChildPath__NonEmptyParentWithIntIndex__ReturnsBracketNotation(self):
+        result = build_child_path("callbacks", 0)
+        self.assertEqual(result, "callbacks[0]")
+
+    def test_buildChildPath__NestedPathWithStringKey__AppendsCorrectly(self):
+        result = build_child_path("model.encoder", "hidden_size")
+        self.assertEqual(result, "model.encoder.hidden_size")
+
+    def test_buildChildPath__NestedPathWithIntIndex__AppendsCorrectly(self):
+        result = build_child_path("model.layers", 2)
+        self.assertEqual(result, "model.layers[2]")
 
 
 if __name__ == "__main__":

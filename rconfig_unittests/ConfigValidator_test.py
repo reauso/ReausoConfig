@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Union
-from unittest.case import TestCase
+from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from rconfig.ConfigStore import ConfigStore
@@ -26,7 +26,7 @@ from rconfig.errors import (
 class ConfigValidatorTests(TestCase):
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_validate__ValidConfig__ReturnsValidResult(self):
@@ -313,7 +313,7 @@ class ConfigValidatorEdgeCaseTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_validate__ClassWithVarKeyword__SkipsKwargsValidation(self):
@@ -664,7 +664,7 @@ class ConfigValidatorImplicitTargetTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_validate__ImplicitNestedConfig_ConcreteType__ReturnsValidResult(self):
@@ -1414,7 +1414,7 @@ class ConfigValidatorAutoRegistrationTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     # === SUCCESS CASES ===
@@ -1711,7 +1711,7 @@ class ValidateOverridePathTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     # --- Empty path (line 557-558) ---
@@ -1904,7 +1904,7 @@ class GetFieldTypeTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_getFieldType__NoTargetInConfig__ReturnsNone(self):
@@ -1980,7 +1980,7 @@ class IsClassTypeTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_isClassType__GenericType__ReturnsFalse(self):
@@ -2001,7 +2001,7 @@ class FindRegisteredSubclassesTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_findSubclasses__IssubclassTypeError__HandledGracefully(self):
@@ -2034,7 +2034,7 @@ class CheckTargetTypeCompatibilityTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_checkCompatibility__NoExpectedType__ReturnsEmpty(self):
@@ -2105,7 +2105,7 @@ class TypeReprTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_typeRepr__UntypedList__ReturnsListString(self):
@@ -2164,7 +2164,7 @@ class ConfigValidatorCoverageTests(TestCase):
 
     def _empty_store(self) -> ConfigStore:
         store = ConfigStore()
-        store._known_references.clear()
+        store.clear()
         return store
 
     def test_is_concrete_type__NameCollision__UsesFullyQualifiedName(self):
