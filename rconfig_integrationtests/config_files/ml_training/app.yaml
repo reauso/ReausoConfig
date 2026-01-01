@@ -1,0 +1,29 @@
+_target_: trainer_app
+
+# Shared components
+logger:
+  _ref_: shared/logger.yaml
+
+dataset:
+  _ref_: data/cifar10.yaml
+
+# Model selection (can be swapped)
+model:
+  _ref_: models/resnet.yaml
+
+# Training configuration
+training:
+  _target_: training_config
+  epochs: 100
+  save_every: 10
+  log:
+    _instance_: logger
+
+# Evaluation configuration
+evaluation:
+  _target_: eval_config
+  metrics: [accuracy, f1, precision, recall]
+  log:
+    _instance_: logger
+  data:
+    _instance_: dataset

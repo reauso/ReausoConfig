@@ -1,0 +1,4 @@
+_target_: scheduler
+type: cosine
+warmup_epochs: 5
+min_lr: 0.00001
