@@ -200,3 +200,151 @@ class YamlConfigLoaderTests(TestCase):
 
             self.assertEqual(context.exception.path, path)
             self.assertIn("disk error", context.exception.reason)
+
+
+class YamlConfigLoaderPositionsTests(TestCase):
+    """Tests for load_with_positions method."""
+
+    def test_load_with_positions__ValidYaml__ReturnsCommentedMap(self):
+        # Arrange
+        from ruamel.yaml.comments import CommentedMap
+
+        loader = YamlConfigLoader()
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("_target_: model\nlayers: 50\n")
+            path = Path(f.name)
+
+        try:
+            # Act
+            result = loader.load_with_positions(path)
+
+            # Assert
+            self.assertIsInstance(result, CommentedMap)
+            self.assertEqual(result["_target_"], "model")
+            self.assertEqual(result["layers"], 50)
+        finally:
+            path.unlink()
+
+    def test_load_with_positions__HasLineInfo__CanGetLineNumbers(self):
+        # Arrange
+        loader = YamlConfigLoader()
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("_target_: model\nlayers: 50\nlr: 0.001\n")
+            path = Path(f.name)
+
+        try:
+            # Act
+            result = loader.load_with_positions(path)
+
+            # Assert - line numbers are 0-indexed
+            line, _ = result.lc.key("_target_")
+            self.assertEqual(line, 0)
+
+            line, _ = result.lc.key("layers")
+            self.assertEqual(line, 1)
+
+            line, _ = result.lc.key("lr")
+            self.assertEqual(line, 2)
+        finally:
+            path.unlink()
+
+    def test_load_with_positions__EmptyFile__ReturnsEmptyCommentedMap(self):
+        # Arrange
+        from ruamel.yaml.comments import CommentedMap
+
+        loader = YamlConfigLoader()
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("")
+            path = Path(f.name)
+
+        try:
+            # Act
+            result = loader.load_with_positions(path)
+
+            # Assert
+            self.assertIsInstance(result, CommentedMap)
+            self.assertEqual(len(result), 0)
+        finally:
+            path.unlink()
+
+    def test_load_with_positions__FileNotFound__RaisesConfigFileError(self):
+        # Arrange
+        loader = YamlConfigLoader()
+        path = Path("/nonexistent/path/config.yaml")
+
+        # Act & Assert
+        with self.assertRaises(ConfigFileError) as context:
+            loader.load_with_positions(path)
+
+        self.assertIn("not found", context.exception.reason)
+
+    def test_load_with_positions__InvalidYaml__RaisesConfigFileError(self):
+        # Arrange
+        loader = YamlConfigLoader()
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("invalid: yaml: syntax")
+            path = Path(f.name)
+
+        try:
+            # Act & Assert
+            with self.assertRaises(ConfigFileError) as context:
+                loader.load_with_positions(path)
+
+            self.assertIn("invalid YAML", context.exception.reason)
+        finally:
+            path.unlink()
+
+    def test_load_with_positions__NonDictRoot__RaisesConfigFileError(self):
+        # Arrange
+        loader = YamlConfigLoader()
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("- item1\n- item2\n")
+            path = Path(f.name)
+
+        try:
+            # Act & Assert
+            with self.assertRaises(ConfigFileError) as context:
+                loader.load_with_positions(path)
+
+            self.assertIn("mapping", context.exception.reason)
+        finally:
+            path.unlink()
+
+    def test_load_with_positions__PermissionDenied__RaisesConfigFileError(self):
+        # Arrange
+        loader = YamlConfigLoader()
+        path = Path("/some/path/config.yaml")
+
+        with patch("builtins.open", side_effect=PermissionError("access denied")):
+            # Act & Assert
+            with self.assertRaises(ConfigFileError) as context:
+                loader.load_with_positions(path)
+
+            self.assertIn("permission denied", context.exception.reason)
+
+    def test_load_with_positions__GenericException__RaisesConfigFileError(self):
+        # Arrange
+        loader = YamlConfigLoader()
+        path = Path("/some/path/config.yaml")
+
+        with patch("builtins.open", side_effect=OSError("disk error")):
+            # Act & Assert
+            with self.assertRaises(ConfigFileError) as context:
+                loader.load_with_positions(path)
+
+            self.assertIn("disk error", context.exception.reason)
