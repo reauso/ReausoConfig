@@ -20,6 +20,7 @@ from rconfig.errors import (
     TypeMismatchError,
     ValidationError,
 )
+from rconfig.path_utils import PathNavigationError, navigate_path
 from rconfig.type_utils import (
     TARGET_KEY,
     could_be_implicit_nested,
@@ -156,17 +157,8 @@ class ConfigValidator:
 
             # Check if value is an explicit nested config (has _target_)
             if self._is_nested_config(value):
-                # Auto-register target if not registered but we have expected type
-                # Only auto-register if target name matches expected class name
                 target_name = value[TARGET_KEY]
-                if target_name not in self._store.known_references:
-                    class_type = extract_class_from_hint(expected_type)
-                    if (
-                        class_type is not None
-                        and not inspect.isabstract(class_type)
-                        and target_name.lower() == class_type.__name__.lower()
-                    ):
-                        self._store.register(target_name, class_type)
+                self._maybe_auto_register_target(target_name, expected_type)
 
                 # Recursively validate nested config
                 nested_result = self.validate(value, field_path)
@@ -202,6 +194,28 @@ class ConfigValidator:
     def _is_nested_config(self, value: Any) -> bool:
         """Check if a value is a nested config (dict with _target_)."""
         return isinstance(value, dict) and TARGET_KEY in value
+
+    def _maybe_auto_register_target(self, target_name: str, expected_type: type) -> None:
+        """Auto-register a target if not registered and matches expected type.
+
+        Only registers if the target name matches the expected class name (case-insensitive)
+        and the class is not abstract.
+
+        :param target_name: The target name from the config.
+        :param expected_type: The expected type from the parent's type hint.
+        """
+        if target_name in self._store.known_references:
+            return
+
+        class_type = extract_class_from_hint(expected_type)
+        if class_type is None:
+            return
+
+        if inspect.isabstract(class_type):
+            return
+
+        if target_name.lower() == class_type.__name__.lower():
+            self._store.register(target_name, class_type)
 
     def _implicit_nested_errors(
         self,
@@ -331,50 +345,63 @@ class ConfigValidator:
         origin = get_origin(expected_type)
         args = get_args(expected_type)
 
-        # Handle None
         if value is None:
-            if origin is Union and type(None) in args:
-                return True
-            return expected_type is type(None)
-
-        # Handle Union (including Optional which is Union[T, None])
+            return self._matches_none_type(expected_type, origin, args)
         if origin is Union:
-            return any(self._type_matches(value, arg) for arg in args)
-
-        # Handle list
+            return self._matches_union_type(value, args)
         if origin is list:
-            if not isinstance(value, list):
-                return False
-            if not args:
-                return True
-            return all(self._type_matches(item, args[0]) for item in value)
-
-        # Handle dict
+            return self._matches_list_type(value, args)
         if origin is dict:
-            if not isinstance(value, dict):
-                return False
-            if not args:
-                return True
-            key_type, value_type = args
-            return all(
-                self._type_matches(k, key_type) and self._type_matches(v, value_type)
-                for k, v in value.items()
-            )
-
-        # Handle basic types
+            return self._matches_dict_type(value, args)
         if origin is None:
-            # Explicit nested config - validated recursively
-            if isinstance(value, dict) and TARGET_KEY in value:
-                return True
-
-            # Implicit nested config (dict without _target_ matching class type)
-            if isinstance(value, dict) and is_class_type(expected_type):
-                return True  # Validated by _implicit_nested_errors
-
-            # Direct type check
-            return isinstance(value, expected_type)
-
+            return self._matches_basic_type(value, expected_type)
+        # Unhandled parameterized generic (e.g., tuple, Callable)
         return False
+
+    def _matches_none_type(
+        self, expected_type: type, origin: type | None, args: tuple[type, ...]
+    ) -> bool:
+        """Check if None matches the expected type."""
+        if origin is Union and type(None) in args:
+            return True
+        return expected_type is type(None)
+
+    def _matches_union_type(self, value: Any, args: tuple[type, ...]) -> bool:
+        """Check if value matches any type in a Union."""
+        return any(self._type_matches(value, arg) for arg in args)
+
+    def _matches_list_type(self, value: Any, args: tuple[type, ...]) -> bool:
+        """Check if value matches a list type."""
+        if not isinstance(value, list):
+            return False
+        if not args:
+            return True
+        return all(self._type_matches(item, args[0]) for item in value)
+
+    def _matches_dict_type(self, value: Any, args: tuple[type, ...]) -> bool:
+        """Check if value matches a dict type."""
+        if not isinstance(value, dict):
+            return False
+        if not args:
+            return True
+        key_type, value_type = args
+        return all(
+            self._type_matches(k, key_type) and self._type_matches(v, value_type)
+            for k, v in value.items()
+        )
+
+    def _matches_basic_type(self, value: Any, expected_type: type) -> bool:
+        """Check if value matches a basic (non-generic) type."""
+        # Explicit nested config - validated recursively
+        if isinstance(value, dict) and TARGET_KEY in value:
+            return True
+
+        # Implicit nested config (dict without _target_ matching class type)
+        if isinstance(value, dict) and is_class_type(expected_type):
+            return True  # Validated by _implicit_nested_errors
+
+        # Direct type check
+        return isinstance(value, expected_type)
 
     def _type_repr(self, t: type) -> str:
         """Get a readable string representation of a type."""
@@ -420,46 +447,50 @@ class ConfigValidator:
         if not path:
             raise InvalidOverridePathError(path, "Empty path")
 
-        current: Any = config
+        # Validate path exists using shared utility
+        try:
+            navigate_path(config, path)
+        except PathNavigationError as e:
+            raise InvalidOverridePathError(path, e.message) from e
+
+        # Collect type hints (path is known valid)
+        return self._collect_type_at_path(path, config)
+
+    def _collect_type_at_path(
+        self, path: list[str | int], config: dict[str, Any]
+    ) -> type | None:
+        """Collect type hint at the end of a validated path.
+
+        :param path: Validated path to traverse.
+        :param config: The configuration dictionary.
+        :return: Expected type from class type hints, or None if no hint available.
+        """
+        current = config
         current_type: type | None = None
 
-        for i, key in enumerate(path):
+        for key in path:
             if isinstance(key, int):
-                # List index access
-                if not isinstance(current, list):
-                    raise InvalidOverridePathError(
-                        path, f"Cannot index into non-list at position {i}"
-                    )
-                if key < 0 or key >= len(current):
-                    raise InvalidOverridePathError(
-                        path, f"List index {key} out of range (list has {len(current)} elements)"
-                    )
+                current_type = self._get_list_element_type(current_type)
                 current = current[key]
-                # Update current_type for list element
-                if current_type is not None:
-                    origin = get_origin(current_type)
-                    args = get_args(current_type)
-                    if origin is list and args:
-                        current_type = args[0]
-                    else:
-                        current_type = None
             else:
-                # Dict key access
-                if not isinstance(current, dict):
-                    raise InvalidOverridePathError(
-                        path, f"Cannot access key '{key}' on non-dict at position {i}"
-                    )
-                if key not in current:
-                    raise InvalidOverridePathError(
-                        path, f"Key '{key}' not found in config"
-                    )
-
-                # Get type hint for this field if we have a target
                 current_type = self._get_field_type(current, key)
-
                 current = current[key]
 
         return current_type
+
+    def _get_list_element_type(self, current_type: type | None) -> type | None:
+        """Extract element type from a list type hint.
+
+        :param current_type: Current type hint (should be a list type).
+        :return: Element type if available, None otherwise.
+        """
+        if current_type is None:
+            return None
+        origin = get_origin(current_type)
+        args = get_args(current_type)
+        if origin is list and args:
+            return args[0]
+        return None
 
     def _get_field_type(self, config: dict[str, Any], field_name: str) -> type | None:
         """Get the expected type for a field based on the config's target class.

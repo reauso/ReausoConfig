@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from .errors import InvalidOverrideSyntaxError
+from .path_utils import PathNavigationError, navigate_path
 
 
 @dataclass
@@ -300,51 +301,103 @@ def _apply_single_override(config: dict[str, Any], override: Override) -> None:
     if not override.path:
         return
 
-    # Navigate to parent of target
-    current: Any = config
-    for i, key in enumerate(override.path[:-1]):
-        if isinstance(key, int):
-            if not isinstance(current, list) or key >= len(current):
-                raise KeyError(f"List index {key} out of range at path {override.path[:i+1]}")
-            current = current[key]
-        else:
-            if not isinstance(current, dict) or key not in current:
-                raise KeyError(f"Key '{key}' not found at path {override.path[:i+1]}")
-            current = current[key]
-
-    # Apply the operation
+    current = _navigate_to_parent(config, override.path)
     final_key = override.path[-1]
 
     if override.operation == "set":
-        if isinstance(final_key, int):
-            if not isinstance(current, list) or final_key >= len(current):
-                raise KeyError(f"List index {final_key} out of range")
-            current[final_key] = override.value
-        else:
-            if not isinstance(current, dict):
-                raise KeyError(f"Cannot set key '{final_key}' on non-dict")
-            current[final_key] = override.value
-
+        _apply_set(current, final_key, override.value)
     elif override.operation == "add":
-        if isinstance(final_key, int):
-            raise ValueError("Cannot use add operation with list index")
-        if not isinstance(current, dict):
-            raise KeyError(f"Cannot access key '{final_key}' on non-dict")
-        if final_key not in current:
-            current[final_key] = [override.value]
-        elif isinstance(current[final_key], list):
-            current[final_key].append(override.value)
-        else:
-            raise ValueError(f"Cannot add to non-list field '{final_key}'")
-
+        _apply_add(current, final_key, override.value)
     elif override.operation == "remove":
-        if isinstance(final_key, int):
-            if not isinstance(current, list) or final_key >= len(current):
-                raise KeyError(f"List index {final_key} out of range")
-            del current[final_key]
-        else:
-            if not isinstance(current, dict):
-                raise KeyError(f"Cannot remove key '{final_key}' from non-dict")
-            if final_key not in current:
-                raise KeyError(f"Key '{final_key}' not found for removal")
-            del current[final_key]
+        _apply_remove(current, final_key)
+
+
+def _navigate_to_parent(config: dict[str, Any], path: list[str | int]) -> Any:
+    """Navigate to the parent of the target location in the config.
+
+    :param config: The configuration dictionary.
+    :param path: Full path including the target key.
+    :return: The parent container (dict or list) of the target.
+    :raises KeyError: If navigation fails.
+    """
+    try:
+        return navigate_path(config, path, stop_before_last=True)
+    except PathNavigationError as e:
+        raise KeyError(f"{e.message} at path {e.path[:e.segment_index+1]}") from e
+
+
+def _validate_list_access(current: Any, index: int) -> None:
+    """Validate that current is a list and index is in range.
+
+    :param current: Container to validate.
+    :param index: List index to access.
+    :raises KeyError: If current is not a list or index is out of range.
+    """
+    if not isinstance(current, list):
+        raise KeyError(f"Cannot access index {index} on non-list")
+    if index < 0 or index >= len(current):
+        raise KeyError(f"List index {index} out of range")
+
+
+def _validate_dict_access(current: Any, key: str) -> None:
+    """Validate that current is a dict.
+
+    :param current: Container to validate.
+    :param key: Dict key being accessed.
+    :raises KeyError: If current is not a dict.
+    """
+    if not isinstance(current, dict):
+        raise KeyError(f"Cannot access key '{key}' on non-dict")
+
+
+def _apply_set(current: Any, final_key: str | int, value: Any) -> None:
+    """Apply a set operation to the target location.
+
+    :param current: Parent container of the target.
+    :param final_key: Key or index of the target.
+    :param value: Value to set.
+    :raises KeyError: If the target location is invalid.
+    """
+    if isinstance(final_key, int):
+        _validate_list_access(current, final_key)
+        current[final_key] = value
+    else:
+        _validate_dict_access(current, final_key)
+        current[final_key] = value
+
+
+def _apply_add(current: Any, final_key: str | int, value: Any) -> None:
+    """Apply an add operation to append a value to a list field.
+
+    :param current: Parent container of the target.
+    :param final_key: Key of the target field.
+    :param value: Value to add.
+    :raises ValueError: If add operation is invalid for this target.
+    :raises KeyError: If the target location is invalid.
+    """
+    if isinstance(final_key, int):
+        raise ValueError("Cannot use add operation with list index")
+    _validate_dict_access(current, final_key)
+    if final_key not in current:
+        current[final_key] = [value]
+    elif isinstance(current[final_key], list):
+        current[final_key].append(value)
+    else:
+        raise ValueError(f"Cannot add to non-list field '{final_key}'")
+
+
+def _apply_remove(current: Any, final_key: str | int) -> None:
+    """Apply a remove operation to delete a key or list element.
+
+    :param current: Parent container of the target.
+    :param final_key: Key or index to remove.
+    :raises KeyError: If the target doesn't exist or location is invalid.
+    """
+    if isinstance(final_key, int):
+        _validate_list_access(current, final_key)
+        del current[final_key]
+    else:
+        _validate_dict_access(current, final_key)
+        if final_key not in current:
+            raise KeyError(f"Key '{final_key}' not found for removal")
+        del current[final_key]
