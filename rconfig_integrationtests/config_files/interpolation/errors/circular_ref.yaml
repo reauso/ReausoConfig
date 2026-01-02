@@ -1,0 +1,6 @@
+_target_: circular_ref_test
+# Circular reference test - should raise CircularInterpolationError
+
+a: ${/b}
+b: ${/c}
+c: ${/a}

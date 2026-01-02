@@ -1,0 +1,7 @@
+_target_: string_subtraction_test
+# String subtraction error test - should raise InterpolationResolutionError
+# Subtracting strings is not a valid operation
+
+text_a: hello
+text_b: ello
+result: ${/text_a - /text_b}

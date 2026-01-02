@@ -1,0 +1,5 @@
+_target_: slice_on_number_test
+# Slice on number error test - should raise InterpolationResolutionError
+
+value: 42
+result: ${/value[1:3]}

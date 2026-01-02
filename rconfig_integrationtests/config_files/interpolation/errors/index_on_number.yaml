@@ -1,0 +1,5 @@
+_target_: index_on_number_test
+# Index on number error test - should raise InterpolationResolutionError
+
+value: 42
+result: ${/value[0]}

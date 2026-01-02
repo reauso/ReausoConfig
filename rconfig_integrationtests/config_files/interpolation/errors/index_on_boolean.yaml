@@ -1,0 +1,5 @@
+_target_: index_on_boolean_test
+# Index on boolean error test - should raise InterpolationResolutionError
+
+value: true
+result: ${/value[0]}

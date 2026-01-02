@@ -1,0 +1,859 @@
+"""Tests for ProvenanceFormat builder and TreeLayout."""
+
+from unittest import TestCase
+
+from rconfig.composition import (
+    Provenance,
+    ProvenanceEntry,
+    ProvenanceNode,
+    ProvenanceFormat,
+    ProvenancePreset,
+    ProvenanceLayout,
+    FormatContext,
+    TreeLayout,
+)
+
+
+class ProvenanceFormatBuilderTests(TestCase):
+    """Tests for ProvenanceFormat fluent builder methods."""
+
+    def setUp(self) -> None:
+        self.provenance = Provenance()
+        self.provenance._entries["model.lr"] = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            value=0.01,
+        )
+        self.provenance._entries["model.epochs"] = ProvenanceEntry(
+            file="config.yaml",
+            line=6,
+            value=100,
+        )
+
+    def test_format__Default__ReturnsProvenanceFormat(self) -> None:
+        result = self.provenance.format()
+
+        self.assertIsInstance(result, ProvenanceFormat)
+
+    def test_format__ShowHidePaths__SetsOverride(self) -> None:
+        fmt = self.provenance.format()
+
+        fmt.show_paths()
+        ctx = fmt._build_context()
+        self.assertTrue(ctx.show_paths)
+
+        fmt.hide_paths()
+        ctx = fmt._build_context()
+        self.assertFalse(ctx.show_paths)
+
+    def test_format__ShowHideValues__SetsOverride(self) -> None:
+        fmt = self.provenance.format()
+
+        fmt.show_values()
+        ctx = fmt._build_context()
+        self.assertTrue(ctx.show_values)
+
+        fmt.hide_values()
+        ctx = fmt._build_context()
+        self.assertFalse(ctx.show_values)
+
+    def test_format__ShowHideFiles__SetsOverride(self) -> None:
+        fmt = self.provenance.format()
+
+        fmt.show_files()
+        ctx = fmt._build_context()
+        self.assertTrue(ctx.show_files)
+
+        fmt.hide_files()
+        ctx = fmt._build_context()
+        self.assertFalse(ctx.show_files)
+
+    def test_format__ShowHideLines__SetsOverride(self) -> None:
+        fmt = self.provenance.format()
+
+        fmt.show_lines()
+        ctx = fmt._build_context()
+        self.assertTrue(ctx.show_lines)
+
+        fmt.hide_lines()
+        ctx = fmt._build_context()
+        self.assertFalse(ctx.show_lines)
+
+    def test_format__ShowHideSourceType__SetsOverride(self) -> None:
+        fmt = self.provenance.format()
+
+        fmt.show_source_type()
+        ctx = fmt._build_context()
+        self.assertTrue(ctx.show_source_type)
+
+        fmt.hide_source_type()
+        ctx = fmt._build_context()
+        self.assertFalse(ctx.show_source_type)
+
+    def test_format__ShowHideChain__SetsOverride(self) -> None:
+        fmt = self.provenance.format()
+
+        fmt.show_chain()
+        ctx = fmt._build_context()
+        self.assertTrue(ctx.show_chain)
+
+        fmt.hide_chain()
+        ctx = fmt._build_context()
+        self.assertFalse(ctx.show_chain)
+
+    def test_format__ShowHideOverrides__SetsOverride(self) -> None:
+        fmt = self.provenance.format()
+
+        fmt.show_overrides()
+        ctx = fmt._build_context()
+        self.assertTrue(ctx.show_overrides)
+
+        fmt.hide_overrides()
+        ctx = fmt._build_context()
+        self.assertFalse(ctx.show_overrides)
+
+    def test_format__MethodChaining__ReturnsSelf(self) -> None:
+        fmt = self.provenance.format()
+
+        result = fmt.show_paths().hide_values().show_files()
+
+        self.assertIs(result, fmt)
+
+
+class ProvenanceFormatPresetTests(TestCase):
+    """Tests for preset methods."""
+
+    def setUp(self) -> None:
+        self.provenance = Provenance()
+        self.provenance._entries["test"] = ProvenanceEntry(
+            file="test.yaml", line=1, value=42
+        )
+
+    def test_format__MinimalPreset__HidesValuesAndChain(self) -> None:
+        fmt = self.provenance.format().minimal()
+        ctx = fmt._build_context()
+
+        self.assertTrue(ctx.show_paths)
+        self.assertFalse(ctx.show_values)
+        self.assertTrue(ctx.show_files)
+        self.assertTrue(ctx.show_lines)
+        self.assertFalse(ctx.show_source_type)
+        self.assertFalse(ctx.show_chain)
+        self.assertFalse(ctx.show_overrides)
+
+    def test_format__CompactPreset__HidesChainAndOverrides(self) -> None:
+        fmt = self.provenance.format().compact()
+        ctx = fmt._build_context()
+
+        self.assertTrue(ctx.show_paths)
+        self.assertTrue(ctx.show_values)
+        self.assertTrue(ctx.show_files)
+        self.assertTrue(ctx.show_lines)
+        self.assertTrue(ctx.show_source_type)
+        self.assertFalse(ctx.show_chain)
+        self.assertFalse(ctx.show_overrides)
+
+    def test_format__FullPreset__ShowsEverything(self) -> None:
+        fmt = self.provenance.format().full()
+        ctx = fmt._build_context()
+
+        self.assertTrue(ctx.show_paths)
+        self.assertTrue(ctx.show_values)
+        self.assertTrue(ctx.show_files)
+        self.assertTrue(ctx.show_lines)
+        self.assertTrue(ctx.show_source_type)
+        self.assertTrue(ctx.show_chain)
+        self.assertTrue(ctx.show_overrides)
+
+    def test_format__PresetEnum__WorksLikeMethod(self) -> None:
+        fmt_method = self.provenance.format().minimal()
+        fmt_enum = self.provenance.format().preset(ProvenancePreset.MINIMAL)
+
+        ctx_method = fmt_method._build_context()
+        ctx_enum = fmt_enum._build_context()
+
+        self.assertEqual(ctx_method.show_values, ctx_enum.show_values)
+        self.assertEqual(ctx_method.show_chain, ctx_enum.show_chain)
+
+    def test_format__PresetWithOverride__OverrideWins(self) -> None:
+        fmt = self.provenance.format().minimal().show_values()
+        ctx = fmt._build_context()
+
+        # Minimal sets show_values=False, but explicit override sets True
+        self.assertTrue(ctx.show_values)
+
+
+class ProvenanceFormatFilterTests(TestCase):
+    """Tests for filter methods."""
+
+    def setUp(self) -> None:
+        self.provenance = Provenance()
+        self.provenance._entries["model.lr"] = ProvenanceEntry(
+            file="config.yaml", line=5, value=0.01
+        )
+        self.provenance._entries["model.epochs"] = ProvenanceEntry(
+            file="overrides.yaml", line=1, value=100
+        )
+        self.provenance._entries["data.path"] = ProvenanceEntry(
+            file="data.yaml", line=2, value="/data"
+        )
+
+    def test_format__ForPath__AddsFilter(self) -> None:
+        fmt = self.provenance.format().for_path("/model.*")
+        ctx = fmt._build_context()
+
+        self.assertEqual(["/model.*"], ctx.path_filters)
+
+    def test_format__ForPathMultiple__AddsAllFilters(self) -> None:
+        fmt = self.provenance.format().for_path("/model.*").for_path("/data.*")
+        ctx = fmt._build_context()
+
+        self.assertEqual(["/model.*", "/data.*"], ctx.path_filters)
+
+    def test_format__FromFile__AddsFilter(self) -> None:
+        fmt = self.provenance.format().from_file("config.yaml")
+        ctx = fmt._build_context()
+
+        self.assertEqual(["config.yaml"], ctx.file_filters)
+
+    def test_format__FromFileMultiple__AddsAllFilters(self) -> None:
+        fmt = self.provenance.format().from_file("*.yaml").from_file("*.json")
+        ctx = fmt._build_context()
+
+        self.assertEqual(["*.yaml", "*.json"], ctx.file_filters)
+
+
+class ProvenanceFormatLayoutTests(TestCase):
+    """Tests for custom layout support."""
+
+    def setUp(self) -> None:
+        self.provenance = Provenance()
+        self.provenance._entries["test"] = ProvenanceEntry(
+            file="test.yaml", line=1, value=42
+        )
+
+    def test_format__CustomLayout__UsesCustomLayout(self) -> None:
+        class TestLayout(ProvenanceLayout):
+            def format_provenance(self, prov, ctx):
+                return "CUSTOM OUTPUT"
+
+            def format_entry(self, entry, path, ctx):
+                return f"{path}={entry.value}"
+
+        fmt = self.provenance.format().layout(TestLayout())
+        result = str(fmt)
+
+        self.assertEqual("CUSTOM OUTPUT", result)
+
+    def test_format__LayoutWithDefaults__UsesLayoutDefaults(self) -> None:
+        class NoValuesLayout(ProvenanceLayout):
+            def get_default_context(self):
+                ctx = FormatContext()
+                ctx.show_values = False
+                return ctx
+
+            def format_provenance(self, prov, ctx):
+                return f"show_values={ctx.show_values}"
+
+            def format_entry(self, entry, path, ctx):
+                return ""
+
+        fmt = self.provenance.format().layout(NoValuesLayout())
+        result = str(fmt)
+
+        self.assertEqual("show_values=False", result)
+
+    def test_format__LayoutWithBuilderOverride__OverrideWins(self) -> None:
+        class NoValuesLayout(ProvenanceLayout):
+            def get_default_context(self):
+                ctx = FormatContext()
+                ctx.show_values = False
+                return ctx
+
+            def format_provenance(self, prov, ctx):
+                return f"show_values={ctx.show_values}"
+
+            def format_entry(self, entry, path, ctx):
+                return ""
+
+        fmt = self.provenance.format().layout(NoValuesLayout()).show_values()
+        result = str(fmt)
+
+        self.assertEqual("show_values=True", result)
+
+
+class TreeLayoutTests(TestCase):
+    """Tests for TreeLayout formatting."""
+
+    def setUp(self) -> None:
+        self.layout = TreeLayout()
+        self.provenance = Provenance()
+
+    def test_formatProvenance__EmptyProvenance__ReturnsEmpty(self) -> None:
+        ctx = FormatContext()
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertEqual("", result)
+
+    def test_formatProvenance__SingleEntry__FormatsCorrectly(self) -> None:
+        self.provenance._entries["model.lr"] = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            value=0.01,
+        )
+        ctx = FormatContext()
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertIn("/model.lr", result)
+        self.assertIn("0.01", result)
+        self.assertIn("config.yaml", result)
+        self.assertIn("5", result)
+
+    def test_formatProvenance__MultipleEntries__SeparatesWithBlankLine(self) -> None:
+        self.provenance._entries["a"] = ProvenanceEntry(
+            file="a.yaml", line=1, value=1
+        )
+        self.provenance._entries["b"] = ProvenanceEntry(
+            file="b.yaml", line=2, value=2
+        )
+        ctx = FormatContext()
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        # Entries should be separated by blank lines
+        self.assertIn("\n\n", result)
+
+    def test_formatProvenance__HideValues__OmitsValues(self) -> None:
+        self.provenance._entries["test"] = ProvenanceEntry(
+            file="test.yaml", line=1, value=42
+        )
+        ctx = FormatContext(show_values=False)
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertIn("/test", result)
+        self.assertNotIn("42", result)
+
+    def test_formatProvenance__HidePaths__OmitsPaths(self) -> None:
+        self.provenance._entries["test"] = ProvenanceEntry(
+            file="test.yaml", line=1, value=42
+        )
+        ctx = FormatContext(show_paths=False)
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertNotIn("/test", result)
+        self.assertIn("42", result)
+
+    def test_formatProvenance__PathFilter__FiltersEntries(self) -> None:
+        self.provenance._entries["model.lr"] = ProvenanceEntry(
+            file="config.yaml", line=1, value=0.01
+        )
+        self.provenance._entries["data.path"] = ProvenanceEntry(
+            file="config.yaml", line=2, value="/data"
+        )
+        ctx = FormatContext(path_filters=["/model.*"])
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertIn("/model.lr", result)
+        self.assertNotIn("/data.path", result)
+
+    def test_formatProvenance__FileFilter__FiltersEntries(self) -> None:
+        self.provenance._entries["a"] = ProvenanceEntry(
+            file="config.yaml", line=1, value=1
+        )
+        self.provenance._entries["b"] = ProvenanceEntry(
+            file="other.json", line=2, value=2
+        )
+        ctx = FormatContext(file_filters=["*.yaml"])
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertIn("config.yaml", result)
+        self.assertNotIn("other.json", result)
+
+    def test_formatProvenance__CliSourceType__ShowsCliMarker(self) -> None:
+        self.provenance._entries["test"] = ProvenanceEntry(
+            file="config.yaml",
+            line=1,
+            value=42,
+            source_type="cli",
+            cli_arg="--test=42",
+        )
+        ctx = FormatContext()
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertIn("CLI", result)
+        self.assertIn("--test=42", result)
+
+    def test_formatProvenance__EnvSourceType__ShowsEnvMarker(self) -> None:
+        self.provenance._entries["test"] = ProvenanceEntry(
+            file="config.yaml",
+            line=1,
+            value="/data",
+            source_type="env",
+            env_var="DATA_PATH",
+        )
+        ctx = FormatContext()
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertIn("env", result)
+        self.assertIn("DATA_PATH", result)
+
+    def test_formatProvenance__Override__ShowsOverrideInfo(self) -> None:
+        self.provenance._entries["test"] = ProvenanceEntry(
+            file="override.yaml",
+            line=5,
+            value=42,
+            overrode="base.yaml:10",
+        )
+        ctx = FormatContext()
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertIn("Overrode", result)
+        self.assertIn("base.yaml:10", result)
+
+
+class ProvenanceNodeTests(TestCase):
+    """Tests for ProvenanceNode dataclass."""
+
+    def test_toDict__BasicNode__ReturnsDict(self) -> None:
+        node = ProvenanceNode(
+            source_type="file",
+            file="test.yaml",
+            line=5,
+            value=42,
+        )
+
+        result = node.to_dict()
+
+        self.assertEqual("file", result["source_type"])
+        self.assertEqual("test.yaml", result["file"])
+        self.assertEqual(5, result["line"])
+        self.assertEqual(42, result["value"])
+
+    def test_toDict__WithChildren__IncludesChildren(self) -> None:
+        child = ProvenanceNode(source_type="file", value=1)
+        parent = ProvenanceNode(source_type="operator", operator="+", children=[child])
+
+        result = parent.to_dict()
+
+        self.assertEqual("+", result["operator"])
+        self.assertEqual(1, len(result["children"]))
+        self.assertEqual(1, result["children"][0]["value"])
+
+    def test_toDict__OmitsNoneFields__ReturnsCompact(self) -> None:
+        node = ProvenanceNode(source_type="file")
+
+        result = node.to_dict()
+
+        self.assertNotIn("path", result)
+        self.assertNotIn("file", result)
+        self.assertNotIn("line", result)
+        self.assertNotIn("children", result)
+
+
+class ProvenanceEntryToDictTests(TestCase):
+    """Tests for ProvenanceEntry.to_dict()."""
+
+    def test_toDict__BasicEntry__ReturnsDict(self) -> None:
+        entry = ProvenanceEntry(file="test.yaml", line=5, value=42)
+
+        result = entry.to_dict()
+
+        self.assertEqual("test.yaml", result["file"])
+        self.assertEqual(5, result["line"])
+        self.assertEqual("file", result["source_type"])
+        self.assertEqual(42, result["value"])
+
+    def test_toDict__WithOverride__IncludesOverride(self) -> None:
+        entry = ProvenanceEntry(
+            file="test.yaml", line=5, overrode="base.yaml:10"
+        )
+
+        result = entry.to_dict()
+
+        self.assertEqual("base.yaml:10", result["overrode"])
+
+    def test_toDict__CliSource__IncludesCliArg(self) -> None:
+        entry = ProvenanceEntry(
+            file="test.yaml",
+            line=5,
+            source_type="cli",
+            cli_arg="--lr=0.01",
+        )
+
+        result = entry.to_dict()
+
+        self.assertEqual("cli", result["source_type"])
+        self.assertEqual("--lr=0.01", result["cli_arg"])
+
+
+class ProvenanceToDictTests(TestCase):
+    """Tests for Provenance.to_dict()."""
+
+    def test_toDict__Empty__ReturnsEmptyDict(self) -> None:
+        provenance = Provenance()
+
+        result = provenance.to_dict()
+
+        self.assertEqual({}, result)
+
+    def test_toDict__WithEntries__ReturnsDictOfEntries(self) -> None:
+        provenance = Provenance()
+        provenance._entries["a"] = ProvenanceEntry(file="a.yaml", line=1)
+        provenance._entries["b"] = ProvenanceEntry(file="b.yaml", line=2)
+
+        result = provenance.to_dict()
+
+        self.assertIn("a", result)
+        self.assertIn("b", result)
+        self.assertEqual("a.yaml", result["a"]["file"])
+        self.assertEqual("b.yaml", result["b"]["file"])
+
+
+class ProvenanceTraceTests(TestCase):
+    """Tests for Provenance.trace()."""
+
+    def test_trace__NonexistentPath__ReturnsNone(self) -> None:
+        provenance = Provenance()
+
+        result = provenance.trace("nonexistent")
+
+        self.assertIsNone(result)
+
+    def test_trace__BasicEntry__ReturnsNode(self) -> None:
+        provenance = Provenance()
+        provenance._entries["test"] = ProvenanceEntry(
+            file="test.yaml", line=5, value=42
+        )
+
+        result = provenance.trace("test")
+
+        self.assertIsNotNone(result)
+        self.assertEqual("file", result.source_type)
+        self.assertEqual("test.yaml", result.file)
+        self.assertEqual(5, result.line)
+        self.assertEqual(42, result.value)
+
+    def test_trace__CliEntry__ReturnsCliNode(self) -> None:
+        provenance = Provenance()
+        provenance._entries["test"] = ProvenanceEntry(
+            file="test.yaml",
+            line=5,
+            value=42,
+            source_type="cli",
+            cli_arg="--test=42",
+        )
+
+        result = provenance.trace("test")
+
+        self.assertEqual("cli", result.source_type)
+        self.assertEqual("--test=42", result.cli_arg)
+
+
+class ProvenanceSetConfigTests(TestCase):
+    """Tests for Provenance.set_config() value population."""
+
+    def test_setConfig__PopulatesValues__FillsEntryValues(self) -> None:
+        provenance = Provenance()
+        provenance._entries["model.lr"] = ProvenanceEntry(file="config.yaml", line=5)
+        provenance._entries["model.epochs"] = ProvenanceEntry(file="config.yaml", line=6)
+        config = {"model": {"lr": 0.01, "epochs": 100}}
+
+        provenance.set_config(config)
+
+        self.assertEqual(0.01, provenance.get("model.lr").value)
+        self.assertEqual(100, provenance.get("model.epochs").value)
+
+    def test_setConfig__PreservesExistingValues__DoesNotOverwrite(self) -> None:
+        provenance = Provenance()
+        # Entry with value already set (e.g., from interpolation resolution)
+        provenance._entries["model.lr"] = ProvenanceEntry(
+            file="config.yaml", line=5, value=999
+        )
+        config = {"model": {"lr": 0.01}}
+
+        provenance.set_config(config)
+
+        # Should preserve the existing value, not overwrite
+        self.assertEqual(999, provenance.get("model.lr").value)
+
+    def test_setConfig__MissingPath__KeepsNone(self) -> None:
+        provenance = Provenance()
+        provenance._entries["deleted.path"] = ProvenanceEntry(file="config.yaml", line=5)
+        config = {}  # Path doesn't exist
+
+        provenance.set_config(config)
+
+        self.assertIsNone(provenance.get("deleted.path").value)
+
+    def test_setConfig__NestedPath__PopulatesCorrectly(self) -> None:
+        provenance = Provenance()
+        provenance._entries["a.b.c.d"] = ProvenanceEntry(file="config.yaml", line=5)
+        config = {"a": {"b": {"c": {"d": "deep_value"}}}}
+
+        provenance.set_config(config)
+
+        self.assertEqual("deep_value", provenance.get("a.b.c.d").value)
+
+
+class OverrideProvenanceTests(TestCase):
+    """Tests for CLI and programmatic override provenance tracking."""
+
+    def test_applyOverrides__CliOverride__SetsCliSourceType(self) -> None:
+        from rconfig.override import Override, apply_overrides
+
+        provenance = Provenance()
+        provenance._entries["model.lr"] = ProvenanceEntry(
+            file="config.yaml", line=5, value=0.001
+        )
+        config = {"model": {"lr": 0.001}}
+        overrides = [
+            Override(
+                path=["model", "lr"],
+                value=0.01,
+                operation="set",
+                source_type="cli",
+                cli_arg="model.lr=0.01",
+            )
+        ]
+
+        apply_overrides(config, overrides, provenance)
+
+        entry = provenance.get("model.lr")
+        self.assertEqual("cli", entry.source_type)
+        self.assertEqual("model.lr=0.01", entry.cli_arg)
+        self.assertEqual(0.01, entry.value)
+        self.assertEqual("config.yaml:5", entry.overrode)
+
+    def test_applyOverrides__ProgrammaticOverride__SetsProgrammaticSourceType(self) -> None:
+        from rconfig.override import Override, apply_overrides
+
+        provenance = Provenance()
+        provenance._entries["model.epochs"] = ProvenanceEntry(
+            file="config.yaml", line=6, value=100
+        )
+        config = {"model": {"epochs": 100}}
+        overrides = [
+            Override(
+                path=["model", "epochs"],
+                value=200,
+                operation="set",
+                source_type="programmatic",
+            )
+        ]
+
+        apply_overrides(config, overrides, provenance)
+
+        entry = provenance.get("model.epochs")
+        self.assertEqual("programmatic", entry.source_type)
+        self.assertIsNone(entry.cli_arg)
+        self.assertEqual(200, entry.value)
+
+    def test_applyOverrides__NewPath__CreatesEntry(self) -> None:
+        from rconfig.override import Override, apply_overrides
+
+        provenance = Provenance()
+        config = {"model": {}}
+        overrides = [
+            Override(
+                path=["model", "new_param"],
+                value=42,
+                operation="set",
+                source_type="cli",
+                cli_arg="model.new_param=42",
+            )
+        ]
+
+        apply_overrides(config, overrides, provenance)
+
+        entry = provenance.get("model.new_param")
+        self.assertIsNotNone(entry)
+        self.assertEqual("cli", entry.source_type)
+        self.assertIsNone(entry.overrode)  # Nothing to override
+
+    def test_parseCliArg__SetsSourceTypeAndCliArg(self) -> None:
+        from rconfig.override import parse_cli_arg
+
+        result = parse_cli_arg("model.lr=0.01")
+
+        self.assertIsNotNone(result)
+        self.assertEqual("cli", result.source_type)
+        self.assertEqual("model.lr=0.01", result.cli_arg)
+
+    def test_parseDictOverrides__SetsProgrammaticSourceType(self) -> None:
+        from rconfig.override import parse_dict_overrides
+
+        result = parse_dict_overrides({"model.lr": 0.01})
+
+        self.assertEqual(1, len(result))
+        self.assertEqual("programmatic", result[0].source_type)
+        self.assertIsNone(result[0].cli_arg)
+
+
+class ProvenanceFormatEdgeCaseTests(TestCase):
+    """Edge case tests for ProvenanceFormat builder."""
+
+    def setUp(self) -> None:
+        self.provenance = Provenance()
+        self.provenance._entries["test"] = ProvenanceEntry(
+            file="test.yaml", line=1, value=42
+        )
+
+    def test_format__Repr__ReturnsLayoutClassName(self) -> None:
+        """Test that __repr__ returns layout class name."""
+        # Arrange
+        fmt = self.provenance.format()
+
+        # Act
+        result = repr(fmt)
+
+        # Assert
+        self.assertIn("ProvenanceFormat", result)
+        self.assertIn("TreeLayout", result)
+
+    def test_format__IndentMethod__SetsIndentSize(self) -> None:
+        """Test that indent() method sets indent size correctly."""
+        # Arrange
+        fmt = self.provenance.format().indent(4)
+
+        # Act
+        ctx = fmt._build_context()
+
+        # Assert
+        self.assertEqual(4, ctx.indent_size)
+
+    def test_format__FilterChaining__AllFiltersApplied(self) -> None:
+        """Test that chaining filters adds them all."""
+        # Arrange
+        fmt = (
+            self.provenance.format()
+            .for_path("/model.*")
+            .for_path("/data.*")
+            .from_file("*.yaml")
+            .from_file("*.json")
+        )
+
+        # Act
+        ctx = fmt._build_context()
+
+        # Assert
+        self.assertEqual(["/model.*", "/data.*"], ctx.path_filters)
+        self.assertEqual(["*.yaml", "*.json"], ctx.file_filters)
+
+    def test_format__PresetEnumCompact__AppliesCorrectSettings(self) -> None:
+        """Test that preset(COMPACT) applies compact settings."""
+        # Arrange
+        fmt = self.provenance.format().preset(ProvenancePreset.COMPACT)
+
+        # Act
+        ctx = fmt._build_context()
+
+        # Assert
+        self.assertTrue(ctx.show_paths)
+        self.assertTrue(ctx.show_values)
+        self.assertTrue(ctx.show_source_type)
+        self.assertFalse(ctx.show_chain)
+        self.assertFalse(ctx.show_overrides)
+
+    def test_format__PresetEnumFull__AppliesCorrectSettings(self) -> None:
+        """Test that preset(FULL) applies full settings."""
+        # Arrange
+        fmt = self.provenance.format().preset(ProvenancePreset.FULL)
+
+        # Act
+        ctx = fmt._build_context()
+
+        # Assert
+        self.assertTrue(ctx.show_paths)
+        self.assertTrue(ctx.show_values)
+        self.assertTrue(ctx.show_source_type)
+        self.assertTrue(ctx.show_chain)
+        self.assertTrue(ctx.show_overrides)
+
+    def test_format__BuildContext__CopiesListFilters(self) -> None:
+        """Test that _build_context creates copies of filter lists."""
+        # Arrange
+        fmt = self.provenance.format().for_path("/test")
+        ctx1 = fmt._build_context()
+
+        # Act - modify first context's filters
+        ctx1.path_filters.append("/modified")
+        ctx2 = fmt._build_context()
+
+        # Assert - second context should not see modification
+        self.assertEqual(["/test"], ctx2.path_filters)
+
+    def test_format__LayoutSwitch__GetsNewDefaults(self) -> None:
+        """Test that switching layout gets new default context."""
+        # Arrange
+        class CustomLayout(ProvenanceLayout):
+            def get_default_context(self):
+                return FormatContext(show_values=False, indent_size=8)
+
+            def format_provenance(self, prov, ctx):
+                return f"custom: indent={ctx.indent_size}"
+
+            def format_entry(self, entry, path, ctx):
+                return ""
+
+        # Act
+        fmt = self.provenance.format().layout(CustomLayout())
+        result = str(fmt)
+
+        # Assert
+        self.assertIn("custom", result)
+        self.assertIn("indent=8", result)
+
+    def test_format__PresetThenOverride__OverrideWins(self) -> None:
+        """Test that override after preset wins."""
+        # Arrange
+        fmt = self.provenance.format().minimal().show_values()
+
+        # Act
+        ctx = fmt._build_context()
+
+        # Assert - minimal sets show_values=False, but override sets True
+        self.assertTrue(ctx.show_values)
+
+    def test_format__OverrideThenPreset__PresetWins(self) -> None:
+        """Test that preset after override wins."""
+        # Arrange
+        fmt = self.provenance.format().show_values().minimal()
+
+        # Act
+        ctx = fmt._build_context()
+
+        # Assert - minimal is applied after show_values, so minimal wins
+        self.assertFalse(ctx.show_values)
+
+    def test_format__EmptyProvenance__StrReturnsEmpty(self) -> None:
+        """Test that formatting empty provenance returns empty string."""
+        # Arrange
+        empty_prov = Provenance()
+        fmt = empty_prov.format()
+
+        # Act
+        result = str(fmt)
+
+        # Assert
+        self.assertEqual("", result)
+
+    def test_format__MultipleBuildContext__IndependentResults(self) -> None:
+        """Test that multiple _build_context calls are independent."""
+        # Arrange
+        fmt = self.provenance.format()
+
+        # Act
+        ctx1 = fmt._build_context()
+        ctx1.show_paths = False  # Modify first
+        ctx2 = fmt._build_context()
+
+        # Assert - second should have default value
+        self.assertTrue(ctx2.show_paths)

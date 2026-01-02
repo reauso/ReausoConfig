@@ -20,11 +20,15 @@ class Override:
     :param path: List of keys/indices to traverse (e.g., ["model", "layers", 0, "size"]).
     :param value: The value to set, add, or None for remove operations.
     :param operation: The type of override operation.
+    :param source_type: Where this override came from ("cli" or "programmatic").
+    :param cli_arg: Original CLI argument string (for CLI overrides).
     """
 
     path: list[str | int]
     value: Any
     operation: Literal["set", "add", "remove"]
+    source_type: Literal["cli", "programmatic"] = "programmatic"
+    cli_arg: str | None = None
 
 
 # Regex patterns for parsing override keys
@@ -217,7 +221,13 @@ def parse_cli_arg(arg: str) -> Override | None:
             return None
         try:
             path, operation = parse_override_key(arg)
-            return Override(path=path, value=None, operation=operation)
+            return Override(
+                path=path,
+                value=None,
+                operation=operation,
+                source_type="cli",
+                cli_arg=arg,
+            )
         except InvalidOverrideSyntaxError:
             return None
 
@@ -233,7 +243,13 @@ def parse_cli_arg(arg: str) -> Override | None:
         return None
 
     # Parse value (type inference happens later with type hints)
-    return Override(path=path, value=value, operation=operation)
+    return Override(
+        path=path,
+        value=value,
+        operation=operation,
+        source_type="cli",
+        cli_arg=arg,
+    )
 
 
 def extract_cli_overrides(argv: list[str]) -> list[Override]:
@@ -273,11 +289,16 @@ def parse_dict_overrides(overrides: dict[str, Any]) -> list[Override]:
     return result
 
 
-def apply_overrides(config: dict[str, Any], overrides: list[Override]) -> dict[str, Any]:
+def apply_overrides(
+    config: dict[str, Any],
+    overrides: list[Override],
+    provenance: Any | None = None,
+) -> dict[str, Any]:
     """Apply a list of overrides to a configuration dictionary.
 
     :param config: Original configuration dictionary.
     :param overrides: List of Override objects to apply.
+    :param provenance: Optional Provenance object to update with override sources.
     :return: New configuration dictionary with overrides applied.
 
     The original config is not modified; a deep copy is made.
@@ -286,13 +307,22 @@ def apply_overrides(config: dict[str, Any], overrides: list[Override]) -> dict[s
     result = copy.deepcopy(config)
 
     for override in overrides:
-        _apply_single_override(result, override)
+        _apply_single_override(result, override, provenance)
 
     return result
 
 
-def _apply_single_override(config: dict[str, Any], override: Override) -> None:
-    """Apply a single override to a config dict (mutates in place)."""
+def _apply_single_override(
+    config: dict[str, Any],
+    override: Override,
+    provenance: Any | None = None,
+) -> None:
+    """Apply a single override to a config dict (mutates in place).
+
+    :param config: The config dict to modify.
+    :param override: The override to apply.
+    :param provenance: Optional Provenance object to update.
+    """
     if not override.path:
         return
 
@@ -301,10 +331,49 @@ def _apply_single_override(config: dict[str, Any], override: Override) -> None:
 
     if override.operation == "set":
         _apply_set(current, final_key, override.value)
+        # Update provenance for set operations
+        if provenance is not None:
+            _update_provenance_for_override(provenance, override)
     elif override.operation == "add":
         _apply_add(current, final_key, override.value)
+        # For add operations, provenance tracking is more complex
+        # (appending to a list) - skip for now
     elif override.operation == "remove":
         _apply_remove(current, final_key)
+        # Remove operations don't need provenance tracking
+        # (the value is being deleted)
+
+
+def _update_provenance_for_override(provenance: Any, override: Override) -> None:
+    """Update provenance to record that a value came from an override.
+
+    :param provenance: The Provenance object to update.
+    :param override: The override that was applied.
+    """
+    # Convert path list to dot-notation string
+    path_str = ".".join(str(p) for p in override.path)
+
+    # Get existing entry to record what we're overriding
+    existing_entry = provenance.get(path_str)
+    overrode = None
+    if existing_entry is not None:
+        overrode = f"{existing_entry.file}:{existing_entry.line}"
+
+    # Import ProvenanceEntry to create a new entry
+    from rconfig.composition.Provenance import ProvenanceEntry
+
+    # Create new entry with override info
+    new_entry = ProvenanceEntry(
+        file="<override>",
+        line=0,
+        overrode=overrode,
+        source_type=override.source_type,
+        cli_arg=override.cli_arg if override.source_type == "cli" else None,
+        value=override.value,
+    )
+
+    # Update the provenance's internal entries dict
+    provenance._entries[path_str] = new_entry
 
 
 def _navigate_to_parent(config: dict[str, Any], path: list[str | int]) -> Any:

@@ -369,3 +369,580 @@ class ProvenanceCoverageTests(TestCase):
         self.assertEqual(len(lines), 1)
         self.assertIn("42", lines[0])
         self.assertIn("config.yaml:42", lines[0])
+
+
+class ProvenanceNodeToDictTests(TestCase):
+    """Tests for ProvenanceNode.to_dict() edge cases."""
+
+    def test_toDict__AllFieldsSet__IncludesAll(self):
+        """Test that all fields are included when set."""
+        # Arrange
+        from rconfig.composition import ProvenanceNode
+
+        node = ProvenanceNode(
+            source_type="cli",
+            path="/model.lr",
+            file="<override>",
+            line=0,
+            value=0.01,
+            expression="${/defaults.lr}",
+            operator="+",
+            env_var="LR_VALUE",
+            cli_arg="--model.lr=0.01",
+        )
+
+        # Act
+        result = node.to_dict()
+
+        # Assert
+        self.assertEqual("cli", result["source_type"])
+        self.assertEqual("/model.lr", result["path"])
+        self.assertEqual("<override>", result["file"])
+        self.assertEqual(0, result["line"])
+        self.assertEqual(0.01, result["value"])
+        self.assertEqual("${/defaults.lr}", result["expression"])
+        self.assertEqual("+", result["operator"])
+        self.assertEqual("LR_VALUE", result["env_var"])
+        self.assertEqual("--model.lr=0.01", result["cli_arg"])
+
+    def test_toDict__CliArg__IncludesCliArg(self):
+        """Test that cli_arg is included when set."""
+        # Arrange
+        from rconfig.composition import ProvenanceNode
+
+        node = ProvenanceNode(
+            source_type="cli",
+            cli_arg="--lr=0.01",
+        )
+
+        # Act
+        result = node.to_dict()
+
+        # Assert
+        self.assertEqual("--lr=0.01", result["cli_arg"])
+
+    def test_toDict__EnvVar__IncludesEnvVar(self):
+        """Test that env_var is included when set."""
+        # Arrange
+        from rconfig.composition import ProvenanceNode
+
+        node = ProvenanceNode(
+            source_type="env",
+            env_var="DATA_PATH",
+        )
+
+        # Act
+        result = node.to_dict()
+
+        # Assert
+        self.assertEqual("DATA_PATH", result["env_var"])
+
+    def test_toDict__Expression__IncludesExpression(self):
+        """Test that expression is included when set."""
+        # Arrange
+        from rconfig.composition import ProvenanceNode
+
+        node = ProvenanceNode(
+            source_type="interpolation",
+            expression="${/defaults.lr * 2}",
+        )
+
+        # Act
+        result = node.to_dict()
+
+        # Assert
+        self.assertEqual("${/defaults.lr * 2}", result["expression"])
+
+    def test_toDict__Operator__IncludesOperator(self):
+        """Test that operator is included when set."""
+        # Arrange
+        from rconfig.composition import ProvenanceNode
+
+        node = ProvenanceNode(
+            source_type="operator",
+            operator="*",
+        )
+
+        # Act
+        result = node.to_dict()
+
+        # Assert
+        self.assertEqual("*", result["operator"])
+
+    def test_toDict__EmptyChildren__OmitsChildren(self):
+        """Test that empty children list is omitted."""
+        # Arrange
+        from rconfig.composition import ProvenanceNode
+
+        node = ProvenanceNode(source_type="file")
+
+        # Act
+        result = node.to_dict()
+
+        # Assert
+        self.assertNotIn("children", result)
+
+    def test_toDict__ValueIsFalse__IncludesValue(self):
+        """Test that False value is included (not omitted as falsy)."""
+        # Arrange
+        from rconfig.composition import ProvenanceNode
+
+        node = ProvenanceNode(source_type="file", value=False)
+
+        # Act
+        result = node.to_dict()
+
+        # Assert
+        # Note: This tests that we use 'is not None' not 'if value'
+        # Currently the code uses 'if value is not None' which correctly handles False
+        self.assertIn("value", result)
+        self.assertFalse(result["value"])
+
+    def test_toDict__ValueIsZero__IncludesValue(self):
+        """Test that zero value is included (not omitted as falsy)."""
+        # Arrange
+        from rconfig.composition import ProvenanceNode
+
+        node = ProvenanceNode(source_type="file", value=0)
+
+        # Act
+        result = node.to_dict()
+
+        # Assert
+        self.assertIn("value", result)
+        self.assertEqual(0, result["value"])
+
+
+class ProvenanceEntryToDictExtendedTests(TestCase):
+    """Extended tests for ProvenanceEntry.to_dict() edge cases."""
+
+    def test_toDict__WithInterpolationPath__IncludesPath(self):
+        """Test that interpolation path is included."""
+        # Arrange
+        from rconfig.interpolation.evaluator import InterpolationSource
+
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            interpolation=InterpolationSource(
+                kind="config",
+                expression="/defaults.lr",
+                value=0.01,
+                path="defaults.lr",
+            ),
+        )
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        self.assertIn("interpolation", result)
+        self.assertEqual("defaults.lr", result["interpolation"]["path"])
+
+    def test_toDict__WithInterpolationFile__IncludesFile(self):
+        """Test that interpolation file is included."""
+        # Arrange
+        from rconfig.interpolation.evaluator import InterpolationSource
+
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            interpolation=InterpolationSource(
+                kind="config",
+                expression="/defaults.lr",
+                value=0.01,
+                path="defaults.lr",
+                file="defaults.yaml",
+                line=3,
+            ),
+        )
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        self.assertIn("interpolation", result)
+        self.assertEqual("defaults.yaml", result["interpolation"]["file"])
+        self.assertEqual(3, result["interpolation"]["line"])
+
+    def test_toDict__WithInstance__IncludesInstanceArray(self):
+        """Test that instance chain is included as array."""
+        # Arrange
+        entry = ProvenanceEntry(
+            file="app.yaml",
+            line=10,
+            instance=[
+                InstanceRef(path="/shared.db", file="shared.yaml", line=5),
+                InstanceRef(path="/common.db", file="common.yaml", line=2),
+            ],
+        )
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        self.assertIn("instance", result)
+        self.assertEqual(2, len(result["instance"]))
+        self.assertEqual("/shared.db", result["instance"][0]["path"])
+        self.assertEqual("shared.yaml", result["instance"][0]["file"])
+
+    def test_toDict__WithEnvVar__IncludesEnvVar(self):
+        """Test that env_var is included."""
+        # Arrange
+        entry = ProvenanceEntry(
+            file="<override>",
+            line=0,
+            source_type="env",
+            env_var="DATA_PATH",
+        )
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        self.assertEqual("DATA_PATH", result["env_var"])
+
+    def test_toDict__ValueIsNone__OmitsValue(self):
+        """Test that None value is omitted."""
+        # Arrange
+        entry = ProvenanceEntry(file="config.yaml", line=5, value=None)
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        self.assertNotIn("value", result)
+
+    def test_toDict__ValueIsFalse__IncludesValue(self):
+        """Test that False value is included."""
+        # Arrange
+        entry = ProvenanceEntry(file="config.yaml", line=5, value=False)
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        # Note: Current implementation uses 'if value is not None' which
+        # would include False. But it's using 'if value is not None'
+        self.assertIn("value", result)
+        self.assertFalse(result["value"])
+
+    def test_toDict__ValueIsZero__IncludesValue(self):
+        """Test that zero value is included."""
+        # Arrange
+        entry = ProvenanceEntry(file="config.yaml", line=5, value=0)
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        self.assertIn("value", result)
+        self.assertEqual(0, result["value"])
+
+    def test_toDict__ValueIsEmptyString__IncludesValue(self):
+        """Test that empty string value is included."""
+        # Arrange
+        entry = ProvenanceEntry(file="config.yaml", line=5, value="")
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        # Empty string should be included since it's not None
+        self.assertIn("value", result)
+        self.assertEqual("", result["value"])
+
+
+class ProvenanceEntryTraceTests(TestCase):
+    """Tests for ProvenanceEntry.trace() method."""
+
+    def test_trace__FileSourceType__ReturnsFileNode(self):
+        """Test that file source type creates file node."""
+        # Arrange
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            value=42,
+            source_type="file",
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        self.assertEqual("file", result.source_type)
+        self.assertEqual("config.yaml", result.file)
+        self.assertEqual(5, result.line)
+        self.assertEqual(42, result.value)
+
+    def test_trace__CliSourceType__ReturnsCliNode(self):
+        """Test that CLI source type creates cli node."""
+        # Arrange
+        entry = ProvenanceEntry(
+            file="<override>",
+            line=0,
+            value=0.01,
+            source_type="cli",
+            cli_arg="--lr=0.01",
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        self.assertEqual("cli", result.source_type)
+        self.assertEqual("--lr=0.01", result.cli_arg)
+
+    def test_trace__EnvSourceType__ReturnsEnvNode(self):
+        """Test that env source type creates env node."""
+        # Arrange
+        entry = ProvenanceEntry(
+            file="<override>",
+            line=0,
+            value="/data",
+            source_type="env",
+            env_var="DATA_PATH",
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        self.assertEqual("env", result.source_type)
+        self.assertEqual("DATA_PATH", result.env_var)
+
+    def test_trace__ProgrammaticSourceType__ReturnsProgrammaticNode(self):
+        """Test that programmatic source type creates programmatic node."""
+        # Arrange
+        entry = ProvenanceEntry(
+            file="<override>",
+            line=0,
+            value=100,
+            source_type="programmatic",
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        self.assertEqual("programmatic", result.source_type)
+        self.assertEqual(100, result.value)
+
+    def test_trace__WithInterpolation__AddsInterpolationChild(self):
+        """Test that interpolation is added as child node."""
+        # Arrange
+        from rconfig.interpolation.evaluator import InterpolationSource
+
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            value=0.02,
+            interpolation=InterpolationSource(
+                kind="config",
+                expression="/defaults.lr",
+                value=0.01,
+                path="defaults.lr",
+            ),
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        self.assertEqual(1, len(result.children))
+        self.assertEqual("interpolation", result.children[0].source_type)
+
+    def test_trace__WithInstance__AddsInstanceChildren(self):
+        """Test that instance chain is added as children."""
+        # Arrange
+        entry = ProvenanceEntry(
+            file="app.yaml",
+            line=10,
+            value={"host": "localhost"},
+            instance=[
+                InstanceRef(path="/shared.db", file="shared.yaml", line=5),
+                InstanceRef(path="/common.db", file="common.yaml", line=2),
+            ],
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        self.assertEqual(2, len(result.children))
+        self.assertEqual("instance", result.children[0].source_type)
+        self.assertEqual("/shared.db", result.children[0].path)
+
+    def test_trace__InterpolationConfigKind__CreatesInterpolationNode(self):
+        """Test that config interpolation creates interpolation node."""
+        # Arrange
+        from rconfig.interpolation.evaluator import InterpolationSource
+
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            value=0.01,
+            interpolation=InterpolationSource(
+                kind="config",
+                expression="/defaults.lr",
+                value=0.01,
+                path="defaults.lr",
+                file="defaults.yaml",
+                line=3,
+            ),
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        interp_node = result.children[0]
+        self.assertEqual("interpolation", interp_node.source_type)
+        self.assertEqual("defaults.lr", interp_node.path)
+        self.assertEqual("defaults.yaml", interp_node.file)
+
+    def test_trace__InterpolationEnvKind__CreatesEnvNode(self):
+        """Test that env interpolation creates env node."""
+        # Arrange
+        from rconfig.interpolation.evaluator import InterpolationSource
+
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            value="/data",
+            interpolation=InterpolationSource(
+                kind="env",
+                expression="env:DATA_PATH",
+                value="/data",
+                env_var="DATA_PATH",
+            ),
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        interp_node = result.children[0]
+        self.assertEqual("env", interp_node.source_type)
+        self.assertEqual("DATA_PATH", interp_node.env_var)
+
+    def test_trace__InterpolationLiteralKind__CreatesFileNode(self):
+        """Test that literal interpolation creates file node."""
+        # Arrange
+        from rconfig.interpolation.evaluator import InterpolationSource
+
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            value=42,
+            interpolation=InterpolationSource(
+                kind="literal",
+                expression="42",
+                value=42,
+            ),
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        interp_node = result.children[0]
+        self.assertEqual("file", interp_node.source_type)
+
+    def test_trace__InterpolationExpressionKind__CreatesOperatorNode(self):
+        """Test that expression interpolation creates operator node."""
+        # Arrange
+        from rconfig.interpolation.evaluator import InterpolationSource
+
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            value=15,
+            interpolation=InterpolationSource(
+                kind="expression",
+                expression="/a + /b",
+                value=15,
+                operator="+",
+                sources=[
+                    InterpolationSource(kind="config", expression="/a", value=5, path="a"),
+                    InterpolationSource(kind="config", expression="/b", value=10, path="b"),
+                ],
+            ),
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        interp_node = result.children[0]
+        self.assertEqual("operator", interp_node.source_type)
+        self.assertEqual("+", interp_node.operator)
+        self.assertEqual(2, len(interp_node.children))
+
+    def test_trace__UnknownInterpolationKind__FallbackToFileNode(self):
+        """Test that unknown interpolation kind falls back to file node."""
+        # Arrange
+        from rconfig.interpolation.evaluator import InterpolationSource
+
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            value=42,
+            interpolation=InterpolationSource(
+                kind="unknown",  # type: ignore  # Testing unknown kind
+                expression="unknown",
+                value=42,
+            ),
+        )
+
+        # Act
+        result = entry.trace()
+
+        # Assert
+        interp_node = result.children[0]
+        self.assertEqual("file", interp_node.source_type)
+
+
+class ProvenanceSetConfigExtendedTests(TestCase):
+    """Extended tests for Provenance.set_config()."""
+
+    def test_setConfig__ListIndex__PopulatesCorrectly(self):
+        """Test that list indices are populated correctly."""
+        # Arrange
+        prov = Provenance()
+        prov.add("items[0]", file="config.yaml", line=1)
+        prov.add("items[1]", file="config.yaml", line=2)
+        config = {"items": ["first", "second"]}
+
+        # Act
+        prov.set_config(config)
+
+        # Assert
+        self.assertEqual("first", prov.get("items[0]").value)
+        self.assertEqual("second", prov.get("items[1]").value)
+
+    def test_setConfig__TypeError__KeepsNone(self):
+        """Test that TypeError during path navigation keeps value as None."""
+        # Arrange
+        prov = Provenance()
+        prov.add("a.b.c", file="config.yaml", line=1)
+        config = {"a": None}  # Can't navigate through None
+
+        # Act
+        prov.set_config(config)
+
+        # Assert
+        self.assertIsNone(prov.get("a.b.c").value)
+
+    def test_setConfig__IndexError__KeepsNone(self):
+        """Test that IndexError during path navigation keeps value as None."""
+        # Arrange
+        prov = Provenance()
+        prov.add("items[5]", file="config.yaml", line=1)
+        config = {"items": [1, 2]}  # Only 2 items, index 5 is out of range
+
+        # Act
+        prov.set_config(config)
+
+        # Assert
+        self.assertIsNone(prov.get("items[5]").value)

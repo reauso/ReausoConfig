@@ -1,0 +1,28 @@
+_target_: instance_interpolation_test
+# Test _instance_ sharing with interpolation
+
+# Shared cache config
+shared_cache:
+  _target_: cache_config
+  size: 1000
+  ttl: 3600
+
+# Computed values based on cache
+cache_info:
+  doubled_size: ${/shared_cache.size * 2}
+  half_ttl: ${/shared_cache.ttl / 2}
+
+# Services using shared instance
+service_a:
+  _target_: service_config
+  name: service_a
+  cache:
+    _instance_: shared_cache
+  cache_size_check: ${/shared_cache.size}
+
+service_b:
+  _target_: service_config
+  name: service_b
+  cache:
+    _instance_: shared_cache
+  cache_size_check: ${/shared_cache.size}

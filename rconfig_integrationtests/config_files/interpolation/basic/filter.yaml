@@ -1,0 +1,14 @@
+_target_: filter_test
+# Source values for filter operation tests
+numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+threshold: 5
+
+# Test all filter comparison operators
+filtered:
+  greater_than: ${/numbers | filter(x > 5)}
+  less_than: ${/numbers | filter(x < 5)}
+  equals: ${/numbers | filter(x == 5)}
+  not_equals: ${/numbers | filter(x != 5)}
+  greater_or_equal: ${/numbers | filter(x >= 5)}
+  less_or_equal: ${/numbers | filter(x <= 5)}
+  with_config_ref: ${/numbers | filter(x > /threshold)}

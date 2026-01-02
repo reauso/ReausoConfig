@@ -1,0 +1,5 @@
+_target_: filter_on_string_test
+# Filter on string error test - should raise InterpolationResolutionError
+
+text: hello
+result: ${/text | filter(x > 0)}

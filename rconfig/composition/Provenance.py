@@ -2,13 +2,83 @@
 
 This module provides classes for tracking the origin of each value
 in a composed configuration, including file paths, line numbers,
-and override information.
+override information, and interpolation sources.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Iterator
+from typing import TYPE_CHECKING, Any, Iterator, Literal
 
 from rconfig._internal.path_utils import build_child_path
+
+if TYPE_CHECKING:
+    from rconfig.interpolation.evaluator import InterpolationSource
+    from .ProvenanceFormat import ProvenanceFormat
+    from .ProvenanceLayout import ProvenanceLayout
+
+
+@dataclass
+class ProvenanceNode:
+    """Node in a provenance tree.
+
+    Used for tracing the full origin of a value through refs, instances,
+    interpolations, and operators. Forms a tree structure for compound
+    expressions.
+
+    :param source_type: Type of source (file, ref, instance, interpolation,
+                        cli, env, programmatic, operator).
+    :param path: Config path (e.g., "/model.lr").
+    :param file: Source file name.
+    :param line: Line number in source file.
+    :param value: The resolved value at this node.
+    :param expression: Interpolation expression (e.g., "${/a + /b}").
+    :param operator: Operator for compound expressions (+, *, etc.).
+    :param env_var: Environment variable name for env sources.
+    :param cli_arg: CLI argument for CLI sources.
+    :param children: Child nodes in the tree.
+    """
+
+    source_type: Literal[
+        "file", "ref", "instance", "interpolation", "cli", "env", "programmatic", "operator"
+    ]
+    path: str | None = None
+    file: str | None = None
+    line: int | None = None
+    value: Any = None
+    expression: str | None = None
+    operator: str | None = None
+    env_var: str | None = None
+    cli_arg: str | None = None
+    children: list[ProvenanceNode] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a dictionary representation.
+
+        :return: Dictionary representation of this node and its children.
+        """
+        result: dict[str, Any] = {"source_type": self.source_type}
+
+        if self.path is not None:
+            result["path"] = self.path
+        if self.file is not None:
+            result["file"] = self.file
+        if self.line is not None:
+            result["line"] = self.line
+        if self.value is not None:
+            result["value"] = self.value
+        if self.expression is not None:
+            result["expression"] = self.expression
+        if self.operator is not None:
+            result["operator"] = self.operator
+        if self.env_var is not None:
+            result["env_var"] = self.env_var
+        if self.cli_arg is not None:
+            result["cli_arg"] = self.cli_arg
+        if self.children:
+            result["children"] = [child.to_dict() for child in self.children]
+
+        return result
 
 
 @dataclass
@@ -33,12 +103,166 @@ class ProvenanceEntry:
     :param line: Line number in source file.
     :param overrode: What this value overrode (if any), format: "file:line".
     :param instance: Chain of instance references with origins.
+    :param interpolation: Source info if value was interpolated.
+    :param source_type: Type of source (file, cli, env, programmatic).
+    :param cli_arg: CLI argument if source_type is "cli".
+    :param env_var: Environment variable name if source_type is "env".
+    :param value: The resolved value at this path.
     """
 
     file: str
     line: int
     overrode: str | None = None
     instance: list[InstanceRef] | None = None
+    interpolation: InterpolationSource | None = None
+    source_type: Literal["file", "cli", "env", "programmatic"] = "file"
+    cli_arg: str | None = None
+    env_var: str | None = None
+    value: Any = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a dictionary representation.
+
+        :return: Dictionary representation of this entry.
+        """
+        result: dict[str, Any] = {
+            "file": self.file,
+            "line": self.line,
+            "source_type": self.source_type,
+        }
+
+        if self.overrode is not None:
+            result["overrode"] = self.overrode
+        if self.instance is not None:
+            result["instance"] = [
+                {"path": ref.path, "file": ref.file, "line": ref.line}
+                for ref in self.instance
+            ]
+        if self.interpolation is not None:
+            result["interpolation"] = {
+                "kind": self.interpolation.kind,
+                "expression": self.interpolation.expression,
+                "value": self.interpolation.value,
+            }
+            if self.interpolation.path:
+                result["interpolation"]["path"] = self.interpolation.path
+            if self.interpolation.file:
+                result["interpolation"]["file"] = self.interpolation.file
+            if self.interpolation.line:
+                result["interpolation"]["line"] = self.interpolation.line
+        if self.cli_arg is not None:
+            result["cli_arg"] = self.cli_arg
+        if self.env_var is not None:
+            result["env_var"] = self.env_var
+        if self.value is not None:
+            result["value"] = self.value
+
+        return result
+
+    def trace(self) -> ProvenanceNode:
+        """Build a provenance tree from this entry.
+
+        Follows interpolation sources recursively to build the full tree.
+
+        :return: Root node of the provenance tree.
+        """
+        # Determine the root node type based on source_type
+        if self.source_type == "cli":
+            root = ProvenanceNode(
+                source_type="cli",
+                file=self.file,
+                line=self.line,
+                value=self.value,
+                cli_arg=self.cli_arg,
+            )
+        elif self.source_type == "env":
+            root = ProvenanceNode(
+                source_type="env",
+                file=self.file,
+                line=self.line,
+                value=self.value,
+                env_var=self.env_var,
+            )
+        elif self.source_type == "programmatic":
+            root = ProvenanceNode(
+                source_type="programmatic",
+                value=self.value,
+            )
+        else:
+            root = ProvenanceNode(
+                source_type="file",
+                file=self.file,
+                line=self.line,
+                value=self.value,
+            )
+
+        # Add interpolation tree if present
+        if self.interpolation:
+            interp_node = self._build_interpolation_tree(self.interpolation)
+            root.children.append(interp_node)
+
+        # Add instance chain if present
+        if self.instance:
+            for ref in self.instance:
+                instance_node = ProvenanceNode(
+                    source_type="instance",
+                    path=ref.path,
+                    file=ref.file,
+                    line=ref.line,
+                )
+                root.children.append(instance_node)
+
+        return root
+
+    def _build_interpolation_tree(
+        self, source: InterpolationSource
+    ) -> ProvenanceNode:
+        """Recursively build tree from InterpolationSource.
+
+        :param source: The interpolation source to convert.
+        :return: ProvenanceNode representing this source.
+        """
+        if source.kind == "config":
+            node = ProvenanceNode(
+                source_type="interpolation",
+                path=source.path,
+                file=source.file,
+                line=source.line,
+                value=source.value,
+                expression=source.expression,
+            )
+        elif source.kind == "env":
+            node = ProvenanceNode(
+                source_type="env",
+                env_var=source.env_var,
+                value=source.value,
+                expression=source.expression,
+            )
+        elif source.kind == "literal":
+            node = ProvenanceNode(
+                source_type="file",
+                value=source.value,
+                expression=source.expression,
+            )
+        elif source.kind == "expression":
+            node = ProvenanceNode(
+                source_type="operator",
+                operator=source.operator,
+                value=source.value,
+                expression=source.expression,
+            )
+            # Add children from compound expression
+            for child_source in source.sources:
+                child_node = self._build_interpolation_tree(child_source)
+                node.children.append(child_node)
+        else:
+            node = ProvenanceNode(
+                source_type="file",
+                value=source.value,
+                expression=source.expression,
+            )
+
+        return node
 
 
 class Provenance:
@@ -92,9 +316,24 @@ class Provenance:
     def set_config(self, config: dict) -> None:
         """Set the composed config for formatted output.
 
+        Also populates the `value` field of each provenance entry from the
+        resolved config, for entries that don't already have a value set
+        (e.g., from interpolation resolution).
+
         :param config: The composed configuration dictionary.
         """
+        from rconfig._internal.path_utils import get_value_at_path
+
         self._config = config
+
+        # Populate values for all entries
+        for path, entry in self._entries.items():
+            if entry.value is None:
+                try:
+                    entry.value = get_value_at_path(config, path)
+                except (KeyError, IndexError, TypeError):
+                    # Path no longer exists in config (e.g., removed by override)
+                    pass
 
     def get(self, path: str) -> ProvenanceEntry | None:
         """Get origin info for a specific config path.
@@ -121,6 +360,63 @@ class Provenance:
                 print(f"{path}: {entry.file}:{entry.line}")
         """
         return iter(self._entries.items())
+
+    def format(self, layout: ProvenanceLayout | None = None) -> ProvenanceFormat:
+        """Create a format builder for customizing provenance output.
+
+        :param layout: Optional custom layout. Uses TreeLayout if None.
+        :return: ProvenanceFormat builder for method chaining.
+
+        Example::
+
+            # Use default full format
+            print(prov.format())
+
+            # Use minimal preset
+            print(prov.format().minimal())
+
+            # Custom options
+            print(prov.format().hide_chain().for_path("/model.*"))
+
+            # Custom layout
+            print(prov.format(layout=TableLayout()))
+        """
+        from .ProvenanceFormat import ProvenanceFormat
+
+        return ProvenanceFormat(self, layout)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the entire provenance to a dictionary.
+
+        :return: Dictionary with paths as keys and entry dicts as values.
+
+        Example::
+
+            data = prov.to_dict()
+            for path, entry_data in data.items():
+                print(f"{path}: {entry_data}")
+        """
+        return {path: entry.to_dict() for path, entry in self._entries.items()}
+
+    def trace(self, path: str) -> ProvenanceNode | None:
+        """Get the provenance tree for a specific path.
+
+        Builds a tree structure showing the full origin chain including
+        interpolations, instances, and refs.
+
+        :param path: The config path to trace.
+        :return: Root ProvenanceNode or None if path not found.
+
+        Example::
+
+            tree = prov.trace("model.lr")
+            if tree:
+                print(tree.to_dict())
+        """
+        entry = self._entries.get(path)
+        if entry is None:
+            return None
+        return entry.trace()
 
     def __str__(self) -> str:
         """Format provenance as a string showing config with origins.
@@ -228,5 +524,7 @@ class Provenance:
         annotation = f"  # {entry.file}:{entry.line}"
         if entry.overrode:
             annotation += f" (overrode {entry.overrode})"
+        if entry.interpolation:
+            annotation += f" (interpolated: ${{{entry.interpolation.expression}}})"
 
         return annotation

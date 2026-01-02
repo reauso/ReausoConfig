@@ -1,0 +1,28 @@
+_target_: literals_test
+# Literal value tests in interpolation expressions
+
+# Direct literal usage
+literals:
+  integer: ${42}
+  float: ${3.14159}
+  negative_int: ${-10}
+  negative_float: ${-2.5}
+  scientific_large: ${1e10}
+  scientific_small: ${1e-5}
+  string: ${"hello world"}
+  bool_true: ${true}
+  bool_false: ${false}
+  null_value: ${null}
+  empty_list: ${[]}
+  number_list: ${[1, 2, 3]}
+  mixed_list: ${[1, "two", 3.0, true, null]}
+
+# Literals in expressions
+computed:
+  literal_addition: ${10 + 5}
+  literal_multiplication: ${3 * 4}
+  literal_comparison: ${5 > 3}
+  literal_boolean: ${true and false}
+  literal_list_length: ${len([1, 2, 3, 4, 5])}
+  literal_string_concat: ${"hello" + " " + "world"}
+  literal_in_check: ${"a" in ["a", "b", "c"]}

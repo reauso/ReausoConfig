@@ -1,0 +1,7 @@
+_target_: three_way_cycle_test
+# Three-way circular reference error test - should raise CircularInterpolationError
+# a -> b -> c -> a
+
+a: ${/b}
+b: ${/c}
+c: ${/a}

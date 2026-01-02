@@ -1,0 +1,87 @@
+_target_: all_operations_test
+# Comprehensive test using all interpolation operations
+
+# Source data
+defaults:
+  learning_rate: 0.001
+  batch_size: 32
+  epochs: 100
+  threshold: 0.5
+
+items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+callbacks: [logger, checkpoint, early_stop, tensorboard]
+name: experiment
+
+# Arithmetic operations
+arithmetic:
+  doubled_lr: ${/defaults.learning_rate * 2}
+  effective_batch: ${/defaults.batch_size * 4}
+  lr_scaled: ${/defaults.learning_rate / 10}
+  epochs_remaining: ${/defaults.epochs - 25}
+  power_test: ${/defaults.batch_size ** 2}
+  floor_div: ${/defaults.epochs // 30}
+  modulo: ${/defaults.epochs % 30}
+  negative_lr: ${-/defaults.learning_rate}
+  positive_batch: ${+/defaults.batch_size}
+
+# Comparison operations
+comparisons:
+  is_long_training: ${/defaults.epochs > 50}
+  is_short_training: ${/defaults.epochs < 50}
+  is_exact_epochs: ${/defaults.epochs == 100}
+  is_not_epochs: ${/defaults.epochs != 50}
+  is_at_least: ${/defaults.epochs >= 100}
+  is_at_most: ${/defaults.epochs <= 100}
+
+# Boolean operations
+booleans:
+  is_valid_lr: ${/defaults.learning_rate >= 0.0001 and /defaults.learning_rate <= 0.1}
+  needs_adjustment: ${/defaults.epochs > 200 or /defaults.batch_size < 16}
+  is_not_long: ${not /defaults.epochs > 200}
+  has_logger: ${"logger" in /callbacks}
+  no_debug: ${"debug" not in /callbacks}
+
+# List operations
+lists:
+  first_item: ${/items[0]}
+  last_item: ${/items[-1]}
+  third_item: ${/items[2]}
+  subset: ${/items[2:5]}
+  from_start: ${/items[:3]}
+  to_end: ${/items[7:]}
+  item_count: ${len(/items)}
+  callback_count: ${len(/callbacks)}
+
+# List arithmetic
+list_math:
+  combined: ${/items + [11, 12, 13]}
+  without_values: ${/items - [5, 10]}
+  without_first: ${/items.remove(0)}
+
+# Filter operations
+filtered:
+  greater_than_5: ${/items | filter(x > 5)}
+  less_than_5: ${/items | filter(x < 5)}
+  equals_5: ${/items | filter(x == 5)}
+  not_equals_5: ${/items | filter(x != 5)}
+  at_least_5: ${/items | filter(x >= 5)}
+  at_most_5: ${/items | filter(x <= 5)}
+
+# String operations
+strings:
+  run_name: ${"run_" + /name + "_v1"}
+  epochs_string: ${"Training for " + /defaults.epochs + " epochs"}
+  batch_info: "Batch size: ${/defaults.batch_size}"
+  full_config: "lr=${/defaults.learning_rate}, bs=${/defaults.batch_size}"
+
+# Environment with defaults
+env_values:
+  output_path: ${env:INTEGRATION_TEST_OUTPUT,./outputs}
+  debug_mode: ${env:INTEGRATION_TEST_DEBUG,false}
+  run_id: ${env:INTEGRATION_TEST_RUN_ID,default_run}
+
+# Complex combined expressions
+combined:
+  scaled_and_checked: ${/defaults.learning_rate * 100 > /defaults.threshold}
+  filtered_items: ${/items | filter(x > 3)}
+  dynamic_threshold: ${len(/items | filter(x > 5)) > 3}

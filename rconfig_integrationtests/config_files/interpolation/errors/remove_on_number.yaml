@@ -1,0 +1,5 @@
+_target_: remove_on_number_test
+# Remove on number error test - should raise InterpolationResolutionError
+
+value: 42
+result: ${/value.remove(0)}

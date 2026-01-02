@@ -1,0 +1,152 @@
+// Expression grammar for ReausoConfig interpolation
+// Supports: arithmetic, comparisons, booleans, string concat, list operations,
+//           config references, and environment variables
+
+?start: expression
+
+// Operator precedence (low to high):
+// 1. or
+// 2. and
+// 3. not
+// 4. in, not in, ==, !=, <, >, <=, >=
+// 5. + - (additive)
+// 6. * / // % (multiplicative)
+// 7. ** (power)
+// 8. unary - +
+// 9. | (pipe for filter)
+// 10. [] (indexing/slicing), . (method calls)
+// 11. atoms (literals, references, parentheses)
+
+?expression: or_expr
+
+?or_expr: and_expr
+        | or_expr "or" and_expr -> or_op
+
+?and_expr: not_expr
+         | and_expr "and" not_expr -> and_op
+
+?not_expr: comparison
+         | "not" not_expr -> not_op
+
+?comparison: pipe_expr
+           | comparison "==" pipe_expr -> eq
+           | comparison "!=" pipe_expr -> ne
+           | comparison "<" pipe_expr -> lt
+           | comparison ">" pipe_expr -> gt
+           | comparison "<=" pipe_expr -> le
+           | comparison ">=" pipe_expr -> ge
+           | comparison "in" pipe_expr -> contains
+           | comparison "not" "in" pipe_expr -> not_contains
+
+?pipe_expr: add_expr
+          | pipe_expr "|" "filter" "(" filter_condition ")" -> filter_op
+
+// Filter condition: variable followed by comparison operator and value
+// Supports: x > 5, x == "a", x != null, x < /threshold, etc.
+filter_condition: FILTER_VAR "==" filter_value -> filter_eq
+                | FILTER_VAR "!=" filter_value -> filter_ne
+                | FILTER_VAR "<" filter_value -> filter_lt
+                | FILTER_VAR ">" filter_value -> filter_gt
+                | FILTER_VAR "<=" filter_value -> filter_le
+                | FILTER_VAR ">=" filter_value -> filter_ge
+
+// Values that can be compared against in filter condition
+?filter_value: NUMBER -> number
+             | ESCAPED_STRING -> string
+             | "true" -> true
+             | "false" -> false
+             | "null" -> null
+             | config_ref
+
+?add_expr: mul_expr
+         | add_expr "+" mul_expr -> add
+         | add_expr "-" mul_expr -> sub
+
+?mul_expr: pow_expr
+         | mul_expr "*" pow_expr -> mul
+         | mul_expr "/" pow_expr -> div
+         | mul_expr "//" pow_expr -> floordiv
+         | mul_expr "%" pow_expr -> mod
+
+?pow_expr: unary_expr
+         | unary_expr "**" pow_expr -> pow
+
+?unary_expr: postfix_expr
+           | "-" unary_expr -> neg
+           | "+" unary_expr -> pos
+
+?postfix_expr: atom
+             | postfix_expr "[" expression "]" -> index
+             | postfix_expr "[" slice "]" -> slice_op
+             | postfix_expr "." "remove" "(" expression ")" -> remove_method
+
+slice: expression ":" expression -> slice_both
+     | expression ":"             -> slice_to_end
+     | ":" expression             -> slice_from_start
+
+?atom: NUMBER -> number
+     | ESCAPED_STRING -> string
+     | "true" -> true
+     | "false" -> false
+     | "null" -> null
+     | list
+     | config_ref
+     | env_ref
+     | builtin_func
+     | "(" expression ")"
+
+// List literal
+list: "[" [expression ("," expression)*] "]"
+
+// Built-in functions
+builtin_func: "len" "(" expression ")" -> len_func
+
+// Config path reference
+config_ref: ABS_PATH -> abs_config_ref
+          | PARENT_PATH -> parent_config_ref
+          | REL_PATH -> rel_config_ref
+          | SIMPLE_PATH -> simple_config_ref
+
+// Environment variable reference
+env_ref: "env" ":" ENV_NAME -> env_ref_required
+       | "env" ":" ENV_NAME "," default_value -> env_ref_default
+
+// Default value for env vars - can be string, number, bool, null, or raw path-like value
+default_value: ESCAPED_STRING -> default_string
+             | SIGNED_NUMBER -> default_number
+             | "true" -> default_true
+             | "false" -> default_false
+             | "null" -> default_null
+             | DEFAULT_RAW -> default_raw
+
+// Raw default value (for path-like strings without quotes)
+// Matches any non-special characters until end of expression
+DEFAULT_RAW: /[^,\[\](){}|\s]+/
+
+// Path patterns
+// Absolute: /model.layers[0].size
+ABS_PATH: "/" PATH_CONTENT
+// Parent-relative: ../sibling.value or ../../other.value (one or more ../)
+PARENT_PATH: /(\.\.\/)+/ PATH_CONTENT
+// Explicit relative: ./local.value
+REL_PATH: "./" PATH_CONTENT
+// Simple path (implicit relative): model.layers[0]
+SIMPLE_PATH: PATH_CONTENT
+
+// Path content: identifiers, dots, and bracket indices
+// Note: Must not consume method names like .remove - use negative lookahead
+PATH_CONTENT: /[a-zA-Z_][a-zA-Z0-9_]*(\.(?!remove\b)[a-zA-Z_][a-zA-Z0-9_]*|\[\d+\])*/
+
+// Environment variable name (uppercase with underscores)
+ENV_NAME: /[A-Za-z_][A-Za-z0-9_]*/
+
+// Filter variable (single letter like x, y, etc.)
+FILTER_VAR: /[a-z]/
+
+// Terminals
+NUMBER: SIGNED_NUMBER
+SIGNED_NUMBER: /-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/
+
+%import common.ESCAPED_STRING
+%import common.WS
+%ignore WS

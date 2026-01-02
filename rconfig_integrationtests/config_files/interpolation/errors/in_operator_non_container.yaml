@@ -1,0 +1,5 @@
+_target_: in_operator_non_container_test
+# In operator with non-container error test - should raise InterpolationResolutionError
+
+value: 42
+result: ${"a" in /value}

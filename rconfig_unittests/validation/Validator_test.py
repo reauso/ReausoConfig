@@ -2274,3 +2274,85 @@ class ConfigValidatorCoverageTests(TestCase):
 
         # Assert
         self.assertEqual(result, "dict")
+
+    # === Untyped collection matching tests (lines 378, 386) ===
+
+    def test_validate__UntypedListHint__AcceptsAnyList(self):
+        """Test that bare 'list' type hint accepts any list content."""
+        # Arrange - covers line 378 (_matches_list_type returns True when no args)
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            items: list  # No generic type parameter
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "items": [1, "two", 3.0, None]}
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertTrue(result.valid)
+        self.assertEqual(len(result.errors), 0)
+
+    def test_validate__UntypedDictHint__AcceptsAnyDict(self):
+        """Test that bare 'dict' type hint accepts any dict content."""
+        # Arrange - covers line 386 (_matches_dict_type returns True when no args)
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            data: dict  # No generic type parameters
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "data": {"a": 1, "b": "two", "c": [1, 2, 3]}}
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertTrue(result.valid)
+        self.assertEqual(len(result.errors), 0)
+
+    # === Type representation tests (lines 421, 426) ===
+
+    def test_type_repr__GenericListNoArgs__ReturnsListString(self):
+        """Test _type_repr returns 'list' for list with empty args."""
+        # Arrange - covers line 421 (list without args)
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Act
+        result = validator._type_repr(list)
+
+        # Assert
+        self.assertEqual(result, "list")
+
+    def test_type_repr__GenericDictNoArgs__ReturnsDictString(self):
+        """Test _type_repr returns 'dict' for dict with empty args."""
+        # Arrange - covers line 426 (dict without args)
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Act
+        result = validator._type_repr(dict)
+
+        # Assert
+        self.assertEqual(result, "dict")
+
+    # === List element type extraction (line 488) ===
+
+    def test_getListElementType__NoneType__ReturnsNone(self):
+        """Test _get_list_element_type returns None for None input."""
+        # Arrange - covers line 488
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+
+        # Act
+        result = validator._get_list_element_type(None)
+
+        # Assert
+        self.assertIsNone(result)

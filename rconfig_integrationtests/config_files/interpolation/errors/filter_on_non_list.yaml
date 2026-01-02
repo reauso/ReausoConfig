@@ -1,0 +1,5 @@
+_target_: filter_on_non_list_test
+# Filter on non-list test - should raise InterpolationResolutionError
+
+value: 42
+result: ${/value | filter(x > 0)}

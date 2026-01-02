@@ -1849,3 +1849,154 @@ class ConfigInstantiatorCoverageTests(TestCase):
 
         # Assert
         self.assertIsNone(result)
+
+    # === Auto-registration tests (Instantiator lines 153-159) ===
+
+    def test_instantiate__UnregisteredTargetMatchingExpectedType__AutoRegisters(self):
+        """Test auto-registration when target name matches expected type's class name."""
+        store = self._empty_store()
+
+        @dataclass
+        class NestedModel:
+            size: int
+
+        @dataclass
+        class Container:
+            model: NestedModel
+
+        store.register("container", Container)
+        # Note: "nestedmodel" is NOT registered
+
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "container",
+            "model": {"_target_": "nestedmodel", "size": 100},
+        }
+
+        # Act
+        result = instantiator.instantiate(config)
+
+        # Assert
+        self.assertIsInstance(result.model, NestedModel)
+        self.assertEqual(result.model.size, 100)
+        # Verify it was auto-registered
+        self.assertIn("nestedmodel", store.known_references)
+
+    def test_instantiate__UnregisteredTargetNotMatchingType__RaisesError(self):
+        """Test that auto-registration only happens when names match."""
+        store = self._empty_store()
+
+        @dataclass
+        class NestedModel:
+            size: int
+
+        @dataclass
+        class Container:
+            model: NestedModel
+
+        store.register("container", Container)
+        # Target name "other" doesn't match expected type "NestedModel"
+
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "container",
+            "model": {"_target_": "other", "size": 100},
+        }
+
+        # Act & Assert
+        with self.assertRaises(TargetNotFoundError):
+            instantiator.instantiate(config)
+
+    # === Instance caching tests (Instantiator lines 197-203) ===
+
+    def test_instantiate__SharedInstance__ReturnsSameObject(self):
+        """Test that _instance_ references share the same object."""
+        store = self._empty_store()
+
+        @dataclass
+        class Cache:
+            size: int
+
+        @dataclass
+        class Service:
+            cache: Cache
+
+        @dataclass
+        class App:
+            shared_cache: Cache
+            service_a: Service
+            service_b: Service
+
+        store.register("app", App)
+        store.register("cache", Cache)
+        store.register("service", Service)
+
+        instantiator = self._create_instantiator(store)
+        # Config after _instance_ resolution (values are copied from target)
+        config = {
+            "_target_": "app",
+            "shared_cache": {"_target_": "cache", "size": 100},
+            "service_a": {
+                "_target_": "service",
+                "cache": {"_target_": "cache", "size": 100},  # resolved copy
+            },
+            "service_b": {
+                "_target_": "service",
+                "cache": {"_target_": "cache", "size": 100},  # resolved copy
+            },
+        }
+        # Instance targets indicate that service_a.cache and service_b.cache
+        # both reference shared_cache
+        instance_targets = {
+            "service_a.cache": "shared_cache",
+            "service_b.cache": "shared_cache",
+        }
+
+        # Act
+        result = instantiator.instantiate(
+            config, validate=True, instance_targets=instance_targets
+        )
+
+        # Assert - same object instance is shared
+        self.assertIs(result.service_a.cache, result.shared_cache)
+        self.assertIs(result.service_b.cache, result.shared_cache)
+
+    def test_instantiate__CachedInstance__ReturnsFromCache(self):
+        """Test that instantiated objects are cached for reuse."""
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        instantiator = self._create_instantiator(store)
+        config = {"_target_": "model", "value": 42}
+
+        # Act - instantiate twice
+        result1 = instantiator.instantiate(config)
+        result2 = instantiator.instantiate(config)
+
+        # Assert - both are valid instances
+        self.assertIsInstance(result1, Model)
+        self.assertIsInstance(result2, Model)
+        self.assertEqual(result1.value, 42)
+        self.assertEqual(result2.value, 42)
+
+    # === Validation error tests (Instantiator line 208) ===
+
+    def test_instantiate__ValidationError__RaisesFirstError(self):
+        """Test that validation errors are properly raised."""
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            required_field: int
+
+        store.register("model", Model)
+        instantiator = self._create_instantiator(store)
+        config = {"_target_": "model"}  # missing required_field
+
+        # Act & Assert
+        with self.assertRaises(MissingFieldError):
+            instantiator.instantiate(config)

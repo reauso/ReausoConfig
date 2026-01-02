@@ -1,0 +1,6 @@
+_target_: type_error_test
+# Type error test - should raise InterpolationResolutionError
+
+text: hello
+number: 5
+result: ${/text - /number}

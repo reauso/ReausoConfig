@@ -72,14 +72,16 @@ optimizer:
   lr: 0.01
 ```
 
-### 5. Reference Values Across Config
+### ✓ 5. Reference Values Across Config
 
 ```yaml
 optimizer:
-  lr: ${model.learning_rate}  # Reference another value
+  lr: ${/model.learning_rate}  # Reference another value
+  scaled_lr: ${/model.learning_rate * 10}  # With expressions
 
 dataset:
-  path: ${env:DATA_PATH}      # Environment variable
+  path: ${env:DATA_PATH}       # Environment variable
+  cache: ${env:CACHE_DIR,/tmp} # With default value
 ```
 
 ### ✓ 6. Include Other Files
@@ -130,10 +132,12 @@ app = config.instantiate(num_workers=os.cpu_count())
 - ✓ List indexing: `model.layers[0].size=128`
 - ✓ Add/remove operations: `+callbacks=logger`, `~callbacks`
 
-### Interpolation
-- Reference other config values: `${path.to.value}`
-- Environment variables: `${env:VAR}` or `${env:VAR,default}`
-- Prevents circular references
+### ✓ Interpolation
+- ✓ Reference other config values: `${/path.to.value}`, `${./relative}`, `${../parent}`
+- ✓ Environment variables: `${env:VAR}` or `${env:VAR,default}`
+- ✓ Full expression support: arithmetic, comparisons, boolean, list operations
+- ✓ Circular reference detection
+- ✓ Provenance tracking for interpolated values
 
 ### ✓ Validation
 - ✓ Schema validation (valid YAML)
@@ -250,11 +254,11 @@ When something fails:
 
 YAML parsing loses line information—how do we preserve it?
 
-### 5. Interpolation Timing
+### ✓ 5. Interpolation Timing
 When to resolve `${references}`:
-- At parse time? (values might not exist yet)
-- At instantiation time? (order matters)
-- Lazily on access? (complexity)
+- ✓ Resolved after overrides, before validation
+- ✓ Topological resolution handles dependencies
+- ✓ Circular references detected and reported
 
 ### ✓ 6. Config vs Instance Identity
 ```yaml
