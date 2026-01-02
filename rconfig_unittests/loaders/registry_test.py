@@ -1,8 +1,8 @@
-import tempfile
 from pathlib import Path
 from typing import Any
 from unittest import TestCase
 
+from rconfig.composition import clear_cache
 from rconfig.errors import ConfigFileError
 from rconfig.loaders import (
     ConfigFileLoader,
@@ -12,6 +12,8 @@ from rconfig.loaders import (
     register_loader,
     unregister_loader,
 )
+
+from rconfig_unittests.fixtures import MockFileSystem, mock_filesystem
 
 
 class _TestLoader(ConfigFileLoader):
@@ -121,23 +123,21 @@ class UnregisterLoaderTests(TestCase):
 
 
 class LoadConfigTests(TestCase):
+    def setUp(self):
+        clear_cache()
+
     def test_load_config__ValidYamlFile__ReturnsDict(self):
         # Arrange
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        ) as f:
-            f.write("_target_: my_model\nvalue: 42\n")
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", "_target_: my_model\nvalue: 42\n")
 
-        try:
+        with mock_filesystem(fs):
             # Act
-            result = load_config(path)
+            result = load_config(Path("/configs/model.yaml"))
 
             # Assert
             self.assertEqual(result["_target_"], "my_model")
             self.assertEqual(result["value"], 42)
-        finally:
-            path.unlink()
 
     def test_load_config__UnsupportedFormat__RaisesConfigFileError(self):
         # Act & Assert
@@ -158,19 +158,16 @@ class LoadConfigTests(TestCase):
         test_loader = _TestLoader()
         register_loader(test_loader)
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".test", delete=False, encoding="utf-8"
-        ) as f:
-            f.write("dummy content")
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/test.test", "dummy content")
 
         try:
-            # Act
-            result = load_config(path)
+            with mock_filesystem(fs):
+                # Act
+                result = load_config(Path("/configs/test.test"))
 
-            # Assert
-            self.assertTrue(result["test_loader"])
-            self.assertEqual(result["path"], str(path))
+                # Assert
+                self.assertTrue(result["test_loader"])
+                self.assertEqual(result["path"], "/configs/test.test")
         finally:
-            path.unlink()
             unregister_loader(test_loader)

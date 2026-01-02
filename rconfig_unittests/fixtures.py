@@ -11,8 +11,6 @@ from typing import Any, Generator
 from unittest import TestCase
 from unittest.mock import patch
 
-from ruamel.yaml.comments import CommentedMap
-
 from rconfig.store import ConfigStore
 
 
@@ -92,29 +90,15 @@ class OptionalFieldsModel:
 # =============================================================================
 
 
-def make_commented_map(data: dict[str, Any]) -> CommentedMap:
-    """Create a CommentedMap from a dict, recursively converting nested dicts.
-
-    :param data: Dictionary to convert.
-    :return: CommentedMap with the same structure.
-    """
-    result = CommentedMap(data)
-    for key, value in data.items():
-        if isinstance(value, dict):
-            result[key] = make_commented_map(value)
-        elif isinstance(value, list):
-            result[key] = [
-                make_commented_map(item) if isinstance(item, dict) else item
-                for item in value
-            ]
-    return result
-
-
 class MockFileSystem:
     """A mock file system for testing config composition without real files.
 
     Use with the `mock_filesystem()` context manager to mock Path operations
     and file loading so tests don't access the real filesystem.
+
+    Files can be added as either:
+    - dict: Converted to YAML string for parsing (supports line numbers)
+    - str: Used directly as YAML content
 
     Example::
 
@@ -131,17 +115,30 @@ class MockFileSystem:
 
         :param base_path: Base path for relative file resolution.
         """
-        self._files: dict[str, dict[str, Any]] = {}
+        self._files: dict[str, str] = {}
         self._base_path = Path(base_path)
 
-    def add_file(self, path: str, content: dict[str, Any]) -> "MockFileSystem":
+    def add_file(
+        self, path: str, content: dict[str, Any] | str
+    ) -> "MockFileSystem":
         """Add a file to the mock file system.
 
         :param path: Absolute path to the file (as string).
-        :param content: Config dictionary to return when this file is loaded.
+        :param content: Config dict (converted to YAML) or YAML string.
         :return: Self for method chaining.
         """
-        self._files[path] = content
+        if isinstance(content, dict):
+            from ruamel.yaml import YAML
+
+            yaml = YAML()
+            yaml.default_flow_style = False
+            from io import StringIO
+
+            stream = StringIO()
+            yaml.dump(content, stream)
+            self._files[path] = stream.getvalue()
+        else:
+            self._files[path] = content
         return self
 
     def exists(self, path: str) -> bool:
@@ -152,17 +149,15 @@ class MockFileSystem:
         """
         return path in self._files
 
-    def load(self, path: str) -> CommentedMap:
-        """Load a file from the mock file system.
-
-        This method signature matches _load_file_cached.
+    def get_content(self, path: str) -> str:
+        """Get the YAML content of a file.
 
         :param path: Path to the file (as string).
-        :return: CommentedMap with the file contents.
+        :return: YAML string content.
         :raises KeyError: If the file is not found.
         """
         if path in self._files:
-            return make_commented_map(self._files[path])
+            return self._files[path]
         raise KeyError(f"Mock file not found: {path}")
 
     @property
@@ -173,12 +168,15 @@ class MockFileSystem:
 
 @contextmanager
 def mock_filesystem(fs: MockFileSystem) -> Generator[None, None, None]:
-    """Context manager that mocks Path operations to use a MockFileSystem.
+    """Context manager that mocks file I/O to use a MockFileSystem.
 
     This patches:
-    - `_load_file_cached` to load from the mock filesystem
+    - `builtins.open` to return mock file contents
     - `Path.exists()` to check the mock filesystem
     - `Path.resolve()` to normalize paths (handles `..` and `.` segments)
+
+    The real YAML parser runs on the mock content, so line numbers and
+    other YAML metadata are preserved. The real lru_cache works naturally.
 
     Example::
 
@@ -191,19 +189,30 @@ def mock_filesystem(fs: MockFileSystem) -> Generator[None, None, None]:
 
     :param fs: The MockFileSystem instance to use.
     """
+    import builtins
     import posixpath
+    from io import StringIO
+
+    original_open = builtins.open
+
+    def mock_open(file, mode="r", *args, **kwargs):
+        path_str = str(file)
+        if fs.exists(path_str):
+            content = fs.get_content(path_str)
+            return StringIO(content)
+        # Fall back to real open for non-mocked files
+        return original_open(file, mode, *args, **kwargs)
 
     def mock_exists(path_self: Path) -> bool:
         return fs.exists(str(path_self))
 
     def mock_resolve(path_self: Path) -> Path:
         # Normalize the path to handle .. and . segments
-        # Use posixpath.normpath to resolve parent references
         normalized = posixpath.normpath(str(path_self))
         return Path(normalized)
 
     with (
-        patch("rconfig.composition.Walker._load_file_cached", fs.load),
+        patch.object(builtins, "open", mock_open),
         patch.object(Path, "exists", mock_exists),
         patch.object(Path, "resolve", mock_resolve),
     ):
