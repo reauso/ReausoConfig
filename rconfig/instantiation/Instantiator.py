@@ -46,6 +46,7 @@ class ConfigInstantiator:
         validate: bool = True,
         config_path: str = "",
         instance_targets: dict[str, str | None] | None = None,
+        external_instances: dict[str, Any] | None = None,
     ) -> Any:
         """Create an object from a config dictionary.
 
@@ -56,6 +57,9 @@ class ConfigInstantiator:
                                  target paths for instance sharing. When two
                                  paths share the same target, they get the
                                  same Python object instance.
+        :param external_instances: Pre-instantiated objects for external refs.
+                                   Used by partial instantiation to provide
+                                   objects from outside the partial scope.
         :return: Instantiated object.
         :raises ValidationError: If config is invalid (when validate=True).
         :raises InstantiationError: If instantiation fails.
@@ -66,6 +70,10 @@ class ConfigInstantiator:
         else:
             self._instance_targets = {}
         self._instantiated_cache = {}
+
+        # Pre-populate cache with external instances
+        if external_instances:
+            self._instantiated_cache.update(external_instances)
 
         if validate:
             result = self._validator.validate(config, config_path)
@@ -139,6 +147,20 @@ class ConfigInstantiator:
             if target_path is None:
                 # _instance_: null
                 return None
+
+            # Handle external instance reference (from partial instantiation)
+            if target_path.startswith("__external__:"):
+                # External instances should have been pre-populated in cache
+                if target_path in self._instantiated_cache:
+                    return self._instantiated_cache[target_path]
+                # If not found, the external target couldn't be instantiated
+                external_path = target_path[13:]  # Strip "__external__:" prefix
+                raise InstantiationError(
+                    "external",
+                    f"External instance target '{external_path}' was not pre-instantiated",
+                    config_path,
+                )
+
             # Check if the target has already been instantiated
             if target_path in self._instantiated_cache:
                 return self._instantiated_cache[target_path]

@@ -433,3 +433,378 @@ class ApiCliOverridesTests(TestCase):
                 self.assertEqual(result.lr, 0.1)
         finally:
             path.unlink()
+
+
+class PartialInstantiationTests(TestCase):
+    """Tests for partial instantiation with inner_path parameter."""
+
+    def setUp(self):
+        rc._store.clear()
+
+    def test_instantiate__InnerPath__ReturnsSubConfig(self):
+        """Test basic partial instantiation returns nested object."""
+
+        @dataclass
+        class Encoder:
+            hidden_size: int
+
+        @dataclass
+        class Model:
+            encoder: Encoder
+            name: str
+
+        @dataclass
+        class Trainer:
+            model: Model
+            epochs: int
+
+        rc.register("encoder", Encoder)
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+model:
+  _target_: model
+  encoder:
+    _target_: encoder
+    hidden_size: 256
+  name: gpt
+epochs: 10
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            # Act - instantiate only the model section
+            result = rc.instantiate(path, inner_path="model", cli_overrides=False)
+
+            # Assert
+            self.assertIsInstance(result, Model)
+            self.assertIsInstance(result.encoder, Encoder)
+            self.assertEqual(result.encoder.hidden_size, 256)
+            self.assertEqual(result.name, "gpt")
+        finally:
+            path.unlink()
+
+    def test_instantiate__InnerPathNested__ReturnsDeepConfig(self):
+        """Test partial instantiation with nested path like 'model.encoder'."""
+
+        @dataclass
+        class Encoder:
+            layers: int
+
+        @dataclass
+        class Model:
+            encoder: Encoder
+
+        @dataclass
+        class Trainer:
+            model: Model
+
+        rc.register("encoder", Encoder)
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+model:
+  _target_: model
+  encoder:
+    _target_: encoder
+    layers: 6
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            # Act - instantiate only the encoder
+            result = rc.instantiate(
+                path, inner_path="model.encoder", cli_overrides=False
+            )
+
+            # Assert
+            self.assertIsInstance(result, Encoder)
+            self.assertEqual(result.layers, 6)
+        finally:
+            path.unlink()
+
+    def test_instantiate__InnerPathWithListIndex__ReturnsElement(self):
+        """Test partial instantiation with list index path."""
+
+        @dataclass
+        class Callback:
+            name: str
+
+        @dataclass
+        class Trainer:
+            callbacks: list
+
+        rc.register("callback", Callback)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+callbacks:
+  - _target_: callback
+    name: first
+  - _target_: callback
+    name: second
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            # Act - instantiate first callback
+            result = rc.instantiate(
+                path, inner_path="callbacks[1]", cli_overrides=False
+            )
+
+            # Assert
+            self.assertIsInstance(result, Callback)
+            self.assertEqual(result.name, "second")
+        finally:
+            path.unlink()
+
+    def test_instantiate__InnerPathWithInterpolation__ResolvesFromFullConfig(self):
+        """Test interpolations resolve from full config before extraction."""
+
+        @dataclass
+        class Model:
+            lr: float
+
+        @dataclass
+        class Trainer:
+            defaults: dict
+            model: Model
+
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+defaults:
+  learning_rate: 0.01
+model:
+  _target_: model
+  lr: ${/defaults.learning_rate}
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            # Act - instantiate only the model
+            result = rc.instantiate(path, inner_path="model", cli_overrides=False)
+
+            # Assert - interpolation should have resolved from full config
+            self.assertIsInstance(result, Model)
+            self.assertEqual(result.lr, 0.01)
+        finally:
+            path.unlink()
+
+    def test_instantiate__InnerPathWithOverrides__AppliesOverridesFirst(self):
+        """Test overrides are applied to full config before extraction."""
+
+        @dataclass
+        class Model:
+            size: int
+
+        @dataclass
+        class Trainer:
+            model: Model
+
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+model:
+  _target_: model
+  size: 256
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            # Act - override the model size, then extract model
+            result = rc.instantiate(
+                path,
+                inner_path="model",
+                overrides={"model.size": 512},
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertEqual(result.size, 512)
+        finally:
+            path.unlink()
+
+    def test_instantiate__InvalidInnerPath__RaisesInvalidInnerPathError(self):
+        """Test that invalid inner_path raises InvalidInnerPathError."""
+
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        yaml_content = "_target_: model\nsize: 256\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            with self.assertRaises(rc.InvalidInnerPathError):
+                rc.instantiate(path, inner_path="nonexistent", cli_overrides=False)
+        finally:
+            path.unlink()
+
+    def test_instantiate__InnerPathToScalar__RaisesInvalidInnerPathError(self):
+        """Test that path to non-dict raises InvalidInnerPathError."""
+
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        yaml_content = "_target_: model\nsize: 256\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            with self.assertRaises(rc.InvalidInnerPathError):
+                rc.instantiate(path, inner_path="size", cli_overrides=False)
+        finally:
+            path.unlink()
+
+    def test_instantiate__InnerPathNone__FullInstantiation(self):
+        """Test that inner_path=None gives normal full instantiation."""
+
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        yaml_content = "_target_: model\nsize: 256\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            # Act - inner_path=None (default)
+            result = rc.instantiate(path, inner_path=None, cli_overrides=False)
+
+            # Assert - full instantiation
+            self.assertIsInstance(result, Model)
+            self.assertEqual(result.size, 256)
+        finally:
+            path.unlink()
+
+    def test_instantiate__InnerPathWithExpectedType__ReturnsTypedResult(self):
+        """Test that expected_type works with inner_path."""
+
+        @dataclass
+        class Encoder:
+            dim: int
+
+        @dataclass
+        class Model:
+            encoder: Encoder
+
+        rc.register("encoder", Encoder)
+        rc.register("model", Model)
+
+        yaml_content = """
+_target_: model
+encoder:
+  _target_: encoder
+  dim: 512
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            # Act - use expected_type with inner_path
+            result = rc.instantiate(
+                path, Encoder, inner_path="encoder", cli_overrides=False
+            )
+
+            # Assert
+            self.assertIsInstance(result, Encoder)
+            self.assertEqual(result.dim, 512)
+        finally:
+            path.unlink()
+
+    def test_instantiate__InnerPathWithExternalInstance__InstantiatesTarget(self):
+        """Test _instance_ refs to targets outside partial scope work."""
+
+        @dataclass
+        class Cache:
+            size: int
+
+        @dataclass
+        class Service:
+            cache: Cache
+
+        @dataclass
+        class App:
+            shared_cache: Cache
+            service: Service
+
+        rc.register("cache", Cache)
+        rc.register("service", Service)
+        rc.register("app", App)
+
+        yaml_content = """
+_target_: app
+shared_cache:
+  _target_: cache
+  size: 100
+service:
+  _target_: service
+  cache:
+    _instance_: /shared_cache
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            # Act - instantiate only the service, which has _instance_ to external
+            result = rc.instantiate(path, inner_path="service", cli_overrides=False)
+
+            # Assert
+            self.assertIsInstance(result, Service)
+            self.assertIsInstance(result.cache, Cache)
+            self.assertEqual(result.cache.size, 100)
+        finally:
+            path.unlink()

@@ -67,6 +67,7 @@ from .errors import (
     InterpolationError,
     InterpolationResolutionError,
     InterpolationSyntaxError,
+    InvalidInnerPathError,
     InvalidOverridePathError,
     InvalidOverrideSyntaxError,
     MergeError,
@@ -206,12 +207,42 @@ def instantiate(
     overrides: dict[str, Any],
     cli_overrides: bool = ...,
 ) -> T: ...
+@overload
+def instantiate(
+    path: Path, *, inner_path: str, cli_overrides: bool = ...
+) -> Any: ...
+@overload
+def instantiate(
+    path: Path,
+    expected_type: type[T],
+    *,
+    inner_path: str,
+    cli_overrides: bool = ...,
+) -> T: ...
+@overload
+def instantiate(
+    path: Path,
+    *,
+    inner_path: str,
+    overrides: dict[str, Any],
+    cli_overrides: bool = ...,
+) -> Any: ...
+@overload
+def instantiate(
+    path: Path,
+    expected_type: type[T],
+    *,
+    inner_path: str,
+    overrides: dict[str, Any],
+    cli_overrides: bool = ...,
+) -> T: ...
 
 
 def instantiate(
     path: Path,
     expected_type: type[T] | None = None,
     *,
+    inner_path: str | None = None,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
 ) -> T | Any:
@@ -223,6 +254,9 @@ def instantiate(
 
     :param path: Path to config file.
     :param expected_type: Optional type for type-safe returns.
+    :param inner_path: Optional path to instantiate only a section of the config.
+                       Interpolations are resolved from the full config before
+                       extraction. External _instance_ refs are auto-instantiated.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv (default True).
     :return: Instantiated object (typed if expected_type provided).
@@ -231,6 +265,7 @@ def instantiate(
     :raises CircularInstanceError: If circular _instance_ references are detected.
     :raises RefResolutionError: If a _ref_ cannot be resolved.
     :raises InstanceResolutionError: If an _instance_ path cannot be resolved.
+    :raises InvalidInnerPathError: If inner_path doesn't exist or is invalid.
     :raises ValidationError: If config is invalid.
     :raises InvalidOverridePathError: If an override path doesn't exist.
     :raises InvalidOverrideSyntaxError: If an override string is malformed.
@@ -243,6 +278,10 @@ def instantiate(
 
         # Type-safe version
         model = rc.instantiate(Path("config.yaml"), ModelConfig)
+
+        # Partial instantiation - only instantiate a section
+        model = rc.instantiate(Path("trainer.yaml"), inner_path="model")
+        encoder = rc.instantiate(Path("trainer.yaml"), inner_path="model.encoder")
 
         # With programmatic overrides
         model = rc.instantiate(Path("config.yaml"), overrides={"model.lr": 0.01})
@@ -289,6 +328,35 @@ def instantiate(
     from rconfig.interpolation import resolve_interpolations
 
     config = resolve_interpolations(config)
+
+    # Handle partial instantiation
+    if inner_path is not None:
+        from rconfig._internal.partial import extract_partial_config
+        from rconfig._internal.path_utils import get_value_at_path
+
+        # Extract sub-config (interpolations already resolved from full config)
+        sub_config, processed_targets, external_targets = extract_partial_config(
+            config=config,
+            inner_path=inner_path,
+            instance_targets=instance_targets,
+        )
+
+        # Pre-instantiate external targets
+        external_instances: dict[str, Any] = {}
+        for ext_path in external_targets:
+            ext_config = get_value_at_path(config, ext_path)
+            if isinstance(ext_config, dict) and "_target_" in ext_config:
+                external_instances[f"__external__:{ext_path}"] = (
+                    _instantiator.instantiate(
+                        ext_config, instance_targets={}, config_path=ext_path
+                    )
+                )
+
+        return _instantiator.instantiate(
+            sub_config,
+            instance_targets=processed_targets,
+            external_instances=external_instances,
+        )
 
     return _instantiator.instantiate(config, instance_targets=instance_targets)
 
@@ -353,6 +421,7 @@ __all__ = [
     "ConfigFileError",
     "InstanceResolutionError",
     "InstantiationError",
+    "InvalidInnerPathError",
     "InvalidOverridePathError",
     "InvalidOverrideSyntaxError",
     "MergeError",
