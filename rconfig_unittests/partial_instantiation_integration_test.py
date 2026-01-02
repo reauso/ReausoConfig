@@ -3,7 +3,6 @@
 These tests cover complex multi-file scenarios with real YAML files.
 """
 
-import tempfile
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +10,9 @@ from typing import Optional
 from unittest import TestCase
 
 import rconfig as rc
+from rconfig.composition import clear_cache
+
+from rconfig_unittests.fixtures import MockFileSystem, mock_filesystem
 
 
 class PartialInstantiationWithRefTests(TestCase):
@@ -18,6 +20,7 @@ class PartialInstantiationWithRefTests(TestCase):
 
     def setUp(self):
         rc._store.clear()
+        clear_cache()
 
     def test_partial__WithRefComposition__ResolvesRefsFirst(self):
         """Test that _ref_ references are resolved before partial extraction."""
@@ -40,18 +43,14 @@ class PartialInstantiationWithRefTests(TestCase):
         rc.register("model", Model)
         rc.register("trainer", Trainer)
 
-        # Create a temp directory for the config files
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create encoder config file
-            encoder_path = Path(tmpdir) / "encoder.yaml"
-            encoder_path.write_text(
-                "_target_: encoder\nhidden_size: 256\ndropout: 0.1\n"
-            )
-
-            # Create main trainer config with _ref_
-            trainer_path = Path(tmpdir) / "trainer.yaml"
-            trainer_path.write_text(
-                f"""
+        fs = MockFileSystem("/configs")
+        fs.add_file(
+            "/configs/encoder.yaml",
+            "_target_: encoder\nhidden_size: 256\ndropout: 0.1\n",
+        )
+        fs.add_file(
+            "/configs/trainer.yaml",
+            """
 _target_: trainer
 model:
   _target_: model
@@ -59,12 +58,13 @@ model:
     _ref_: encoder.yaml
     dropout: 0.2
 epochs: 10
-"""
-            )
+""",
+        )
 
+        with mock_filesystem(fs):
             # Act - partial instantiate the model
             result = rc.instantiate(
-                trainer_path, inner_path="model", cli_overrides=False
+                Path("/configs/trainer.yaml"), inner_path="model", cli_overrides=False
             )
 
             # Assert - _ref_ should be resolved and override applied
@@ -92,24 +92,21 @@ epochs: 10
         rc.register("encoder", Encoder)
         rc.register("model", Model)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # layer.yaml
-            layer_path = Path(tmpdir) / "layer.yaml"
-            layer_path.write_text("_target_: layer\nsize: 512\n")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/layer.yaml", "_target_: layer\nsize: 512\n")
+        fs.add_file(
+            "/configs/encoder.yaml",
+            "_target_: encoder\nlayer:\n  _ref_: layer.yaml\n",
+        )
+        fs.add_file(
+            "/configs/model.yaml",
+            "_target_: model\nencoder:\n  _ref_: encoder.yaml\n",
+        )
 
-            # encoder.yaml that refs layer.yaml
-            encoder_path = Path(tmpdir) / "encoder.yaml"
-            encoder_path.write_text(
-                "_target_: encoder\nlayer:\n  _ref_: layer.yaml\n"
-            )
-
-            # model.yaml that refs encoder.yaml
-            model_path = Path(tmpdir) / "model.yaml"
-            model_path.write_text("_target_: model\nencoder:\n  _ref_: encoder.yaml\n")
-
+        with mock_filesystem(fs):
             # Act
             result = rc.instantiate(
-                model_path, inner_path="encoder", cli_overrides=False
+                Path("/configs/model.yaml"), inner_path="encoder", cli_overrides=False
             )
 
             # Assert
@@ -122,6 +119,7 @@ class PartialInstantiationInstanceSharingTests(TestCase):
 
     def setUp(self):
         rc._store.clear()
+        clear_cache()
 
     def test_partial__MultipleExternalInstances__SharedCorrectly(self):
         """Test that multiple external _instance_ refs share objects."""
@@ -170,21 +168,18 @@ services:
     cache:
       _instance_: /shared_cache
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", yaml_content)
 
-        try:
+        with mock_filesystem(fs):
             # Act - partial instantiate just the services
-            result = rc.instantiate(path, inner_path="services", cli_overrides=False)
+            result = rc.instantiate(
+                Path("/configs/app.yaml"), inner_path="services", cli_overrides=False
+            )
 
             # Assert - both services should share the same cache
             self.assertIs(result.a.cache, result.b.cache)
             self.assertEqual(result.a.cache.name, "shared")
-        finally:
-            path.unlink()
 
     def test_partial__InternalInstance__SharedWithinPartial(self):
         """Test that _instance_ refs within the partial scope work."""
@@ -216,20 +211,17 @@ decoder:
   encoder:
     _instance_: /encoder
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", yaml_content)
 
-        try:
+        with mock_filesystem(fs):
             # Full instantiation for comparison
-            full_result = rc.instantiate(path, cli_overrides=False)
+            full_result = rc.instantiate(
+                Path("/configs/model.yaml"), cli_overrides=False
+            )
 
             # Assert - decoder.encoder should be same object as encoder
             self.assertIs(full_result.decoder.encoder, full_result.encoder)
-        finally:
-            path.unlink()
 
 
 class PartialInstantiationComplexConfigTests(TestCase):
@@ -237,6 +229,7 @@ class PartialInstantiationComplexConfigTests(TestCase):
 
     def setUp(self):
         rc._store.clear()
+        clear_cache()
 
     def test_partial__ComplexNestedConfig__AllLevelsWork(self):
         """Test partial instantiation at various depths of complex config."""
@@ -299,13 +292,12 @@ training:
     _target_: scheduler
     step_size: 10
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
 
-        try:
+        with mock_filesystem(fs):
+            path = Path("/configs/trainer.yaml")
+
             # Test various partial paths
             # Level 1: model
             model = rc.instantiate(path, inner_path="model", cli_overrides=False)
@@ -338,8 +330,6 @@ training:
             )
             self.assertIsInstance(layer, Layer)
             self.assertEqual(layer.dim, 512)
-        finally:
-            path.unlink()
 
 
 class PartialInstantiationWithInterpolationTests(TestCase):
@@ -347,6 +337,7 @@ class PartialInstantiationWithInterpolationTests(TestCase):
 
     def setUp(self):
         rc._store.clear()
+        clear_cache()
 
     def test_partial__InterpolationToDefaults__ResolvesCorrectly(self):
         """Test interpolation to a defaults section works."""
@@ -374,21 +365,18 @@ model:
   hidden_size: ${/defaults.hidden_size}
   vocab_size: ${/defaults.vocab_size}
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/config.yaml", yaml_content)
 
-        try:
+        with mock_filesystem(fs):
             # Act
-            model = rc.instantiate(path, inner_path="model", cli_overrides=False)
+            model = rc.instantiate(
+                Path("/configs/config.yaml"), inner_path="model", cli_overrides=False
+            )
 
             # Assert - interpolations should be resolved
             self.assertEqual(model.hidden_size, 768)
             self.assertEqual(model.vocab_size, 50000)
-        finally:
-            path.unlink()
 
     def test_partial__ExpressionInterpolation__ResolvesCorrectly(self):
         """Test expression interpolations work with partial instantiation."""
@@ -416,21 +404,18 @@ model:
   scaled_lr: ${/base_lr * 10}
   doubled_size: ${/base_size * 2}
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/config.yaml", yaml_content)
 
-        try:
+        with mock_filesystem(fs):
             # Act
-            model = rc.instantiate(path, inner_path="model", cli_overrides=False)
+            model = rc.instantiate(
+                Path("/configs/config.yaml"), inner_path="model", cli_overrides=False
+            )
 
             # Assert - expressions should be evaluated
             self.assertAlmostEqual(model.scaled_lr, 0.1)
             self.assertEqual(model.doubled_size, 512)
-        finally:
-            path.unlink()
 
     def test_partial__EnvVarInterpolation__ResolvesCorrectly(self):
         """Test environment variable interpolations work."""
@@ -452,23 +437,24 @@ model:
   _target_: model
   data_path: ${env:TEST_DATA_PATH,/default/path}
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/config.yaml", yaml_content)
 
         try:
             # Set env var
             os.environ["TEST_DATA_PATH"] = "/custom/data/path"
 
-            # Act
-            model = rc.instantiate(path, inner_path="model", cli_overrides=False)
+            with mock_filesystem(fs):
+                # Act
+                model = rc.instantiate(
+                    Path("/configs/config.yaml"),
+                    inner_path="model",
+                    cli_overrides=False,
+                )
 
-            # Assert
-            self.assertEqual(model.data_path, "/custom/data/path")
+                # Assert
+                self.assertEqual(model.data_path, "/custom/data/path")
         finally:
-            path.unlink()
             del os.environ["TEST_DATA_PATH"]
 
 
@@ -477,6 +463,7 @@ class PartialInstantiationEdgeCasesTests(TestCase):
 
     def setUp(self):
         rc._store.clear()
+        clear_cache()
 
     def test_partial__EmptyNestedDict__Works(self):
         """Test partial instantiation of config with empty nested dict."""
@@ -491,18 +478,13 @@ class PartialInstantiationEdgeCasesTests(TestCase):
 _target_: model
 options: {}
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", yaml_content)
 
-        try:
+        with mock_filesystem(fs):
             # Full instantiation should work
-            result = rc.instantiate(path, cli_overrides=False)
+            result = rc.instantiate(Path("/configs/model.yaml"), cli_overrides=False)
             self.assertEqual(result.options, {})
-        finally:
-            path.unlink()
 
     def test_partial__OptionalNested__Works(self):
         """Test partial instantiation with optional nested fields."""
@@ -524,15 +506,12 @@ inner:
   _target_: inner
   value: 42
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        ) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/outer.yaml", yaml_content)
 
-        try:
-            result = rc.instantiate(path, inner_path="inner", cli_overrides=False)
+        with mock_filesystem(fs):
+            result = rc.instantiate(
+                Path("/configs/outer.yaml"), inner_path="inner", cli_overrides=False
+            )
             self.assertIsInstance(result, Inner)
             self.assertEqual(result.value, 42)
-        finally:
-            path.unlink()
