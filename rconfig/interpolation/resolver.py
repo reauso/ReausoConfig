@@ -73,7 +73,7 @@ class InterpolationResolver:
         :raises InterpolationResolutionError: If a reference cannot be resolved.
         :raises EnvironmentVariableError: If a required env var is not set.
         """
-        return self._resolve_value(self._original_config, "")
+        return self._resolved_value(self._original_config, "")
 
     def get_resolved_value(self, path: str) -> tuple[Any, "InterpolationSource | None"]:
         """Get a resolved value at a config path.
@@ -109,7 +109,7 @@ class InterpolationResolver:
         # If value contains interpolations, resolve it
         self._resolving_paths.add(path)
         try:
-            resolved = self._resolve_value(raw_value, path)
+            resolved = self._resolved_value(raw_value, path)
 
             # Get provenance info
             source: InterpolationSource | None = None
@@ -138,8 +138,8 @@ class InterpolationResolver:
         finally:
             self._resolving_paths.discard(path)
 
-    def _resolve_value(self, value: Any, path: str) -> Any:
-        """Recursively resolve interpolations in a value.
+    def _resolved_value(self, value: Any, path: str) -> Any:
+        """Return value with all interpolations resolved.
 
         :param value: The value to resolve (may be dict, list, string, or scalar).
         :param path: Current config path for error messages and provenance.
@@ -147,22 +147,22 @@ class InterpolationResolver:
         """
         if isinstance(value, str):
             if has_interpolation(value):
-                return self._resolve_string(value, path)
+                return self._resolved_string(value, path)
             return value
         elif isinstance(value, dict):
             return {
-                k: self._resolve_value(v, build_child_path(path, k))
+                k: self._resolved_value(v, build_child_path(path, k))
                 for k, v in value.items()
             }
         elif isinstance(value, list):
             return [
-                self._resolve_value(item, build_child_path(path, i))
+                self._resolved_value(item, build_child_path(path, i))
                 for i, item in enumerate(value)
             ]
         return value
 
-    def _resolve_string(self, value: str, path: str) -> Any:
-        """Resolve interpolations in a string value.
+    def _resolved_string(self, value: str, path: str) -> Any:
+        """Return string with all interpolations resolved.
 
         :param value: The string containing ${...} patterns.
         :param path: Current config path for error messages.
