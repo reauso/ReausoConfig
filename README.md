@@ -131,6 +131,44 @@ trainer = rc.instantiate(path, overrides={"model.lr": 0.01})
 # Result: model.lr = 0.05 (CLI wins)
 ```
 
+### Required Values with `_required_`
+
+Mark config values that must be provided externally (via CLI, programmatic overrides, or environment variables):
+
+```yaml
+# config.yaml
+_target_: app
+api_key: _required_           # Must be provided
+database_url: _required_      # Must be provided
+port: 8080                    # Has default, optional
+
+# With optional type hint
+timeout:
+  _required_: int             # Must be int when provided
+```
+
+Required values can be satisfied by:
+- CLI overrides: `api_key=secret123`
+- Programmatic overrides: `overrides={"api_key": "secret"}`
+- Environment variable interpolation: `api_key: ${env:API_KEY}`
+
+```python
+# This will raise RequiredValueError - api_key not provided
+model = rc.instantiate(Path("config.yaml"))
+
+# Provide required values via overrides
+model = rc.instantiate(
+    Path("config.yaml"),
+    overrides={"api_key": "secret123", "database_url": "postgres://..."},
+)
+
+# Or validate first to check what's missing
+result = rc.validate(Path("config.yaml"))
+if not result.valid:
+    for error in result.errors:
+        print(error)  # Shows which _required_ values are missing
+```
+
 ### Nested Configs
 
 Configs can contain nested configs that are instantiated recursively:
@@ -630,9 +668,9 @@ Remove a previously registered reference.
 rc.unregister("model")  # Raises KeyError if not found
 ```
 
-### `rc.validate(path)`
+### `rc.validate(path, *, overrides=None, cli_overrides=True)`
 
-Validate a config file without instantiating (dry-run).
+Validate a config file without instantiating (dry-run). Also checks that all `_required_` values have been satisfied.
 
 ```python
 result = rc.validate(Path("config.yaml"))
@@ -641,6 +679,12 @@ if result.valid:
 else:
     for error in result.errors:
         print(error)
+
+# With overrides to satisfy _required_ values
+result = rc.validate(
+    Path("config.yaml"),
+    overrides={"api_key": "secret123"},
+)
 ```
 
 ### `rc.instantiate(path, expected_type=None, *, overrides=None, cli_overrides=True)`
@@ -773,7 +817,8 @@ ConfigError (base)
 │   ├── TypeMismatchError             # Wrong type provided
 │   ├── AmbiguousTargetError          # Cannot infer type (abstract/multiple impls)
 │   ├── TargetTypeMismatchError       # Explicit _target_ wrong type
-│   └── TypeInferenceError            # Inferred type validation failed
+│   ├── TypeInferenceError            # Inferred type validation failed
+│   └── RequiredValueError            # _required_ value not provided
 ├── CompositionError              # Config composition issues
 │   ├── CircularRefError              # Circular _ref_ detected
 │   ├── RefResolutionError            # Cannot resolve _ref_ path

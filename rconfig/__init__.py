@@ -75,6 +75,7 @@ from .errors import (
     RefAtRootError,
     RefInstanceConflictError,
     RefResolutionError,
+    RequiredValueError,
     TargetNotFoundError,
     TargetTypeMismatchError,
     TypeInferenceError,
@@ -117,13 +118,21 @@ def unregister(name: str) -> None:
     _store.unregister(name)
 
 
-def validate(path: Path) -> ValidationResult:
+def validate(
+    path: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+) -> ValidationResult:
     """Validate a config file without instantiating (dry-run).
 
-    Composes the config (resolving _ref_ and _instance_ references) before
-    validating against registered targets.
+    Composes the config (resolving _ref_ and _instance_ references), applies
+    any overrides, and validates against registered targets. Also checks that
+    all _required_ values have been satisfied.
 
     :param path: Path to config file.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv (default True).
     :return: ValidationResult with any errors found.
 
     Example::
@@ -132,10 +141,53 @@ def validate(path: Path) -> ValidationResult:
         if not result.valid:
             for error in result.errors:
                 print(error)
+
+        # With overrides to satisfy _required_ values
+        result = rc.validate(
+            Path("config.yaml"),
+            overrides={"api_key": "secret123"},
+        )
     """
+    from rconfig.validation.required import find_required_markers
+    from rconfig.errors import RequiredValueError
+
     composer = ConfigComposer()
     config = composer.compose(path)
-    return _validator.validate(config)
+
+    # Collect all overrides
+    all_overrides: list[Override] = []
+
+    # Programmatic overrides first
+    if overrides:
+        all_overrides.extend(parse_dict_overrides(overrides))
+
+    # CLI overrides second (wins on conflict)
+    if cli_overrides:
+        all_overrides.extend(extract_cli_overrides(sys.argv[1:]))
+
+    # Validate paths and coerce values
+    for override in all_overrides:
+        expected_type_hint = _validator.validate_override_path(override.path, config)
+        if override.operation == "set" and isinstance(override.value, str):
+            override.value = parse_override_value(override.value, expected_type_hint)
+
+    # Apply overrides
+    if all_overrides:
+        config = apply_overrides(config, all_overrides)
+
+    # Check for unsatisfied _required_ values
+    required_markers = find_required_markers(config)
+    required_errors: list[ValidationError] = []
+    if required_markers:
+        missing = [(m.path, m.expected_type) for m in required_markers]
+        required_errors.append(RequiredValueError(missing))
+
+    # Run regular validation
+    result = _validator.validate(config)
+
+    # Combine required value errors with validation errors
+    all_errors = required_errors + result.errors
+    return ValidationResult(valid=len(all_errors) == 0, errors=all_errors)
 
 
 @overload
@@ -224,6 +276,15 @@ def instantiate(
     if all_overrides:
         config = apply_overrides(config, all_overrides)
 
+    # Check for unsatisfied _required_ values (after overrides, before interpolation)
+    from rconfig.validation.required import find_required_markers
+    from rconfig.errors import RequiredValueError
+
+    required_markers = find_required_markers(config)
+    if required_markers:
+        missing = [(m.path, m.expected_type) for m in required_markers]
+        raise RequiredValueError(missing)
+
     # Resolve interpolations (${...} expressions)
     from rconfig.interpolation import resolve_interpolations
 
@@ -300,6 +361,7 @@ __all__ = [
     "RefAtRootError",
     "RefInstanceConflictError",
     "RefResolutionError",
+    "RequiredValueError",
     "TargetNotFoundError",
     "TargetTypeMismatchError",
     "TypeInferenceError",
