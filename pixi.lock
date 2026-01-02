@@ -1058,7 +1058,7 @@ packages:
 - pypi: ./
   name: reausoconfig
   version: 0.1.0
-  sha256: d111dd91d93705785bc7fcf0e66b8387af527ff012bef98ed908bfd3fb4f1d68
+  sha256: e00e4d02811f63990eac95fb6b18a20379932f38a20db197e359df19808186a5
   requires_dist:
   - ruamel-yaml>=0.18.7,<0.19
   - lark>=1.1.0,<2.0

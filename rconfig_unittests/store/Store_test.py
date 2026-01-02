@@ -1,14 +1,11 @@
 from types import MappingProxyType
-from unittest import TestCase
 
 from rconfig.store import ConfigStore
+from rconfig_unittests.fixtures import BaseStoreTest
 
 
-class ConfigStoreTests(TestCase):
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
-        store.clear()
-        return store
+class ConfigStoreTests(BaseStoreTest):
+    """Tests for ConfigStore registration and lookup functionality."""
 
     def test_register__WithTargetClass__StoreConfigReference(self):
         # Arrange

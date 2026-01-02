@@ -5,11 +5,91 @@ asserting validation results.
 """
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generator
+from unittest import TestCase
 from unittest.mock import patch
 
 from ruamel.yaml.comments import CommentedMap
+
+from rconfig.store import ConfigStore
+
+
+# =============================================================================
+# Base Test Classes
+# =============================================================================
+
+
+class BaseStoreTest(TestCase):
+    """Base class for tests that need a clean ConfigStore.
+
+    Provides the `_empty_store()` helper method that creates a fresh
+    ConfigStore with all references cleared. This is the standard pattern
+    for test isolation in rconfig tests.
+
+    Example::
+
+        class MyTests(BaseStoreTest):
+            def test_something__SomeScenario__ExpectedResult(self):
+                # Arrange
+                store = self._empty_store()
+                store.register("model", ModelClass)
+
+                # Act
+                result = do_something(store)
+
+                # Assert
+                self.assertEqual(result, expected)
+    """
+
+    def _empty_store(self) -> ConfigStore:
+        """Create a fresh ConfigStore with all references cleared.
+
+        :return: A new ConfigStore instance with no registered references.
+        """
+        store = ConfigStore()
+        store.clear()
+        return store
+
+
+# =============================================================================
+# Shared Test Dataclasses
+# =============================================================================
+
+
+@dataclass
+class SimpleModel:
+    """Simple test model with a single value."""
+
+    value: int
+
+
+@dataclass
+class NestedInner:
+    """Inner nested model for testing nested configs."""
+
+    count: int
+
+
+@dataclass
+class NestedOuter:
+    """Outer nested model for testing nested configs."""
+
+    inner: NestedInner
+
+
+@dataclass
+class OptionalFieldsModel:
+    """Model with optional fields for testing default values."""
+
+    required: int
+    optional: str = "default"
+
+
+# =============================================================================
+# Mock File System
+# =============================================================================
 
 
 def make_commented_map(data: dict[str, Any]) -> CommentedMap:
