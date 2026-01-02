@@ -9,12 +9,14 @@ A lightweight Python configuration library that turns YAML files into Python obj
 ## The Problem We're Solving
 
 **Hydra's Limitations:**
+
 - Applications become tightly coupled to Hydra
 - If Hydra breaks or changes, your application breaks
 - Dependency injection requires custom implementation per-project
 - Complex feature set with many things you don't need (multirun, sweepers, output directories, etc.)
 
 **Our Solution:**
+
 - Registration happens once in `main()`
 - After instantiation, you get pure Python objects with no framework dependency
 - Simple, focused feature set
@@ -94,17 +96,14 @@ dataset:
   _ref_: datasets/imagenet.yaml
 ```
 
-### 7. Provide Runtime Parameters
-
-```yaml
-# Some values can't be known at config time
-_target_: data_loader
-path: /data
-num_workers: _RUNTIME_   # Must be passed when instantiating
-```
+### ✓ 7. Provide Runtime Parameters
 
 ```python
-app = config.instantiate(num_workers=os.cpu_count())
+# Pass values at instantiation time via overrides
+app = config.instantiate(overrides={"num_workers": os.cpu_count()})
+
+# Nested overrides use dot notation
+app = config.instantiate(overrides={"model.hidden_size": 512})
 ```
 
 ---
@@ -112,27 +111,32 @@ app = config.instantiate(num_workers=os.cpu_count())
 ## Core Features
 
 ### ✓ Minimal Dependency
+
 - Only `main.py` imports ReausoConfig
 - All domain classes are pure Python
 - Instantiated objects have no framework coupling
 
 ### ✓ Type-Safe Configuration
+
 - Validates config arguments against class signatures
 - Reports type mismatches before instantiation
 - Uses Python's `inspect` module for introspection
 
 ### ✓ Hierarchical Configs
+
 - ✓ Nest configs within configs
 - ✓ Include external files via `_ref_`
 - ✓ Compose from referenced configs
 - ✓ Share instances via `_instance_`
 
 ### ✓ CLI Override System
+
 - ✓ Dot notation for nested values: `model.optimizer.lr=0.01`
 - ✓ List indexing: `model.layers[0].size=128`
 - ✓ Add/remove operations: `+callbacks=logger`, `~callbacks`
 
 ### ✓ Interpolation
+
 - ✓ Reference other config values: `${/path.to.value}`, `${./relative}`, `${../parent}`
 - ✓ Environment variables: `${env:VAR}` or `${env:VAR,default}`
 - ✓ Full expression support: arithmetic, comparisons, boolean, list operations
@@ -140,12 +144,14 @@ app = config.instantiate(num_workers=os.cpu_count())
 - ✓ Provenance tracking for interpolated values
 
 ### ✓ Validation
+
 - ✓ Schema validation (valid YAML)
 - ✓ Target validation (`_target_` exists in registry)
 - ✓ Signature validation (all required params provided)
 - ✓ Type validation (argument types match)
 
 ### ✓ Rich Error Messages
+
 ```
 ConfigurationError: Missing required parameter 'hidden_size'
 
@@ -160,107 +166,97 @@ ConfigurationError: Missing required parameter 'hidden_size'
 
 ## Potential Additional Features
 
-### Config Groups
-Organize configs by category with easy swapping:
-```
-config/
-├── model/
-│   ├── resnet.yaml
-│   └── vgg.yaml
-├── dataset/
-│   ├── imagenet.yaml
-│   └── cifar.yaml
-└── config.yaml
-```
-```bash
-python main.py model=vgg dataset=cifar
-```
-
 ### (partial) Dry-Run Mode
+
 Validate and preview what would be instantiated without actually doing it:
+
 ```python
 config.validate()  # ✓ Check everything is valid
 config.preview()   # Show instantiation plan
 ```
 
 ### Serialization
+
 Dump instantiated config back to YAML:
+
 ```python
 config.to_yaml("output_config.yaml")
 ```
 
 ### IDE Support
+
 Generate JSON Schema from registered classes for YAML autocompletion in VSCode/PyCharm.
 
 ### Partial Instantiation
+
 Instantiate only part of the config tree:
+
 ```python
 model = config.instantiate("model")  # Only instantiate model section
 ```
 
 ### Lazy Instantiation
+
 Objects created on first access rather than all at once:
+
 ```python
 config = load_config("config/", lazy=True)
 # Nothing instantiated yet
 model = config.model  # Now model is created
 ```
 
-### Factory Support
-Classes that create other objects based on config:
-```yaml
-_target_: model_factory
-model_type: resnet
-num_layers: 50
-```
-
-### Config Inheritance
-One config extends another:
-```yaml
-_extends_: base_model.yaml
-hidden_size: 512  # Override base
-```
-
 ---
+
+
 
 ## Challenges to Address
 
 ### ✓ 1. Dependency Resolution
+
 When config A references config B which references config C:
+
 - ✓ Topological sort determines instantiation order
 - ✓ Circular `_ref_` and `_instance_` references are detected and error
 - ✓ `_ref_` loads config (new instance), `_instance_` shares object
 
-### 2. Runtime Parameters
+### ✓ 2. Runtime Parameters (Partial)
+
 Values that can't be in config files (e.g., `num_workers = cpu_count()`):
-- How do we mark them in YAML?
-- How do we pass them during instantiation?
-- What if a nested config needs runtime params?
 
-### 3. Type Coercion
+- ✓ Pass via `instantiate(overrides={"key": value})`
+- ✓ Nested overrides work with dot notation
+- The `_RUNTIME_` YAML marker syntax is not implemented
+
+### ✓ 3. Type Coercion (Partial)
+
 YAML gives us strings, ints, lists, dicts. But classes may need:
-- Enums
-- Path objects
-- Custom types
-- Nested dataclasses
 
-How aggressive should automatic conversion be?
+- ✓ Basic types (int, float, str, bool)
+- ✓ StrEnum (works via fallback `expected_type(raw)`)
+- Path objects (works if Path accepts string)
+- Regular Enum (needs `Enum[name]` handling)
+- Nested dataclasses (works via implicit nested config)
 
-### 4. Error Locality
+### ✓ 4. Error Locality
+
 When something fails:
-- Which file caused it?
-- Which line?
-- What was the full path to the problematic value?
 
-YAML parsing loses line information—how do we preserve it?
+- ✓ Which file caused it?
+- ✓ Which line?
+- ✓ What was the full path to the problematic value?
+
+Solved via the provenance system (`Provenance.py`) which tracks file, line, and config path for all values including interpolation sources.
 
 ### ✓ 5. Interpolation Timing
+
 When to resolve `${references}`:
+
 - ✓ Resolved after overrides, before validation
 - ✓ Topological resolution handles dependencies
 - ✓ Circular references detected and reported
 
 ### ✓ 6. Config vs Instance Identity
+
 ```yaml
 # _ref_ creates separate instances
 trainer:
@@ -285,7 +281,9 @@ evaluator:
 ✓ `_ref_` creates new instances, `_instance_` shares objects.
 
 ### 7. Backwards Compatibility
+
 As the library evolves:
+
 - How do we version config formats?
 - What happens when users upgrade?
 - Can old configs still work?
@@ -326,14 +324,14 @@ To keep the library focused and simple:
 
 ## Comparison with Alternatives
 
-| Aspect | Hydra | OmegaConf | Pydantic | ReausoConfig |
-|--------|-------|-----------|----------|--------------|
-| Primary focus | Full framework | Config containers | Validation | Object instantiation |
-| Runtime coupling | High | Medium | Low | Minimal |
-| Learning curve | Steep | Medium | Medium | Low |
-| Features | Many | Medium | Many | Focused |
-| Instantiation | Built-in | Manual | Manual | Built-in |
-| CLI overrides | Yes | No | No | Yes |
+| Aspect           | Hydra          | OmegaConf         | Pydantic   | ReausoConfig         |
+| ---------------- | -------------- | ----------------- | ---------- | -------------------- |
+| Primary focus    | Full framework | Config containers | Validation | Object instantiation |
+| Runtime coupling | High           | Medium            | Low        | Minimal              |
+| Learning curve   | Steep          | Medium            | Medium     | Low                  |
+| Features         | Many           | Medium            | Many       | Focused              |
+| Instantiation    | Built-in       | Manual            | Manual     | Built-in             |
+| CLI overrides    | Yes            | No                | No         | Yes                  |
 
 ---
 

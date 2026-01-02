@@ -13,6 +13,9 @@ from rconfig.store import ConfigStore
 # Sentinel for _target_ key
 TARGET_KEY = "_target_"
 
+# Sentinel for _required_ key
+REQUIRED_KEY = "_required_"
+
 
 def is_class_type(hint: type) -> bool:
     """Check if a type hint represents a class that could be a config target.

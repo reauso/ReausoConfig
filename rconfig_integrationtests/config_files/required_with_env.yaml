@@ -1,0 +1,3 @@
+_target_: app
+api_key: ${env:TEST_API_KEY}
+port: 8080
