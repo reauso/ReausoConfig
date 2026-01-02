@@ -2180,3 +2180,283 @@ class ConfigInstantiatorExternalInstancesTests(TestCase):
 
         self.assertIn("missing_cache", str(ctx.exception))
         self.assertIn("not pre-instantiated", str(ctx.exception))
+
+
+class ConfigInstantiatorLazyTests(TestCase):
+    """Tests for lazy instantiation in ConfigInstantiator."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store.clear()
+        return store
+
+    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+        validator = ConfigValidator(store)
+        return ConfigInstantiator(store, validator)
+
+    # === Global Lazy Mode ===
+
+    def test_instantiate__GlobalLazyTrue__ReturnsLazyProxy(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        instantiator = self._create_instantiator(store)
+        config = {"_target_": "model", "value": 42}
+
+        # Act
+        result = instantiator.instantiate(config, lazy=True)
+
+        # Assert
+        from rconfig.instantiation import is_lazy_proxy
+        self.assertTrue(is_lazy_proxy(result))
+        self.assertIsInstance(result, Model)
+
+    def test_instantiate__GlobalLazyTrue_NestedConfig__AllLazy(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("inner", Inner)
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner", "value": 42},
+        }
+
+        # Act
+        result = instantiator.instantiate(config, lazy=True)
+
+        # Assert
+        from rconfig.instantiation import is_lazy_proxy
+        self.assertTrue(is_lazy_proxy(result))
+        # Access inner to trigger outer's init
+        inner = result.inner
+        self.assertTrue(is_lazy_proxy(inner))
+
+    def test_instantiate__GlobalLazyFalse__ReturnsRealObject(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        instantiator = self._create_instantiator(store)
+        config = {"_target_": "model", "value": 42}
+
+        # Act
+        result = instantiator.instantiate(config, lazy=False)
+
+        # Assert
+        from rconfig.instantiation import is_lazy_proxy
+        self.assertFalse(is_lazy_proxy(result))
+        self.assertEqual(result.value, 42)
+
+    # === Per-Field Lazy Mode ===
+
+    def test_instantiate__PerFieldLazy__OnlyMarkedFieldIsLazy(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class ModelA:
+            value: int
+
+        @dataclass
+        class ModelB:
+            value: int
+
+        @dataclass
+        class Container:
+            a: ModelA
+            b: ModelB
+
+        store.register("model_a", ModelA)
+        store.register("model_b", ModelB)
+        store.register("container", Container)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "container",
+            "a": {"_target_": "model_a", "_lazy_": True, "value": 1},
+            "b": {"_target_": "model_b", "value": 2},
+        }
+
+        # Act
+        result = instantiator.instantiate(config, lazy=False)
+
+        # Assert
+        from rconfig.instantiation import is_lazy_proxy
+        self.assertTrue(is_lazy_proxy(result.a))
+        self.assertFalse(is_lazy_proxy(result.b))
+
+    def test_instantiate__LazyMarkerStripped__NotPassedToConstructor(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+            # Note: no _lazy_ field
+
+        store.register("model", Model)
+        instantiator = self._create_instantiator(store)
+        config = {"_target_": "model", "_lazy_": True, "value": 42}
+
+        # Act - should not raise TypeError about unexpected _lazy_ kwarg
+        result = instantiator.instantiate(config, lazy=False)
+
+        # Assert
+        from rconfig.instantiation import is_lazy_proxy
+        self.assertTrue(is_lazy_proxy(result))
+
+    # === Lazy + Instance Sharing ===
+
+    def test_instantiate__LazyWithInstanceSharing__SharesSameLazyProxy(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Database:
+            url: str
+
+        @dataclass
+        class App:
+            shared_db: Database
+            db_ref: Database
+
+        store.register("database", Database)
+        store.register("app", App)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "app",
+            "shared_db": {"_target_": "database", "url": "postgres://"},
+            "db_ref": {"_target_": "database", "url": "postgres://"},
+        }
+        instance_targets = {"db_ref": "shared_db"}
+
+        # Act
+        result = instantiator.instantiate(
+            config, lazy=True, instance_targets=instance_targets
+        )
+
+        # Assert - both should be the same lazy proxy
+        self.assertIs(result.db_ref, result.shared_db)
+
+    def test_instantiate__LazySharedInstance__InitializesOnce(self):
+        # Arrange
+        init_count = [0]  # mutable counter
+        store = self._empty_store()
+
+        class TrackedDatabase:
+            def __init__(self, url: str):
+                init_count[0] += 1
+                self.url = url
+
+        @dataclass
+        class App:
+            db1: "TrackedDatabase"
+            db2: "TrackedDatabase"
+
+        store.register("database", TrackedDatabase)
+        store.register("app", App)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "app",
+            "db1": {"_target_": "database", "url": "postgres://"},
+            "db2": {"_target_": "database", "url": "postgres://"},
+        }
+        instance_targets = {"db2": "db1"}
+
+        # Act
+        result = instantiator.instantiate(
+            config, lazy=True, instance_targets=instance_targets
+        )
+        # Access both - should only call init once
+        _ = result.db1.url
+        _ = result.db2.url
+
+        # Assert - init called only once
+        self.assertEqual(init_count[0], 1)
+
+    # === Lazy Access Patterns ===
+
+    def test_instantiate__LazyProxy__AccessTriggersInit(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            value: int
+
+        store.register("model", Model)
+        instantiator = self._create_instantiator(store)
+        config = {"_target_": "model", "value": 42}
+
+        # Act
+        result = instantiator.instantiate(config, lazy=True)
+
+        # Assert - before access
+        from rconfig.instantiation import is_lazy_proxy
+        self.assertTrue(is_lazy_proxy(result))
+
+        # Access attribute
+        _ = result.value
+
+        # Assert - after access
+        self.assertFalse(is_lazy_proxy(result))
+        self.assertEqual(result.value, 42)
+
+    def test_instantiate__NestedLazy__CascadeInitialization(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Inner:
+            value: int
+
+        @dataclass
+        class Outer:
+            inner: Inner
+
+        store.register("inner", Inner)
+        store.register("outer", Outer)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer",
+            "inner": {"_target_": "inner", "value": 42},
+        }
+
+        # Act
+        result = instantiator.instantiate(config, lazy=True)
+
+        # Assert - outer is lazy
+        from rconfig.instantiation import is_lazy_proxy
+        self.assertTrue(is_lazy_proxy(result))
+
+        # Access inner (triggers outer's init)
+        inner = result.inner
+
+        # Outer initialized, but inner still lazy
+        self.assertFalse(is_lazy_proxy(result))
+        self.assertTrue(is_lazy_proxy(inner))
+
+        # Access inner's value (triggers inner's init)
+        value = inner.value
+
+        # Both initialized
+        self.assertFalse(is_lazy_proxy(inner))
+        self.assertEqual(value, 42)
