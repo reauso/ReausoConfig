@@ -98,7 +98,7 @@ class ConfigStoreTests(BaseStoreTest):
         with self.assertRaises(TypeError):
             references["new"] = object()
 
-    def test_known_references__ReturnsSnapshot__DoesNotReflectLaterChanges(self):
+    def test_known_references__ReturnsLiveView__ReflectsLaterChanges(self):
         # Arrange
         store = self._empty_store()
 
@@ -106,17 +106,14 @@ class ConfigStoreTests(BaseStoreTest):
             def __init__(self):
                 pass
 
-        # Get snapshot before registration
-        references_before = store.known_references
+        # Get live view before registration
+        references = store.known_references
 
         # Act
         store.register(name="example", target=Example)
 
-        # Assert - snapshot should NOT reflect later changes (thread-safe behavior)
-        self.assertNotIn("example", references_before)
-        # But a new call should show the registration
-        references_after = store.known_references
-        self.assertIn("example", references_after)
+        # Assert - live view DOES reflect later changes
+        self.assertIn("example", references)
 
     def test_unregister__RegisteredName__RemovesReference(self):
         # Arrange
@@ -140,4 +137,38 @@ class ConfigStoreTests(BaseStoreTest):
         # Act & Assert
         with self.assertRaises(KeyError):
             store.unregister("unknown")
+
+    # === Contains Tests ===
+
+    def test_contains__RegisteredName__ReturnsTrue(self):
+        # Arrange
+        store = self._empty_store()
+
+        class Example:
+            pass
+
+        store.register(name="example", target=Example)
+
+        # Act & Assert
+        self.assertTrue("example" in store)
+
+    def test_contains__UnregisteredName__ReturnsFalse(self):
+        # Arrange
+        store = self._empty_store()
+
+        # Act & Assert
+        self.assertFalse("nonexistent" in store)
+
+    def test_contains__AfterUnregister__ReturnsFalse(self):
+        # Arrange
+        store = self._empty_store()
+
+        class Example:
+            pass
+
+        store.register(name="example", target=Example)
+        store.unregister("example")
+
+        # Act & Assert
+        self.assertFalse("example" in store)
 

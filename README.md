@@ -651,6 +651,146 @@ a: ${/b}
 b: ${/a}  # Circular: a → b → a
 ```
 
+### Custom Resolvers
+
+Register Python functions that can be called from interpolation expressions using the `app:` prefix:
+
+```python
+import rconfig as rc
+from datetime import datetime
+import uuid
+
+# Simple resolver (no arguments)
+@rc.resolver("uuid")
+def gen_uuid() -> str:
+    return str(uuid.uuid4())
+
+# Resolver with arguments
+@rc.resolver("now")
+def now(fmt: str = "%Y-%m-%d") -> str:
+    return datetime.now().strftime(fmt)
+
+# Namespaced resolver
+@rc.resolver("db", "lookup")
+def db_lookup(table: str, id: int) -> dict:
+    return database.get(table, id)
+
+# Deeply nested namespace
+@rc.resolver("db", "cache", "get")
+def cache_get(key: str, ttl: int = 60) -> Any:
+    return cache.get(key, ttl=ttl)
+
+# Resolver with config access (special _config_ parameter)
+@rc.resolver("derive")
+def derive(path: str, *, _config_: dict) -> Any:
+    return _config_.get(path)
+```
+
+#### Resolver Syntax
+
+```yaml
+_target_: experiment
+
+# No arguments (parentheses optional)
+id: '${app:uuid}'
+id_alt: '${app:uuid()}'  # Also valid
+
+# Positional arguments
+timestamp: '${app:now("%Y-%m-%d_%H-%M-%S")}'
+
+# Keyword arguments
+timestamp2: '${app:now(fmt="%Y-%m-%d")}'
+
+# Namespaced resolver with arguments
+user: '${app:db:lookup("users", 42)}'
+
+# Deep namespace with kwargs
+cached: '${app:db:cache:get("session", ttl=300)}'
+
+# Config reference as argument
+base_lr: 0.01
+scaled_lr: '${app:scale(/base_lr, 2)}'
+
+# Expression as argument
+doubled: '${app:math:multiply(/base_lr, 2)}'
+```
+
+#### Config Access in Resolvers
+
+Resolvers can access the full config by declaring a `_config_` keyword-only parameter:
+
+```python
+@rc.resolver("derive")
+def derive(key: str, *, _config_: dict) -> Any:
+    """Access config values from within a resolver."""
+    return _config_.get(key)
+```
+
+The `_config_` parameter receives a read-only view of the raw config dictionary (before instantiation).
+
+#### Ternary Operator
+
+Conditional expressions using `condition ? if_true : if_false` syntax:
+
+```yaml
+# Basic ternary with boolean
+mode: '${/debug ? "verbose" : "quiet"}'
+
+# With comparison
+level: '${/count > 10 ? "high" : "low"}'
+
+# With resolver as condition
+status: '${app:is_ready() ? "go" : "wait"}'
+
+# Nested ternary (right-associative)
+result: '${/a ? "first" : /b ? "second" : "third"}'
+```
+
+#### Coalesce Operators
+
+Two coalesce operators for handling null values and errors:
+
+| Operator | Name | Catches |
+|----------|------|---------|
+| `?:` | Elvis (soft) | `None`, missing resolver/env |
+| `??` | Error (hard) | `None`, missing resolver/env, **all exceptions** |
+
+```yaml
+# Elvis coalesce - catches null and missing
+safe_id: '${app:uuid ?: "fallback-id"}'
+env_val: '${env:API_KEY ?: "dev-key"}'
+
+# Error coalesce - also catches exceptions
+risky_value: '${app:might_fail() ?? "safe-default"}'
+
+# Chained coalesce (right-associative)
+value: '${app:primary() ?? app:backup() ?? "ultimate-fallback"}'
+
+# Combined with ternary
+result: '${(app:get_value() ?? 0) > 5 ? "high" : "low"}'
+```
+
+**Elvis (`?:`) vs Error (`??`) Coalesce:**
+
+- Use `?:` when you want resolver exceptions to propagate (fail fast)
+- Use `??` when you want to catch all errors and use a fallback
+
+```yaml
+# ?: propagates errors from app:risky
+critical: '${app:risky() ?: "fallback"}'  # Raises if risky() throws
+
+# ?? catches all errors
+safe: '${app:risky() ?? "fallback"}'  # Returns "fallback" if risky() throws
+```
+
+#### Unregistering Resolvers
+
+```python
+# Unregister a resolver
+rc.unregister_resolver("uuid")
+rc.unregister_resolver("db", "lookup")  # Namespaced
+```
+
 ### Provenance Tracking
 
 Track the origin of every config value - essential for debugging complex configs.
@@ -1041,7 +1181,7 @@ ReausoConfig is thread-safe for concurrent access. The following operations can 
 - `rc.set_cache_size()` / `rc.clear_cache()` - Thread-safe cache management
 - `register_loader()` / `unregister_loader()` - Thread-safe loader registration
 
-**Note:** `rc.known_references()` returns a snapshot of registrations at call time. Changes made after the call are not reflected in the returned mapping.
+**Note:** `rc.known_references()` returns a live view of registrations. Individual read operations are thread-safe, but iteration during concurrent mutation may raise RuntimeError.
 
 ## Error Handling
 
@@ -1071,7 +1211,10 @@ ConfigError (base)
 │   ├── InterpolationSyntaxError      # Invalid ${...} syntax
 │   ├── InterpolationResolutionError  # Path/env not found
 │   ├── CircularInterpolationError    # Circular ${...} reference
-│   └── EnvironmentVariableError      # Required env var not set
+│   ├── EnvironmentVariableError      # Required env var not set
+│   └── ResolverError                 # Custom resolver issues
+│       ├── UnknownResolverError          # Resolver path not registered
+│       └── ResolverExecutionError        # Resolver function raised exception
 ├── OverrideError                 # Override-related errors
 │   ├── InvalidOverridePathError      # Override path doesn't exist
 │   └── InvalidOverrideSyntaxError    # Override string malformed
@@ -1083,7 +1226,8 @@ Example error handling:
 ```python
 from rconfig import (
     ConfigFileError, ValidationError, InstantiationError,
-    AmbiguousTargetError, TypeInferenceError
+    AmbiguousTargetError, TypeInferenceError,
+    UnknownResolverError, ResolverExecutionError
 )
 
 try:
@@ -1093,6 +1237,10 @@ except AmbiguousTargetError as e:
     print(f"Available targets: {e.available_targets}")
 except TypeInferenceError as e:
     print(f"Inferred type validation failed: {e}")
+except UnknownResolverError as e:
+    print(f"Unknown resolver: {e}")
+except ResolverExecutionError as e:
+    print(f"Resolver failed: {e}")
 except ConfigFileError as e:
     print(f"Could not load file: {e}")
 except ValidationError as e:

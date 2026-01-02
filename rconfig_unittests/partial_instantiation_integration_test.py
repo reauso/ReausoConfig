@@ -435,7 +435,7 @@ model:
 _target_: config
 model:
   _target_: model
-  data_path: ${env:TEST_DATA_PATH,/default/path}
+  data_path: '${env:TEST_DATA_PATH ?: "/default/path"}'
 """
         fs = MockFileSystem("/configs")
         fs.add_file("/configs/config.yaml", yaml_content)

@@ -235,22 +235,22 @@ class ResolveInterpolationsTests(unittest.TestCase):
             del os.environ["TEST_INTERP_VAR"]
 
     def test_resolve__EnvVarWithDefault__UsesDefaultWhenMissing(self):
-        config = {"c": "${env:NONEXISTENT_VAR_12345,default_value}"}
+        config = {"c": '${env:NONEXISTENT_VAR_12345 ?: "default_value"}'}
         result = resolve_interpolations(config)
         self.assertEqual(result["c"], "default_value")
 
     def test_resolve__EnvVarWithPathDefault__UsesPathDefault(self):
-        config = {"c": "${env:NONEXISTENT_VAR_12345,/default/path}"}
+        config = {"c": '${env:NONEXISTENT_VAR_12345 ?: "/default/path"}'}
         result = resolve_interpolations(config)
         self.assertEqual(result["c"], "/default/path")
 
     def test_resolve__EnvVarWithBoolDefault__UsesBoolDefault(self):
-        config = {"c": "${env:NONEXISTENT_VAR_12345,true}"}
+        config = {"c": "${env:NONEXISTENT_VAR_12345 ?: true}"}
         result = resolve_interpolations(config)
         self.assertEqual(result["c"], True)
 
     def test_resolve__EnvVarWithNumberDefault__UsesNumberDefault(self):
-        config = {"c": "${env:NONEXISTENT_VAR_12345,42}"}
+        config = {"c": "${env:NONEXISTENT_VAR_12345 ?: 42}"}
         result = resolve_interpolations(config)
         self.assertEqual(result["c"], 42)
 
@@ -679,30 +679,30 @@ class ResolveInterpolationsTests(unittest.TestCase):
         with self.assertRaises(InterpolationResolutionError):
             resolve_interpolations(config)
 
-    # === Env var defaults (evaluator lines 603, 621-623, 638, 642) ===
+    # === Env var defaults using coalesce operators ===
 
     def test_resolve__EnvVarWithDefaultWhenSet__UsesEnvValue(self):
         import os
         os.environ["RCONFIG_TEST_VAR"] = "actual_value"
         try:
-            config = {"result": "${env:RCONFIG_TEST_VAR,default_value}"}
+            config = {"result": '${env:RCONFIG_TEST_VAR ?: "default_value"}'}
             result = resolve_interpolations(config)
             self.assertEqual(result["result"], "actual_value")
         finally:
             del os.environ["RCONFIG_TEST_VAR"]
 
     def test_resolve__EnvVarWithFalseDefault__UsesFalse(self):
-        config = {"result": "${env:NONEXISTENT_VAR_12345,false}"}
+        config = {"result": "${env:NONEXISTENT_VAR_12345 ?: false}"}
         result = resolve_interpolations(config)
         self.assertEqual(result["result"], False)
 
     def test_resolve__EnvVarWithNullDefault__UsesNull(self):
-        config = {"result": "${env:NONEXISTENT_VAR_12345,null}"}
+        config = {"result": "${env:NONEXISTENT_VAR_12345 ?: null}"}
         result = resolve_interpolations(config)
         self.assertIsNone(result["result"])
 
     def test_resolve__EnvVarWithStringDefault__UsesStringDefault(self):
-        config = {"result": '${env:NONEXISTENT_VAR_12345,"default_string"}'}
+        config = {"result": '${env:NONEXISTENT_VAR_12345 ?: "default_string"}'}
         result = resolve_interpolations(config)
         self.assertEqual(result["result"], "default_string")
 

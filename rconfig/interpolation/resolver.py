@@ -223,6 +223,8 @@ class InterpolationResolver:
         """
         from lark.exceptions import VisitError
 
+        from rconfig.interpolation.registry import ResolverRegistry
+
         # Parse the expression
         tree = self._parser.parse(expr)
 
@@ -231,6 +233,7 @@ class InterpolationResolver:
             config=self._original_config,
             provenance=self._provenance,
             resolver=self,  # Pass resolver for circular detection
+            registry=ResolverRegistry(),  # Pass registry for app resolvers
         )
 
         # Transform the tree to get the result

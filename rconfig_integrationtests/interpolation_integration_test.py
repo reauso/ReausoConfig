@@ -1552,3 +1552,233 @@ class InterpolationCompositionTests(TestCase):
         # Verify interpolated values in services
         self.assertEqual(result.service_a.cache_size_check, 1000)
         self.assertEqual(result.service_b.cache_size_check, 1000)
+
+
+# =============================================================================
+# Custom Resolver Integration Tests
+# =============================================================================
+
+
+@dataclass
+class ResolverTest:
+    """Dataclass for resolver integration tests."""
+
+    base_value: int
+    debug_mode: bool
+    flag_off: bool
+    items: list[int]
+    resolver_results: dict
+    ternary_results: dict
+    coalesce_results: dict
+    combined_results: dict
+
+
+class ResolverIntegrationTests(TestCase):
+    """Tests for custom resolvers, ternary, and coalesce operators.
+
+    No mocks - tests real component interactions.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Register test resolvers."""
+        import uuid as uuid_module
+        from datetime import datetime
+
+        # Simple resolvers
+        @rc.resolver("uuid")
+        def gen_uuid() -> str:
+            # Return a fixed value for test reproducibility
+            return "test-uuid-1234"
+
+        @rc.resolver("scale")
+        def scale(value: int, factor: int) -> int:
+            return value * factor
+
+        @rc.resolver("now")
+        def now(fmt: str = "%Y-%m-%d") -> str:
+            # Return fixed value for reproducibility
+            return "2025-01-02"
+
+        # Namespaced resolvers
+        @rc.resolver("math", "multiply")
+        def math_multiply(a: int, b: int) -> int:
+            return a * b
+
+        @rc.resolver("db", "cache", "get")
+        def cache_get(key: str) -> str:
+            return f"cached:{key}"
+
+        # Resolver with config access
+        @rc.resolver("get_config_value")
+        def get_config_value(path: str, *, _config_: dict) -> Any:
+            return _config_.get(path)
+
+        # Resolvers for coalesce testing
+        @rc.resolver("get_value")
+        def get_value() -> int:
+            return 42
+
+        @rc.resolver("return_null")
+        def return_null() -> None:
+            return None
+
+        @rc.resolver("raise_error")
+        def raise_error() -> str:
+            raise RuntimeError("Intentional error for testing")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        """Unregister test resolvers."""
+        rc.unregister_resolver("uuid")
+        rc.unregister_resolver("scale")
+        rc.unregister_resolver("now")
+        rc.unregister_resolver("math", "multiply")
+        rc.unregister_resolver("db", "cache", "get")
+        rc.unregister_resolver("get_config_value")
+        rc.unregister_resolver("get_value")
+        rc.unregister_resolver("return_null")
+        rc.unregister_resolver("raise_error")
+
+    def setUp(self) -> None:
+        rc._store._known_references.clear()
+        rc.register("resolver_test", ResolverTest)
+
+    # === App Resolver Tests ===
+
+    def test_instantiate__AppResolverNoArgs__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.resolver_results["uuid"], "test-uuid-1234")
+        self.assertEqual(result.resolver_results["uuid_with_parens"], "test-uuid-1234")
+
+    def test_instantiate__AppResolverPositionalArgs__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.resolver_results["scaled"], 10)  # 5 * 2
+
+    def test_instantiate__AppResolverKeywordArgs__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.resolver_results["formatted_date"], "2025-01-02")
+
+    def test_instantiate__AppResolverNamespaced__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.resolver_results["namespaced"], 12)  # 3 * 4
+        self.assertEqual(result.resolver_results["deep_namespace"], "cached:test_key")
+
+    def test_instantiate__AppResolverConfigRefArg__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.resolver_results["config_ref_arg"], 30)  # 10 * 3
+        self.assertEqual(result.resolver_results["expr_arg"], 30)  # (10 + 5) * 2
+
+    def test_instantiate__AppResolverConfigAccess__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.resolver_results["config_aware"], 10)
+
+    # === Ternary Operator Tests ===
+
+    def test_instantiate__TernaryBasic__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.ternary_results["basic_true"], "enabled")
+        self.assertEqual(result.ternary_results["basic_false"], "disabled")
+
+    def test_instantiate__TernaryComparison__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.ternary_results["comparison"], "high")  # 10 > 5
+
+    def test_instantiate__TernaryNested__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.ternary_results["nested"], "high_debug")
+
+    def test_instantiate__TernaryArithmetic__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.ternary_results["arithmetic"], 20)  # 10 * 2
+
+    # === Coalesce Operator Tests ===
+
+    def test_instantiate__ElvisCoalescePresent__ReturnsValue(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.coalesce_results["elvis_present"], 42)
+
+    def test_instantiate__ElvisCoalesceNull__ReturnsFallback(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.coalesce_results["elvis_null"], "fallback")
+
+    def test_instantiate__ElvisCoalesceMissing__ReturnsFallback(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.coalesce_results["elvis_missing"], "fallback")
+
+    def test_instantiate__ErrorCoalesceException__CatchesAndReturnsFallback(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.coalesce_results["error_exception"], "caught")
+
+    def test_instantiate__ChainedCoalesce__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.coalesce_results["chained"], "final_fallback")
+
+    def test_instantiate__CoalesceConfigFallback__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.coalesce_results["config_fallback"], 10)
+
+    # === Combined Operator Tests ===
+
+    def test_instantiate__CoalesceInTernary__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.combined_results["coalesce_in_ternary"], "low")  # (null ?? 0) > 5 = false
+        self.assertEqual(result.combined_results["coalesce_in_ternary_with_value"], "high")  # (42 ?? 0) > 5 = true
+
+    def test_instantiate__TernaryWithResolverBranches__ResolvesCorrectly(self) -> None:
+        config_path = CONFIG_DIR / "basic" / "resolvers.yaml"
+
+        result = rc.instantiate(config_path, ResolverTest, cli_overrides=False)
+
+        self.assertEqual(result.combined_results["resolver_branches"], 20)  # debug_mode is true, so 10 * 2

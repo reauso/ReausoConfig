@@ -1,23 +1,30 @@
 // Expression grammar for ReausoConfig interpolation
 // Supports: arithmetic, comparisons, booleans, string concat, list operations,
-//           config references, and environment variables
+//           config references, environment variables, app resolvers, ternary, and coalesce
 
 ?start: expression
 
 // Operator precedence (low to high):
-// 1. or
-// 2. and
-// 3. not
-// 4. in, not in, ==, !=, <, >, <=, >=
-// 5. + - (additive)
-// 6. * / // % (multiplicative)
-// 7. ** (power)
-// 8. unary - +
-// 9. | (pipe for filter)
-// 10. [] (indexing/slicing), . (method calls)
-// 11. atoms (literals, references, parentheses)
+// 1. ?: (ternary) - NEW
+// 2. or
+// 3. and
+// 4. not
+// 5. ?:, ?? (coalesce operators) - NEW
+// 6. in, not in, ==, !=, <, >, <=, >=
+// 7. + - (additive)
+// 8. * / // % (multiplicative)
+// 9. ** (power)
+// 10. unary - +
+// 11. | (pipe for filter)
+// 12. [] (indexing/slicing), . (method calls)
+// 13. atoms (literals, references, parentheses)
 
-?expression: or_expr
+// Ternary operator (lowest precedence, right-associative)
+// a ? b : c ? d : e = a ? b : (c ? d : e)
+?expression: ternary_expr
+
+?ternary_expr: or_expr
+             | or_expr "?" ternary_expr ":" ternary_expr -> ternary
 
 ?or_expr: and_expr
         | or_expr "or" and_expr -> or_op
@@ -25,8 +32,15 @@
 ?and_expr: not_expr
          | and_expr "and" not_expr -> and_op
 
-?not_expr: comparison
+?not_expr: coalesce_expr
          | "not" not_expr -> not_op
+
+// Coalesce operators (right-associative for chaining)
+// ?: = Elvis (soft coalesce) - catches None and missing resolver/env
+// ?? = Error (hard coalesce) - catches None and all exceptions
+?coalesce_expr: comparison
+              | comparison "?:" coalesce_expr -> elvis_coalesce
+              | comparison "??" coalesce_expr -> error_coalesce
 
 ?comparison: pipe_expr
            | comparison "==" pipe_expr -> eq
@@ -92,6 +106,7 @@ slice: expression ":" expression -> slice_both
      | list
      | config_ref
      | env_ref
+     | app_resolver
      | builtin_func
      | "(" expression ")"
 
@@ -108,20 +123,34 @@ config_ref: ABS_PATH -> abs_config_ref
           | SIMPLE_PATH -> simple_config_ref
 
 // Environment variable reference
+// Use coalesce operators for defaults: ${env:VAR ?: "default"} or ${env:VAR ?? "default"}
 env_ref: "env" ":" ENV_NAME -> env_ref_required
-       | "env" ":" ENV_NAME "," default_value -> env_ref_default
 
-// Default value for env vars - can be string, number, bool, null, or raw path-like value
-default_value: ESCAPED_STRING -> default_string
-             | SIGNED_NUMBER -> default_number
-             | "true" -> default_true
-             | "false" -> default_false
-             | "null" -> default_null
-             | DEFAULT_RAW -> default_raw
+// App resolver: app:path or app:path(args)
+// Parentheses optional for no-arg resolvers
+// Examples:
+//   app:uuid                        (no parens, no args)
+//   app:uuid()                      (explicit empty parens)
+//   app:now("%Y-%m-%d")             (with args)
+//   app:db:lookup("users", 42)      (namespaced with args)
+//   app:db:cache:get("key", ttl=300)
+app_resolver: "app" ":" resolver_path -> app_resolver_no_args
+            | "app" ":" resolver_path "(" ")" -> app_resolver_no_args
+            | "app" ":" resolver_path "(" resolver_args ")" -> app_resolver_with_args
 
-// Raw default value (for path-like strings without quotes)
-// Matches any non-special characters until end of expression
-DEFAULT_RAW: /[^,\[\](){}|\s]+/
+// Resolver path: one or more colon-separated identifiers
+resolver_path: RESOLVER_IDENT (":" RESOLVER_IDENT)*
+
+// Resolver arguments (comma-separated, like function args)
+resolver_args: resolver_arg ("," resolver_arg)*
+resolver_arg: KW_ARG_NAME "=" expression -> resolver_kw_arg
+            | expression -> resolver_pos_arg
+
+// Identifier for resolver names (alphanumeric + underscore)
+RESOLVER_IDENT: /[a-zA-Z_][a-zA-Z0-9_]*/
+
+// Keyword argument name - higher priority than SIMPLE_PATH for keyword args
+KW_ARG_NAME.2: /[a-zA-Z_][a-zA-Z0-9_]*(?==)/
 
 // Path patterns
 // Absolute: /model.layers[0].size

@@ -23,7 +23,7 @@ class InterpolationSource:
 
     Used for provenance tracking to show where interpolated values came from.
 
-    :param kind: Type of source ("config", "env", "literal", "expression").
+    :param kind: Type of source ("config", "env", "literal", "expression", "resolver").
     :param expression: The expression string that was evaluated.
     :param value: The resolved value.
     :param path: Config path if kind="config".
@@ -33,9 +33,12 @@ class InterpolationSource:
     :param env_default: Default value used if env var was not set.
     :param sources: List of child sources for compound expressions.
     :param operator: Operator used for compound expressions (e.g., "*", "+").
+    :param resolver_path: Registered resolver path if kind="resolver" (e.g., "uuid", "db:lookup").
+    :param resolver_func: Function name of the resolver (e.g., "gen_uuid").
+    :param resolver_module: Module where the resolver is defined (e.g., "myapp.resolvers").
     """
 
-    kind: Literal["config", "env", "literal", "expression"]
+    kind: Literal["config", "env", "literal", "expression", "resolver"]
     expression: str
     value: Any
     # For config references
@@ -48,6 +51,10 @@ class InterpolationSource:
     # For compound expressions
     sources: list[InterpolationSource] = field(default_factory=list)
     operator: str | None = None
+    # For resolvers
+    resolver_path: str | None = None
+    resolver_func: str | None = None
+    resolver_module: str | None = None
 
 
 @dataclass
@@ -68,14 +75,23 @@ class ExpressionEvaluator(Transformer):
     Transforms a parsed AST into actual Python values by:
     - Resolving config path references to their values
     - Resolving environment variables
+    - Resolving app resolvers
     - Applying arithmetic, comparison, and boolean operators
     - Handling list operations (concat, removal, indexing, slicing, filter)
+    - Handling ternary and coalesce operators
+
+    Note: Short-circuit operators (ternary, elvis_coalesce, error_coalesce) are
+    handled specially via transform() override to enable lazy child evaluation.
 
     :param config: The composed config dictionary to resolve paths against.
     :param provenance: Optional Provenance object to look up source locations.
     :param env_getter: Optional function to get env vars (for testing).
     :param resolver: Optional InterpolationResolver for circular detection.
+    :param registry: Optional ResolverRegistry for app resolvers.
     """
+
+    # Rules that require lazy evaluation (children should not be auto-transformed)
+    _LAZY_RULES = frozenset({"ternary", "elvis_coalesce", "error_coalesce"})
 
     def __init__(
         self,
@@ -83,12 +99,31 @@ class ExpressionEvaluator(Transformer):
         provenance: Provenance | None = None,
         env_getter: Callable[[str], str | None] | None = None,
         resolver: Any | None = None,  # InterpolationResolver, avoid circular import
+        registry: Any | None = None,  # ResolverRegistry, avoid circular import
     ) -> None:
         super().__init__()
         self._config = config
         self._provenance = provenance
         self._env_getter = env_getter or os.environ.get
         self._resolver = resolver
+        self._registry = registry
+
+    def _transform_tree(self, tree: Any) -> EvalResult:
+        """Override _transform_tree to handle lazy-evaluated rules specially.
+
+        For rules in _LAZY_RULES, we call the handler directly without
+        transforming children first, enabling short-circuit evaluation.
+
+        This is called for every tree node during transformation, ensuring
+        lazy rules are handled correctly at any level of nesting.
+        """
+        if tree.data in self._LAZY_RULES:
+            # Handle lazy rules directly without auto-transforming children
+            handler = getattr(self, tree.data)
+            return handler(tree)
+
+        # Default transformation for other rules
+        return super()._transform_tree(tree)
 
     def _make_literal(self, value: Any, expr: str) -> EvalResult:
         """Create an EvalResult for a literal value."""
@@ -314,6 +349,134 @@ class ExpressionEvaluator(Transformer):
         """Handle 'not' operator."""
         result = not operand.value
         return self._make_unary_op("not ", operand, result)
+
+    # === Ternary Operator ===
+
+    @v_args(tree=True)
+    def ternary(self, tree: Any) -> EvalResult:
+        """Handle ternary operator: condition ? if_true : if_false.
+
+        Short-circuits: only evaluates the branch that is taken.
+
+        Uses v_args(tree=True) to receive the raw tree and control child evaluation
+        for short-circuit behavior.
+        """
+        condition_tree, if_true_tree, if_false_tree = tree.children
+
+        # Evaluate condition first
+        cond_result = self.transform(condition_tree)
+
+        # Short-circuit: only evaluate the branch we need
+        if cond_result.value:
+            result = self.transform(if_true_tree)
+        else:
+            result = self.transform(if_false_tree)
+
+        # Build expression string
+        expr = f"{cond_result.source.expression} ? {result.source.expression} : ..."
+        return EvalResult(
+            value=result.value,
+            source=InterpolationSource(
+                kind="expression",
+                expression=expr,
+                value=result.value,
+                operator="?:",
+                sources=[cond_result.source, result.source],
+            ),
+        )
+
+    # === Coalesce Operators ===
+
+    def _is_soft_error(self, exc: Exception) -> bool:
+        """Check if an exception is a soft error for elvis_coalesce.
+
+        Soft errors (caught by ?:): UnknownResolverError, EnvironmentVariableError
+        Hard errors (caught by ?? only): ResolverExecutionError, other exceptions
+
+        Lark wraps exceptions in VisitError, so we need to check orig_exc.
+        """
+        from lark.exceptions import VisitError
+
+        from rconfig.errors import EnvironmentVariableError, UnknownResolverError
+
+        # Check if it's a direct soft error
+        if isinstance(exc, (UnknownResolverError, EnvironmentVariableError)):
+            return True
+
+        # Check if it's wrapped in a VisitError
+        if isinstance(exc, VisitError) and hasattr(exc, "orig_exc"):
+            return isinstance(exc.orig_exc, (UnknownResolverError, EnvironmentVariableError))
+
+        return False
+
+    @v_args(tree=True)
+    def elvis_coalesce(self, tree: Any) -> EvalResult:
+        """Handle ?: operator (Elvis/soft coalesce).
+
+        Catches: None value, UnknownResolverError, EnvironmentVariableError
+        Does NOT catch: ResolverExecutionError or other exceptions
+
+        Uses v_args(tree=True) to receive the raw tree and control child evaluation
+        for short-circuit behavior.
+        """
+        left_tree, right_tree = tree.children
+
+        try:
+            left_result = self.transform(left_tree)
+            if left_result.value is not None:
+                return left_result
+        except Exception as e:
+            if not self._is_soft_error(e):
+                raise  # Re-raise hard errors
+            # Fall through to right side for soft errors
+
+        # Left was None or raised soft error, evaluate right side
+        right_result = self.transform(right_tree)
+
+        expr = f"... ?: {right_result.source.expression}"
+        return EvalResult(
+            value=right_result.value,
+            source=InterpolationSource(
+                kind="expression",
+                expression=expr,
+                value=right_result.value,
+                operator="?:",
+                sources=[right_result.source],
+            ),
+        )
+
+    @v_args(tree=True)
+    def error_coalesce(self, tree: Any) -> EvalResult:
+        """Handle ?? operator (error/hard coalesce).
+
+        Catches: None value, ANY exception (including ResolverExecutionError)
+
+        Uses v_args(tree=True) to receive the raw tree and control child evaluation
+        for short-circuit behavior.
+        """
+        left_tree, right_tree = tree.children
+
+        try:
+            left_result = self.transform(left_tree)
+            if left_result.value is not None:
+                return left_result
+        except Exception:
+            pass  # Fall through to right side
+
+        # Left was None or raised any error, evaluate right side
+        right_result = self.transform(right_tree)
+
+        expr = f"... ?? {right_result.source.expression}"
+        return EvalResult(
+            value=right_result.value,
+            source=InterpolationSource(
+                kind="expression",
+                expression=expr,
+                value=right_result.value,
+                operator="??",
+                sources=[right_result.source],
+            ),
+        )
 
     # === List Operations ===
 
@@ -589,59 +752,94 @@ class ExpressionEvaluator(Transformer):
             ),
         )
 
-    @v_args(inline=True)
-    def env_ref_default(self, name: Token, default: EvalResult) -> EvalResult:
-        """Handle env var with default: env:PATH,/default."""
-        var_name = str(name)
-        value = self._env_getter(var_name)
 
-        if value is None:
-            value = default.value
-            env_default = default.value
-        else:
-            env_default = None
+    # === App Resolvers ===
+
+    def resolver_path(self, items: list[Token]) -> str:
+        """Join resolver path components: ["db", "cache", "get"] -> "db:cache:get"."""
+        return ":".join(str(item) for item in items)
+
+    @v_args(inline=True)
+    def app_resolver_no_args(self, path: str) -> EvalResult:
+        """Handle ${app:resolver_path} or ${app:resolver_path()}.
+
+        Resolves an app resolver with no arguments.
+        """
+        from rconfig.errors import UnknownResolverError
+
+        if self._registry is None:
+            raise UnknownResolverError(path, [])
+
+        # Get resolver reference for metadata
+        ref = self._registry.known_resolvers.get(path)
+
+        # Resolve the value
+        value = self._registry.resolve(path, [], {}, self._config)
 
         return EvalResult(
             value=value,
             source=InterpolationSource(
-                kind="env",
-                expression=f"env:{var_name},{default.source.expression}",
+                kind="resolver",
+                expression=f"app:{path}",
                 value=value,
-                env_var=var_name,
-                env_default=env_default,
+                resolver_path=path,
+                resolver_func=ref.func.__name__ if ref else None,
+                resolver_module=ref.func.__module__ if ref else None,
             ),
         )
 
-    # === Default value types ===
+    @v_args(inline=True)
+    def app_resolver_with_args(
+        self, path: str, args: list[tuple[str | None, EvalResult]]
+    ) -> EvalResult:
+        """Handle ${app:resolver_path(arg1, arg2, key=val)}.
+
+        Resolves an app resolver with positional and/or keyword arguments.
+        """
+        from rconfig.errors import UnknownResolverError
+
+        if self._registry is None:
+            raise UnknownResolverError(path, [])
+
+        # Get resolver reference for metadata
+        ref = self._registry.known_resolvers.get(path)
+
+        # Separate positional and keyword arguments
+        positional = [a.value for key, a in args if key is None]
+        keyword = {key: a.value for key, a in args if key is not None}
+
+        # Resolve the value
+        value = self._registry.resolve(path, positional, keyword, self._config)
+
+        # Build expression string for provenance
+        args_str = ", ".join(
+            a.source.expression if k is None else f"{k}={a.source.expression}"
+            for k, a in args
+        )
+
+        return EvalResult(
+            value=value,
+            source=InterpolationSource(
+                kind="resolver",
+                expression=f"app:{path}({args_str})",
+                value=value,
+                resolver_path=path,
+                resolver_func=ref.func.__name__ if ref else None,
+                resolver_module=ref.func.__module__ if ref else None,
+                sources=[a.source for _, a in args],
+            ),
+        )
+
+    def resolver_args(self, items: list) -> list[tuple[str | None, EvalResult]]:
+        """Collect resolver arguments into a list."""
+        return list(items)
 
     @v_args(inline=True)
-    def default_string(self, token: Token) -> EvalResult:
-        """Parse default string value."""
-        s = str(token)
-        value = s[1:-1].encode().decode("unicode_escape")
-        return self._make_literal(value, s)
+    def resolver_pos_arg(self, expr: EvalResult) -> tuple[None, EvalResult]:
+        """Handle positional resolver argument."""
+        return (None, expr)
 
     @v_args(inline=True)
-    def default_number(self, token: Token) -> EvalResult:
-        """Parse default number value."""
-        s = str(token)
-        value = float(s) if "." in s or "e" in s.lower() else int(s)
-        return self._make_literal(value, s)
-
-    def default_true(self, _: list) -> EvalResult:
-        """Parse default 'true' literal."""
-        return self._make_literal(True, "true")
-
-    def default_false(self, _: list) -> EvalResult:
-        """Parse default 'false' literal."""
-        return self._make_literal(False, "false")
-
-    def default_null(self, _: list) -> EvalResult:
-        """Parse default 'null' literal."""
-        return self._make_literal(None, "null")
-
-    @v_args(inline=True)
-    def default_raw(self, token: Token) -> EvalResult:
-        """Parse default raw value (unquoted string like /path/to/dir)."""
-        value = str(token)
-        return self._make_literal(value, value)
+    def resolver_kw_arg(self, name: Token, expr: EvalResult) -> tuple[str, EvalResult]:
+        """Handle keyword resolver argument: key=value."""
+        return (str(name), expr)
