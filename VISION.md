@@ -20,7 +20,7 @@ This document outlines potential features for rconfig based on analysis of state
 
 ---
 
-## 1. Custom Resolvers ✅
+## 1. ✅ Custom Resolvers
 
 **Adopted by:** OmegaConf, Hydra, Dynaconf
 
@@ -565,6 +565,7 @@ The defaults list is a powerful composition mechanism that allows configs to dec
 ### Usage Example
 
 **Directory Structure:**
+
 ```
 configs/
 ├── config.yaml          # Main config with defaults list
@@ -1231,6 +1232,7 @@ rconfig.init_user_config(
 This vision document outlines 11 features that would enhance rconfig based on proven patterns from the configuration library ecosystem. The features are prioritized by community adoption and general-purpose utility:
 
 ### High Priority (Widely Adopted)
+
 1. ✅ Custom Resolvers
 2. Config Export / Serialization
 3. Built-in TOML and JSON Loaders
@@ -1240,6 +1242,7 @@ This vision document outlines 11 features that would enhance rconfig based on pr
 7. Defaults List / Composition Groups
 
 ### Medium Priority (Common Patterns)
+
 8. Multi-Environment Profiles
 9. Config Diffing
 10. Callbacks and Hooks
