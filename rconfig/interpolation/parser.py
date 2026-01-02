@@ -4,9 +4,12 @@ This module provides parsing for interpolation expressions like:
 - Config references: ${/model.lr}, ${./local}, ${model.lr}
 - Environment variables: ${env:PATH}, ${env:HOME,/default}
 - Expressions: ${/a * 2 + /b}, ${/list[0]}, ${/items | filter(x > 0)}
+
+Thread-safe: The InterpolationParser singleton is protected by an internal lock.
 """
 
 import re
+import threading
 from pathlib import Path
 from typing import NamedTuple
 
@@ -33,10 +36,11 @@ _INTERPOLATION_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 
 class InterpolationParser:
-    """Parser for interpolation expressions using Lark grammar.
+    """Thread-safe parser for interpolation expressions using Lark grammar.
 
     This is a singleton-style class that lazily loads the grammar file
-    and caches the Lark parser for reuse.
+    and caches the Lark parser for reuse. Thread safety is ensured using
+    double-checked locking pattern.
 
     Example::
 
@@ -47,25 +51,40 @@ class InterpolationParser:
 
     _instance: "InterpolationParser | None" = None
     _parser: Lark | None = None
+    _lock = threading.Lock()
 
     def __new__(cls) -> "InterpolationParser":
-        """Return the singleton instance."""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
+        """Return the singleton instance (thread-safe)."""
+        # Fast path: instance exists
+        if cls._instance is not None:
+            return cls._instance
+
+        # Slow path: need lock
+        with cls._lock:
+            # Double-check after lock
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
         return cls._instance
 
     def _get_parser(self) -> Lark:
-        """Get or create the Lark parser.
+        """Get or create the Lark parser (thread-safe).
 
         :return: Configured Lark parser instance.
         """
-        if self._parser is None:
-            grammar_path = Path(__file__).parent / "grammar.lark"
-            self._parser = Lark(
-                grammar_path.read_text(),
-                parser="lalr",
-                maybe_placeholders=False,
-            )
+        # Fast path: parser exists
+        if self._parser is not None:
+            return self._parser
+
+        # Slow path: need lock
+        with self._lock:
+            # Double-check after lock
+            if self._parser is None:
+                grammar_path = Path(__file__).parent / "grammar.lark"
+                InterpolationParser._parser = Lark(
+                    grammar_path.read_text(),
+                    parser="lalr",
+                    maybe_placeholders=False,
+                )
         return self._parser
 
     def parse(self, expression: str) -> Tree:

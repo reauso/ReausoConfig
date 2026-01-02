@@ -1,3 +1,4 @@
+import threading
 from typing import TypeVar, Generic
 
 T = TypeVar('T')
@@ -5,7 +6,9 @@ T = TypeVar('T')
 
 class Singleton(Generic[T]):
     """
-    A singleton decorator for classes of which a maximum of one instance should exist.
+    A thread-safe singleton decorator for classes of which a maximum of one instance should exist.
+
+    Thread safety is ensured using double-checked locking pattern with a per-decorator lock.
     """
 
     def __init__(self, wrapped_cls: type[T]) -> None:
@@ -19,6 +22,7 @@ class Singleton(Generic[T]):
         self._instance = None
         self._args = None
         self._kwargs = None
+        self._lock = threading.Lock()
 
     @property
     def wrapped_class(self) -> type[T]:
@@ -40,13 +44,21 @@ class Singleton(Generic[T]):
         return self._instance is not None
 
     def __call__(self, *args, **kwargs) -> T:
-        if not self.exists:
-            self._instance = self._wrapped_cls(*args, **kwargs)
-            self._args = args
-            self._kwargs = kwargs
+        # Fast path: instance already exists (no lock needed for read)
+        if self._instance is not None:
+            if not args == self._args or not kwargs == self._kwargs:
+                raise ValueError('This singleton is already instantiated with different arguments.')
+            return self._instance
 
-        if not args == self._args or not kwargs == self._kwargs:
-            raise ValueError('This singleton is already instantiated with different arguments.')
+        # Slow path: need to create instance (requires lock)
+        with self._lock:
+            # Double-check after acquiring lock
+            if self._instance is None:
+                self._instance = self._wrapped_cls(*args, **kwargs)
+                self._args = args
+                self._kwargs = kwargs
+            elif not args == self._args or not kwargs == self._kwargs:
+                raise ValueError('This singleton is already instantiated with different arguments.')
 
         return self._instance
 

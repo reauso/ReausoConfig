@@ -2,10 +2,13 @@
 
 This module provides the CompositionWalker class that walks config trees,
 resolving _ref_ references and collecting _instance_ markers for later resolution.
+
+Thread-safe: Cache management functions are protected by an internal lock.
 """
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -32,19 +35,14 @@ _REF_KEY = "_ref_"
 _INSTANCE_KEY = "_instance_"
 _TARGET_KEY = "_target_"
 
-def set_cache_size(size: int) -> None:
-    """Set the LRU cache size for loaded config files.
-
-    :param size: Maximum number of files to cache. 0 means unlimited.
-    """
-    global _load_file_cached
-    maxsize = None if size == 0 else size
-    _load_file_cached = lru_cache(maxsize=maxsize)(_load_file_cached.__wrapped__)
+# Cache management lock
+_cache_lock = threading.Lock()
 
 
-@lru_cache(maxsize=None)
-def _load_file_cached(path: str) -> CommentedMap:
-    """Load a config file with caching and position information.
+def _load_file_impl(path: str) -> CommentedMap:
+    """Load a config file with position information.
+
+    This is the actual implementation, wrapped by the cached version.
 
     :param path: Absolute path to the config file as string.
     :return: CommentedMap with line number information.
@@ -55,9 +53,30 @@ def _load_file_cached(path: str) -> CommentedMap:
     return loader.load_with_positions(path_obj)
 
 
+# Initialize the cached function
+_load_file_cached = lru_cache(maxsize=None)(_load_file_impl)
+
+
+def set_cache_size(size: int) -> None:
+    """Set the LRU cache size for loaded config files.
+
+    Thread-safe: protected by internal lock.
+
+    :param size: Maximum number of files to cache. 0 means unlimited.
+    """
+    global _load_file_cached
+    with _cache_lock:
+        maxsize = None if size == 0 else size
+        _load_file_cached = lru_cache(maxsize=maxsize)(_load_file_impl)
+
+
 def clear_cache() -> None:
-    """Clear the file loading cache."""
-    _load_file_cached.cache_clear()
+    """Clear the file loading cache.
+
+    Thread-safe: protected by internal lock.
+    """
+    with _cache_lock:
+        _load_file_cached.cache_clear()
 
 
 @dataclass
