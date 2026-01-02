@@ -1,0 +1,6 @@
+_target_: modulo_by_zero_test
+# Modulo by zero test - should raise InterpolationResolutionError
+
+numerator: 10
+denominator: 0
+result: ${/numerator % /denominator}

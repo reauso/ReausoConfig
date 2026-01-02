@@ -1,0 +1,6 @@
+_target_: power_string_exponent_test
+# Power with string exponent error test - should raise InterpolationResolutionError
+
+base: 2
+exponent: hello
+result: ${/base ** /exponent}

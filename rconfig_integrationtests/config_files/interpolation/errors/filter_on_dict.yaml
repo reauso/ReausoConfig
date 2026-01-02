@@ -1,0 +1,7 @@
+_target_: filter_on_dict_test
+# Filter on dict error test - should raise InterpolationResolutionError
+
+data:
+  a: 1
+  b: 2
+result: ${/data | filter(x > 0)}

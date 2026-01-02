@@ -1,0 +1,56 @@
+_target_: nested_interpolation_test
+# Deeply nested config with interpolation
+
+# Multi-level nesting
+level1:
+  value: 100
+  level2:
+    value: 200
+    level3:
+      value: 300
+      level4:
+        value: 400
+        deep_reference: ${/level1.value}
+
+# Cross-level references
+cross_references:
+  ref_level1: ${/level1.value}
+  ref_level2: ${/level1.level2.value}
+  ref_level3: ${/level1.level2.level3.value}
+  ref_level4: ${/level1.level2.level3.level4.value}
+  sum_all: ${/level1.value + /level1.level2.value + /level1.level2.level3.value + /level1.level2.level3.level4.value}
+
+# Indexed lists (simple indexing is supported for value lists)
+model_names: [model_a, model_b, model_c]
+model_sizes: [100, 200, 300]
+
+# Nested objects - list of objects (kept for testing list structure)
+models:
+  - name: model_a
+    size: 100
+  - name: model_b
+    size: 200
+  - name: model_c
+    size: 300
+
+# References to list values (note: grammar only supports path[index], not path[index].field)
+list_references:
+  first_model_name: ${/model_names[0]}
+  second_model_size: ${/model_sizes[1]}
+  last_model_name: ${/model_names[2]}
+  total_size: ${/model_sizes[0] + /model_sizes[1] + /model_sizes[2]}
+
+# Nested dicts (kept for data structure)
+configs:
+  - type: training
+    params:
+      lr: 0.001
+      epochs: 100
+  - type: validation
+    params:
+      batch_size: 32
+
+# Hard-coded values since we can't access nested list fields via interpolation
+nested_access:
+  training_lr: 0.001
+  validation_batch: 32

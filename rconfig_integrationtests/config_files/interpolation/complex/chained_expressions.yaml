@@ -1,0 +1,35 @@
+_target_: chained_expressions_test
+# Complex chained expression tests
+
+# Source values
+values:
+  a: 10
+  b: 5
+  c: 2
+  d: 3
+
+# Operator precedence (multiplication before addition)
+precedence:
+  mul_before_add: ${/values.a + /values.b * /values.c}      # 10 + (5 * 2) = 20
+  parentheses_override: ${(/values.a + /values.b) * /values.c}  # (10 + 5) * 2 = 30
+  power_before_mul: ${/values.c ** /values.d * /values.b}   # (2 ** 3) * 5 = 40
+  nested_parens: ${((/values.a + /values.b) * /values.c) / /values.d}  # ((10 + 5) * 2) / 3 = 10
+
+# Chained comparisons in boolean expressions
+logic:
+  and_chain: ${/values.a > 5 and /values.b < 10 and /values.c == 2}
+  or_chain: ${/values.a < 5 or /values.b < 10 or /values.c > 5}
+  mixed_logic: ${(/values.a > 5 and /values.b > 2) or /values.c == 0}
+  not_in_chain: ${not (/values.a < 5) and /values.b < 10}
+
+# Chained list operations
+items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+chained_list:
+  filter_then_slice: ${(/items | filter(x > 3))[0:3]}  # Filter first, then slice
+  slice_result: ${/items[2:7]}
+  length_of_filtered: ${len(/items | filter(x > 5))}  # 5 items > 5
+
+# Arithmetic with list values
+list_arithmetic:
+  sum_first_two: ${/items[0] + /items[1]}  # 1 + 2 = 3
+  product_with_scalar: ${/items[2] * /values.c}  # 3 * 2 = 6

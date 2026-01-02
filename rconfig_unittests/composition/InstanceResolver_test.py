@@ -3,7 +3,7 @@
 from unittest import TestCase
 
 from rconfig.composition import InstanceMarker, InstanceResolver, Provenance
-from rconfig.errors import InstanceResolutionError
+from rconfig.errors import CircularInstanceError, InstanceResolutionError
 
 
 class InstanceResolverPropertyTests(TestCase):
@@ -274,3 +274,99 @@ class InstanceResolverIntegrationTests(TestCase):
 
         # Assert
         self.assertIsNone(result["optional"])
+
+
+class CircularInstanceTests(TestCase):
+    """Tests for circular instance reference detection (lines 77, 81, 85-86)."""
+
+    def test_resolve__CircularInstanceReference__RaisesError(self):
+        """Test that circular _instance_ references are detected."""
+        provenance = Provenance()
+        resolver = InstanceResolver(provenance)
+        config = {
+            "a": {"_instance_": "/b"},
+            "b": {"_instance_": "/a"},
+        }
+        instances = {
+            "a": InstanceMarker("a", "/b", "app.yaml", 1),
+            "b": InstanceMarker("b", "/a", "app.yaml", 2),
+        }
+
+        # Act & Assert
+        with self.assertRaises(CircularInstanceError) as ctx:
+            resolver.resolve(instances, config)
+        # Verify cycle information is captured
+        self.assertIn("a", ctx.exception.chain)
+        self.assertIn("b", ctx.exception.chain)
+
+    def test_resolve__SelfReference__RaisesCircularError(self):
+        """Test that self-referencing _instance_ is detected."""
+        provenance = Provenance()
+        resolver = InstanceResolver(provenance)
+        config = {
+            "a": {"_instance_": "/a"},
+        }
+        instances = {
+            "a": InstanceMarker("a", "/a", "app.yaml", 1),
+        }
+
+        # Act & Assert
+        with self.assertRaises(CircularInstanceError):
+            resolver.resolve(instances, config)
+
+    def test_resolve__ThreeWayCycle__RaisesError(self):
+        """Test that three-way circular reference is detected."""
+        provenance = Provenance()
+        resolver = InstanceResolver(provenance)
+        config = {
+            "a": {"_instance_": "/b"},
+            "b": {"_instance_": "/c"},
+            "c": {"_instance_": "/a"},
+        }
+        instances = {
+            "a": InstanceMarker("a", "/b", "app.yaml", 1),
+            "b": InstanceMarker("b", "/c", "app.yaml", 2),
+            "c": InstanceMarker("c", "/a", "app.yaml", 3),
+        }
+
+        # Act & Assert
+        with self.assertRaises(CircularInstanceError):
+            resolver.resolve(instances, config)
+
+    def test_resolve__AlreadyResolved__ReturnsCachedValue(self):
+        """Test that already resolved instances are returned from cache (line 77)."""
+        provenance = Provenance()
+        resolver = InstanceResolver(provenance)
+        config = {
+            "shared": {"_target_": "Database", "url": "postgres://localhost"},
+            "service1": {"_instance_": "/shared"},
+            "service2": {"_instance_": "/shared"},
+        }
+        instances = {
+            "service1": InstanceMarker("service1", "/shared", "app.yaml", 2),
+            "service2": InstanceMarker("service2", "/shared", "app.yaml", 3),
+        }
+
+        # Act
+        result = resolver.resolve(instances, config)
+
+        # Assert - both resolve to the same target value
+        self.assertEqual(result["service1"], result["service2"])
+
+    def test_resolve__NonInstancePath__GetsValueFromConfig(self):
+        """Test that non-instance paths get value directly from config (line 81)."""
+        provenance = Provenance()
+        resolver = InstanceResolver(provenance)
+        config = {
+            "data": {"value": 42},
+            "ref": {"_instance_": "/data"},
+        }
+        instances = {
+            "ref": InstanceMarker("ref", "/data", "app.yaml", 2),
+        }
+
+        # Act
+        result = resolver.resolve(instances, config)
+
+        # Assert
+        self.assertEqual(result["ref"], {"value": 42})

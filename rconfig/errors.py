@@ -424,3 +424,83 @@ def _format_override_path(path: list[str | int]) -> str:
         else:
             result.append(part)
     return "".join(result)
+
+
+# =============================================================================
+# Interpolation Errors
+# =============================================================================
+
+
+class InterpolationError(ConfigError):
+    """Base exception for interpolation-related errors."""
+
+
+class InterpolationSyntaxError(InterpolationError):
+    """Raised when an interpolation expression cannot be parsed.
+
+    :param expression: The expression that failed to parse.
+    :param reason: Description of the parsing error.
+    :param config_path: Path in config where the error occurred.
+    """
+
+    def __init__(
+        self, expression: str, reason: str, config_path: str = ""
+    ) -> None:
+        self.expression = expression
+        self.reason = reason
+        self.config_path = config_path
+
+        location = f" at '{config_path}'" if config_path else ""
+        super().__init__(
+            f"Failed to parse interpolation '${{{expression}}}'{location}: {reason}"
+        )
+
+
+class InterpolationResolutionError(InterpolationError):
+    """Raised when an interpolation expression cannot be resolved.
+
+    :param expression: The expression that failed to resolve.
+    :param reason: Description of what went wrong.
+    :param config_path: Path in config where the error occurred.
+    """
+
+    def __init__(
+        self, expression: str, reason: str, config_path: str = ""
+    ) -> None:
+        self.expression = expression
+        self.reason = reason
+        self.config_path = config_path
+
+        location = f" at '{config_path}'" if config_path else ""
+        super().__init__(
+            f"Failed to resolve interpolation '${{{expression}}}'{location}: {reason}"
+        )
+
+
+class CircularInterpolationError(InterpolationError):
+    """Raised when circular interpolation references are detected.
+
+    :param chain: List of config paths forming the circular chain.
+    """
+
+    def __init__(self, chain: list[str]) -> None:
+        self.chain = chain
+        chain_str = " → ".join(chain)
+        super().__init__(f"Circular interpolation detected: {chain_str}")
+
+
+class EnvironmentVariableError(InterpolationError):
+    """Raised when a required environment variable is not set.
+
+    :param var_name: Name of the missing environment variable.
+    :param config_path: Path in config where the error occurred.
+    """
+
+    def __init__(self, var_name: str, config_path: str = "") -> None:
+        self.var_name = var_name
+        self.config_path = config_path
+
+        location = f" at '{config_path}'" if config_path else ""
+        super().__init__(
+            f"Environment variable '{var_name}' is not set{location}"
+        )

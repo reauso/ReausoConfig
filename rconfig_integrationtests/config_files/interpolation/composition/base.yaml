@@ -1,0 +1,11 @@
+_target_: base_config_test
+# Base config for composition tests
+
+defaults:
+  learning_rate: 0.001
+  batch_size: 32
+  epochs: 100
+
+model:
+  name: base_model
+  layers: [64, 128, 256]
