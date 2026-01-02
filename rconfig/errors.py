@@ -504,3 +504,27 @@ class EnvironmentVariableError(InterpolationError):
         super().__init__(
             f"Environment variable '{var_name}' is not set{location}"
         )
+
+
+# =============================================================================
+# Required Value Errors
+# =============================================================================
+
+
+class RequiredValueError(ValidationError):
+    """Raised when _required_ values were not provided.
+
+    :param missing: List of (path, expected_type) tuples for missing values.
+    """
+
+    def __init__(self, missing: list[tuple[str, type | None]]) -> None:
+        self.missing = missing
+
+        lines = []
+        for path, expected_type in missing:
+            type_hint = f" (expected: {expected_type.__name__})" if expected_type else ""
+            lines.append(f"  - {path}{type_hint}")
+
+        super().__init__(
+            f"The following required values were not provided:\n" + "\n".join(lines)
+        )
