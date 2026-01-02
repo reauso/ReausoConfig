@@ -33,7 +33,7 @@ Example::
 import sys
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, TypeVar, overload
+from typing import Any, Callable, TypeVar, overload
 
 from .store import ConfigStore, ConfigReference
 from .validation import ConfigValidator, ValidationResult
@@ -76,19 +76,24 @@ from .errors import (
     RefAtRootError,
     RefInstanceConflictError,
     RefResolutionError,
+    ResolverError,
+    ResolverExecutionError,
     RequiredValueError,
     TargetNotFoundError,
     TargetTypeMismatchError,
     TypeInferenceError,
     TypeMismatchError,
+    UnknownResolverError,
     ValidationError,
 )
+from .interpolation.registry import ResolverRegistry
 
 T = TypeVar("T")
 
 
 # Internal singleton instances
 _store = ConfigStore()
+_resolver_registry = ResolverRegistry()
 _validator = ConfigValidator(_store)
 _instantiator = ConfigInstantiator(_store, _validator)
 
@@ -380,6 +385,87 @@ def known_references() -> MappingProxyType[str, ConfigReference]:
     return _store.known_references
 
 
+# Type variable for the resolver decorator
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def register_resolver(*path: str, func: Callable[..., Any]) -> None:
+    """Register a custom resolver function.
+
+    Resolvers can be invoked in interpolation expressions using the syntax:
+    ``${app:resolver_name}`` or ``${app:namespace:resolver_name(args)}``.
+
+    :param path: One or more path components (e.g., "uuid" or "db", "lookup").
+    :param func: The resolver function to register.
+    :raises ValueError: If path is empty or func is not callable.
+
+    Example::
+
+        def gen_uuid() -> str:
+            import uuid
+            return str(uuid.uuid4())
+
+        rc.register_resolver("uuid", func=gen_uuid)
+
+        # Namespaced resolver
+        def db_lookup(table: str, id: int) -> dict:
+            return database.get(table, id)
+
+        rc.register_resolver("db", "lookup", func=db_lookup)
+    """
+    _resolver_registry.register(*path, func=func)
+
+
+def unregister_resolver(*path: str) -> None:
+    """Unregister a previously registered resolver.
+
+    :param path: One or more path components (e.g., "uuid" or "db", "lookup").
+    :raises KeyError: If no resolver with that path exists.
+
+    Example::
+
+        rc.unregister_resolver("uuid")
+        rc.unregister_resolver("db", "lookup")
+    """
+    _resolver_registry.unregister(*path)
+
+
+def resolver(*path: str) -> Callable[[F], F]:
+    """Decorator to register a resolver function.
+
+    Resolvers can be invoked in interpolation expressions using the syntax:
+    ``${app:resolver_name}`` or ``${app:namespace:resolver_name(args)}``.
+
+    If the resolver function has a parameter named ``_config_``, it will receive
+    the current config dictionary (read-only) when invoked.
+
+    :param path: One or more path components (e.g., "uuid" or "db", "lookup").
+    :return: Decorator function.
+
+    Example::
+
+        @rc.resolver("uuid")
+        def gen_uuid() -> str:
+            import uuid
+            return str(uuid.uuid4())
+
+        @rc.resolver("db", "lookup")
+        def db_lookup(table: str, id: int) -> dict:
+            return database.get(table, id)
+
+        @rc.resolver("derive")
+        def derive(path: str, *, _config_: dict) -> Any:
+            # Access config values
+            return get_nested_value(_config_, path)
+    """
+
+    def decorator(func: F) -> F:
+        register_resolver(*path, func=func)
+        return func
+
+    return decorator
+
+
 def get_provenance(path: Path) -> Provenance:
     """Compose a config file and track the origin of each value.
 
@@ -426,6 +512,10 @@ __all__ = [
     "get_provenance",
     "set_cache_size",
     "clear_cache",
+    # Resolver API
+    "register_resolver",
+    "unregister_resolver",
+    "resolver",
     # Lazy instantiation utilities
     "is_lazy_proxy",
     "force_initialize",
@@ -447,10 +537,13 @@ __all__ = [
     "RefAtRootError",
     "RefInstanceConflictError",
     "RefResolutionError",
+    "ResolverError",
+    "ResolverExecutionError",
     "RequiredValueError",
     "TargetNotFoundError",
     "TargetTypeMismatchError",
     "TypeInferenceError",
     "TypeMismatchError",
+    "UnknownResolverError",
     "ValidationError",
 ]

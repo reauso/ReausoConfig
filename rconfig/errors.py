@@ -521,6 +521,57 @@ class EnvironmentVariableError(InterpolationError):
         )
 
 
+class ResolverError(InterpolationError):
+    """Base exception for custom resolver errors."""
+
+
+class UnknownResolverError(ResolverError):
+    """Raised when a resolver path is not registered.
+
+    :param path: The resolver path that was not found (e.g., "uuid", "db:lookup").
+    :param available: List of currently registered resolver paths.
+    :param config_path: Path in config where the error occurred.
+    """
+
+    def __init__(
+        self, path: str, available: list[str], config_path: str = ""
+    ) -> None:
+        self.path = path
+        self.available = available
+        self.config_path = config_path
+
+        location = f" at '{config_path}'" if config_path else ""
+        available_str = (
+            ", ".join(f"'{name}'" for name in available) if available else "(none)"
+        )
+        super().__init__(
+            f"Resolver 'app:{path}' is not registered{location}. "
+            f"Available resolvers: {available_str}"
+        )
+
+
+class ResolverExecutionError(ResolverError):
+    """Raised when a resolver function raises an exception.
+
+    :param path: The resolver path that failed (e.g., "uuid", "db:lookup").
+    :param original_error: The exception raised by the resolver function.
+    :param config_path: Path in config where the error occurred.
+    """
+
+    def __init__(
+        self, path: str, original_error: Exception, config_path: str = ""
+    ) -> None:
+        self.path = path
+        self.original_error = original_error
+        self.config_path = config_path
+
+        location = f" at '{config_path}'" if config_path else ""
+        super().__init__(
+            f"Resolver 'app:{path}' raised an exception{location}: "
+            f"{type(original_error).__name__}: {original_error}"
+        )
+
+
 # =============================================================================
 # Required Value Errors
 # =============================================================================

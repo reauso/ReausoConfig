@@ -74,11 +74,11 @@ strings:
   batch_info: "Batch size: ${/defaults.batch_size}"
   full_config: "lr=${/defaults.learning_rate}, bs=${/defaults.batch_size}"
 
-# Environment with defaults
+# Environment with defaults (using coalesce operators)
 env_values:
-  output_path: ${env:INTEGRATION_TEST_OUTPUT,./outputs}
-  debug_mode: ${env:INTEGRATION_TEST_DEBUG,false}
-  run_id: ${env:INTEGRATION_TEST_RUN_ID,default_run}
+  output_path: '${env:INTEGRATION_TEST_OUTPUT ?: "./outputs"}'
+  debug_mode: '${env:INTEGRATION_TEST_DEBUG ?: false}'
+  run_id: '${env:INTEGRATION_TEST_RUN_ID ?: "default_run"}'
 
 # Complex combined expressions
 combined:

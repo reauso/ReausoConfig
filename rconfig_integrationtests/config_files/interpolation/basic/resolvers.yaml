@@ -1,0 +1,85 @@
+# Test configuration for custom resolvers, ternary, and coalesce operators
+_target_: resolver_test
+
+# Source values
+base_value: 10
+debug_mode: true
+flag_off: false
+items:
+  - 1
+  - 2
+  - 3
+
+# === App Resolver Tests ===
+resolver_results:
+  # No args resolver
+  uuid: '${app:uuid}'
+  uuid_with_parens: '${app:uuid()}'
+
+  # Resolver with positional args
+  scaled: '${app:scale(5, 2)}'
+
+  # Resolver with keyword args
+  formatted_date: '${app:now(fmt="%Y-%m-%d")}'
+
+  # Namespaced resolver
+  namespaced: '${app:math:multiply(3, 4)}'
+
+  # Deep namespace
+  deep_namespace: '${app:db:cache:get("test_key")}'
+
+  # Config ref as argument
+  config_ref_arg: '${app:scale(/base_value, 3)}'
+
+  # Expression as argument
+  expr_arg: '${app:scale(/base_value + 5, 2)}'
+
+  # Resolver with _config_ access
+  config_aware: '${app:get_config_value("base_value")}'
+
+# === Ternary Operator Tests ===
+ternary_results:
+  # Basic ternary with bool
+  basic_true: '${/debug_mode ? "enabled" : "disabled"}'
+  basic_false: '${/flag_off ? "enabled" : "disabled"}'
+
+  # Ternary with comparison
+  comparison: '${/base_value > 5 ? "high" : "low"}'
+
+  # Ternary with config refs
+  config_refs: '${/debug_mode ? /base_value : 0}'
+
+  # Nested ternary
+  nested: '${/debug_mode ? (/base_value > 5 ? "high_debug" : "low_debug") : "no_debug"}'
+
+  # Ternary with arithmetic in branches
+  arithmetic: '${/debug_mode ? /base_value * 2 : /base_value / 2}'
+
+# === Coalesce Operator Tests ===
+coalesce_results:
+  # Elvis coalesce with present value
+  elvis_present: '${app:get_value ?: "fallback"}'
+
+  # Elvis coalesce with null value
+  elvis_null: '${app:return_null ?: "fallback"}'
+
+  # Elvis coalesce with missing resolver
+  elvis_missing: '${app:nonexistent ?: "fallback"}'
+
+  # Error coalesce with exception
+  error_exception: '${app:raise_error ?? "caught"}'
+
+  # Chained coalesce
+  chained: '${app:return_null ?: app:return_null ?: "final_fallback"}'
+
+  # Coalesce with config ref fallback
+  config_fallback: '${app:return_null ?? /base_value}'
+
+# === Combined Operator Tests ===
+combined_results:
+  # Coalesce in ternary condition
+  coalesce_in_ternary: '${(app:return_null ?? 0) > 5 ? "high" : "low"}'
+  coalesce_in_ternary_with_value: '${(app:get_value ?? 0) > 5 ? "high" : "low"}'
+
+  # Ternary with resolver branches
+  resolver_branches: '${/debug_mode ? app:scale(10, 2) : app:scale(10, 1)}'
