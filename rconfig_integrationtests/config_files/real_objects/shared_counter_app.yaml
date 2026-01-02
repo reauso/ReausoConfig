@@ -1,0 +1,14 @@
+_target_: counter_app
+shared_counter:
+  _target_: counter
+  initial_value: 100
+service_a:
+  _target_: service_a
+  name: "service_alpha"
+  counter:
+    _instance_: shared_counter
+service_b:
+  _target_: service_b
+  name: "service_beta"
+  counter:
+    _instance_: shared_counter

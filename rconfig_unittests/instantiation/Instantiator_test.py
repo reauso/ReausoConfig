@@ -2000,3 +2000,183 @@ class ConfigInstantiatorCoverageTests(TestCase):
         # Act & Assert
         with self.assertRaises(MissingFieldError):
             instantiator.instantiate(config)
+
+
+class ConfigInstantiatorExternalInstancesTests(TestCase):
+    """Tests for external_instances parameter used by partial instantiation."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store.clear()
+        return store
+
+    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+        validator = ConfigValidator(store)
+        return ConfigInstantiator(store, validator)
+
+    def test_instantiate__WithExternalInstances__UsesPrePopulatedCache(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Cache:
+            size: int
+
+        @dataclass
+        class Service:
+            cache: Cache
+
+        store.register("cache", Cache)
+        store.register("service", Service)
+        instantiator = self._create_instantiator(store)
+
+        # Pre-instantiated external cache
+        external_cache = Cache(size=100)
+        external_instances = {"__external__:shared_cache": external_cache}
+
+        # Config with instance reference pointing to external
+        config = {"_target_": "service", "cache": {"_target_": "cache", "size": 50}}
+        instance_targets = {"cache": "__external__:shared_cache"}
+
+        # Act
+        result = instantiator.instantiate(
+            config,
+            instance_targets=instance_targets,
+            external_instances=external_instances,
+        )
+
+        # Assert - should use the pre-instantiated external cache
+        self.assertIs(result.cache, external_cache)
+        self.assertEqual(result.cache.size, 100)
+
+    def test_instantiate__ExternalMarkerInTargets__LooksUpFromCache(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Database:
+            url: str
+
+        @dataclass
+        class App:
+            db: Database
+
+        store.register("database", Database)
+        store.register("app", App)
+        instantiator = self._create_instantiator(store)
+
+        # Pre-instantiated database
+        external_db = Database(url="postgres://external")
+        external_instances = {"__external__:/shared/db": external_db}
+
+        # Instance target with external marker
+        instance_targets = {"db": "__external__:/shared/db"}
+
+        config = {"_target_": "app", "db": {"_target_": "database", "url": "local"}}
+
+        # Act
+        result = instantiator.instantiate(
+            config,
+            instance_targets=instance_targets,
+            external_instances=external_instances,
+        )
+
+        # Assert
+        self.assertIs(result.db, external_db)
+        self.assertEqual(result.db.url, "postgres://external")
+
+    def test_instantiate__MultipleRefsToSameExternal__SharesInstance(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Cache:
+            size: int
+
+        @dataclass
+        class ServiceA:
+            cache: Cache
+
+        @dataclass
+        class ServiceB:
+            cache: Cache
+
+        @dataclass
+        class Services:
+            a: ServiceA
+            b: ServiceB
+
+        store.register("cache", Cache)
+        store.register("service_a", ServiceA)
+        store.register("service_b", ServiceB)
+        store.register("services", Services)
+        instantiator = self._create_instantiator(store)
+
+        # Pre-instantiated shared cache
+        shared_cache = Cache(size=256)
+        external_instances = {"__external__:shared": shared_cache}
+
+        # Both services reference the same external cache
+        instance_targets = {
+            "a.cache": "__external__:shared",
+            "b.cache": "__external__:shared",
+        }
+
+        config = {
+            "_target_": "services",
+            "a": {
+                "_target_": "service_a",
+                "cache": {"_target_": "cache", "size": 1},
+            },
+            "b": {
+                "_target_": "service_b",
+                "cache": {"_target_": "cache", "size": 2},
+            },
+        }
+
+        # Act
+        result = instantiator.instantiate(
+            config,
+            instance_targets=instance_targets,
+            external_instances=external_instances,
+        )
+
+        # Assert - both services should share the same cache instance
+        self.assertIs(result.a.cache, shared_cache)
+        self.assertIs(result.b.cache, shared_cache)
+        self.assertIs(result.a.cache, result.b.cache)
+
+    def test_instantiate__ExternalNotInCache__RaisesInstantiationError(self):
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Cache:
+            size: int
+
+        @dataclass
+        class Service:
+            cache: Cache
+
+        store.register("cache", Cache)
+        store.register("service", Service)
+        instantiator = self._create_instantiator(store)
+
+        # External instances is empty - external not pre-populated
+        external_instances: dict[str, object] = {}
+
+        # Instance target points to missing external
+        instance_targets = {"cache": "__external__:missing_cache"}
+
+        config = {"_target_": "service", "cache": {"_target_": "cache", "size": 50}}
+
+        # Act & Assert
+        with self.assertRaises(InstantiationError) as ctx:
+            instantiator.instantiate(
+                config,
+                instance_targets=instance_targets,
+                external_instances=external_instances,
+            )
+
+        self.assertIn("missing_cache", str(ctx.exception))
+        self.assertIn("not pre-instantiated", str(ctx.exception))

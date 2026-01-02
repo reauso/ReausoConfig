@@ -131,6 +131,67 @@ trainer = rc.instantiate(path, overrides={"model.lr": 0.01})
 # Result: model.lr = 0.05 (CLI wins)
 ```
 
+### Partial Instantiation
+
+Instantiate only a specific section of the config tree:
+
+```python
+# Load trainer config, but only instantiate the model
+model = rc.instantiate(Path("trainer.yaml"), inner_path="model")
+
+# Works with nested paths
+encoder = rc.instantiate(Path("trainer.yaml"), inner_path="model.encoder")
+
+# And list indices
+first_callback = rc.instantiate(Path("trainer.yaml"), inner_path="callbacks[0]")
+```
+
+**How it works:**
+1. The full config is composed (all `_ref_` resolved)
+2. Overrides are applied to the full config
+3. Interpolations (`${...}`) are resolved from the full config
+4. The sub-config at `inner_path` is extracted and instantiated
+
+This means interpolations can reference values outside the partial:
+
+```yaml
+# trainer.yaml
+_target_: trainer
+defaults:
+  learning_rate: 0.01
+model:
+  _target_: model
+  lr: ${/defaults.learning_rate}  # References outside model section
+```
+
+```python
+# This works! Interpolation resolved before extraction
+model = rc.instantiate(Path("trainer.yaml"), inner_path="model")
+print(model.lr)  # 0.01
+```
+
+**Instance sharing with external targets:**
+
+If the partial section has `_instance_` references to targets outside the section, those targets are automatically instantiated and shared:
+
+```yaml
+_target_: app
+shared_cache:
+  _target_: cache
+  size: 100
+services:
+  api:
+    _target_: service
+    cache:
+      _instance_: /shared_cache  # Outside "services.api" scope
+```
+
+```python
+# Instantiates both the service AND the shared_cache it references
+service = rc.instantiate(Path("app.yaml"), inner_path="services.api")
+print(service.cache.size)  # 100
+```
+
 ### Required Values with `_required_`
 
 Mark config values that must be provided externally (via CLI, programmatic overrides, or environment variables):
@@ -687,7 +748,7 @@ result = rc.validate(
 )
 ```
 
-### `rc.instantiate(path, expected_type=None, *, overrides=None, cli_overrides=True)`
+### `rc.instantiate(path, expected_type=None, *, inner_path=None, overrides=None, cli_overrides=True)`
 
 Load, validate, and instantiate a config file.
 
@@ -698,8 +759,19 @@ model = rc.instantiate(Path("config.yaml"))
 # Type-safe version (for IDE autocompletion)
 model = rc.instantiate(Path("config.yaml"), ModelConfig)
 
+# Partial instantiation - only instantiate a section
+model = rc.instantiate(Path("trainer.yaml"), inner_path="model")
+encoder = rc.instantiate(Path("trainer.yaml"), inner_path="model.encoder")
+
 # With programmatic overrides
 model = rc.instantiate(Path("config.yaml"), overrides={"model.lr": 0.01})
+
+# Combine partial with overrides
+model = rc.instantiate(
+    Path("trainer.yaml"),
+    inner_path="model",
+    overrides={"model.hidden_size": 512},
+)
 
 # Disable CLI overrides (for tests)
 model = rc.instantiate(Path("config.yaml"), cli_overrides=False)
@@ -826,6 +898,7 @@ ConfigError (base)
 │   ├── RefInstanceConflictError      # Both _ref_ and _instance_ in same block
 │   ├── CircularInstanceError         # Circular _instance_ detected
 │   ├── InstanceResolutionError       # Cannot resolve _instance_ path
+│   ├── InvalidInnerPathError         # Invalid inner_path for partial instantiation
 │   └── MergeError                    # Deep merge failed
 ├── InterpolationError            # Interpolation issues
 │   ├── InterpolationSyntaxError      # Invalid ${...} syntax
