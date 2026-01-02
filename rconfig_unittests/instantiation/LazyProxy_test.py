@@ -794,3 +794,71 @@ class LazyProxyKnownLimitationsTests(TestCase):
         # This test documents the behavior
         _ = instance.value  # trigger init first
         self.assertIn("value", instance.__dict__)
+
+
+class LazyProxyReprTests(TestCase):
+    """Tests for LazyProxy __repr__ behavior."""
+
+    def setUp(self):
+        clear_proxy_cache()
+
+    def test_repr__AfterInit__UsesTargetClassRepr(self):
+        """Test that repr after initialization uses the target class's __repr__."""
+        # Arrange
+        class ModelWithRepr:
+            def __init__(self, value: int):
+                self.value = value
+
+            def __repr__(self) -> str:
+                return f"ModelWithRepr(value={self.value})"
+
+        LazyProxy = create_lazy_proxy_class(ModelWithRepr)
+        instance = LazyProxy(value=42)
+
+        # Trigger initialization
+        _ = instance.value
+
+        # Act
+        result = repr(instance)
+
+        # Assert - should use the target class's __repr__
+        self.assertEqual(result, "ModelWithRepr(value=42)")
+
+    def test_repr__BeforeInit__ShowsNotInitialized(self):
+        """Test that repr before initialization shows lazy status."""
+        # Arrange
+        class Model:
+            def __init__(self, value: int):
+                self.value = value
+
+        LazyProxy = create_lazy_proxy_class(Model)
+        instance = LazyProxy(value=42)
+
+        # Act - no initialization yet
+        result = repr(instance)
+
+        # Assert
+        self.assertIn("LazyProxy", result)
+        self.assertIn("not initialized", result)
+
+    def test_repr__DataclassAfterInit__UsesDataclassRepr(self):
+        """Test that repr works correctly with dataclass targets."""
+        # Arrange
+        @dataclass
+        class DataModel:
+            value: int
+            name: str
+
+        LazyProxy = create_lazy_proxy_class(DataModel)
+        instance = LazyProxy(value=42, name="test")
+
+        # Trigger initialization
+        _ = instance.value
+
+        # Act
+        result = repr(instance)
+
+        # Assert - dataclass has auto-generated __repr__
+        self.assertIn("DataModel", result)
+        self.assertIn("value=42", result)
+        self.assertIn("name='test'", result)

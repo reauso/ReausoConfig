@@ -958,3 +958,95 @@ class TreeLayoutTargetDisplayTests(TestCase):
 
         # Assert
         self.assertNotIn("Target:", result)
+
+
+class TreeLayoutFormatValueTests(TestCase):
+    """Tests for TreeLayout.format_value() edge cases."""
+
+    def setUp(self) -> None:
+        self.layout = TreeLayout()
+        self.ctx = FormatContext()
+
+    def test_formatValue__None__ReturnsNull(self) -> None:
+        """Test that None value is formatted as 'null'."""
+        # Act
+        result = self.layout.format_value(None, self.ctx)
+
+        # Assert
+        self.assertEqual(result, "null")
+
+    def test_formatValue__BoolTrue__ReturnsTrue(self) -> None:
+        """Test that True is formatted as 'true'."""
+        # Act
+        result = self.layout.format_value(True, self.ctx)
+
+        # Assert
+        self.assertEqual(result, "true")
+
+    def test_formatValue__BoolFalse__ReturnsFalse(self) -> None:
+        """Test that False is formatted as 'false'."""
+        # Act
+        result = self.layout.format_value(False, self.ctx)
+
+        # Assert
+        self.assertEqual(result, "false")
+
+    def test_formatValue__String__ReturnsQuotedRepr(self) -> None:
+        """Test that strings are formatted with quotes."""
+        # Act
+        result = self.layout.format_value("hello", self.ctx)
+
+        # Assert
+        self.assertEqual(result, "'hello'")
+
+    def test_formatValue__Integer__ReturnsStringified(self) -> None:
+        """Test that integers are formatted correctly."""
+        # Act
+        result = self.layout.format_value(42, self.ctx)
+
+        # Assert
+        self.assertEqual(result, "42")
+
+
+class TreeLayoutTargetWithoutModuleTests(TestCase):
+    """Tests for _format_target when target_class exists but no module."""
+
+    def test_formatTarget__ClassWithoutModule__FormatsCorrectly(self) -> None:
+        """Test target formatting when class is present but module is None."""
+        # Arrange
+        layout = TreeLayout()
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            target_name="model",
+            target_class="MyModel",
+            target_module=None,  # No module
+        )
+        ctx = FormatContext(show_targets=True)
+
+        # Act
+        result = layout.format_entry(entry, "model", ctx)
+
+        # Assert
+        self.assertIn("Target: model -> MyModel", result)
+
+    def test_formatTarget__ClassWithoutModuleAutoRegistered__ShowsMarker(self) -> None:
+        """Test that auto-registered marker shows for class without module."""
+        # Arrange
+        layout = TreeLayout()
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            target_name="model",
+            target_class="MyModel",
+            target_module=None,
+            target_auto_registered=True,
+        )
+        ctx = FormatContext(show_targets=True)
+
+        # Act
+        result = layout.format_entry(entry, "model", ctx)
+
+        # Assert
+        self.assertIn("Target: model -> MyModel", result)
+        self.assertIn("(auto-registered)", result)
