@@ -4,9 +4,12 @@ This module provides :class:`ConfigReference`, a dataclass capturing the
 constructor parameters of a target class, and :class:`ConfigStore`, a singleton
 registry for such references.  References can be registered and later
 unregistered from the store.
+
+Thread-safe: All operations on ConfigStore are protected by an internal lock.
 """
 
 import inspect
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from inspect import Parameter
@@ -51,15 +54,16 @@ class ConfigReference:
 
 @Singleton
 class ConfigStore:
-    """Registry for :class:`ConfigReference` objects.
+    """Thread-safe registry for :class:`ConfigReference` objects.
 
     References can be registered via :meth:`register` and unregistered again
-    using :meth:`unregister`.
+    using :meth:`unregister`. All operations are protected by an internal lock.
     """
 
     def __init__(self) -> None:
         """Initialize the store."""
         self._known_references: dict[str, ConfigReference] = {}
+        self._lock = threading.RLock()
 
     def register(
             self,
@@ -68,32 +72,46 @@ class ConfigStore:
     ) -> None:
         """Register a target class under a unique name.
 
+        Thread-safe: protected by internal lock.
+
         :param name: Identifier for the target class.
         :param target: Class to register.
         """
+        # Create ConfigReference outside lock (inspect.signature may be slow)
         reference = ConfigReference(
             name=name,
             target_class=target,
         )
-        self._known_references[reference.name] = reference
+        with self._lock:
+            self._known_references[reference.name] = reference
 
     def unregister(self, name: str) -> None:
         """Unregister a previously registered configuration reference.
 
+        Thread-safe: protected by internal lock.
+
         :param name: Identifier of the reference to unregister.
         :raises KeyError: If no reference with that name exists.
         """
-        del self._known_references[name]
+        with self._lock:
+            del self._known_references[name]
 
     def clear(self) -> None:
         """Clear all registered references.
 
+        Thread-safe: protected by internal lock.
         This is primarily intended for testing purposes to reset the store
         between test cases.
         """
-        self._known_references.clear()
+        with self._lock:
+            self._known_references.clear()
 
     @property
     def known_references(self) -> MappingProxyType[str, ConfigReference]:
-        """Read-only mapping of all registered configuration references."""
-        return MappingProxyType(self._known_references)
+        """Read-only snapshot of all registered configuration references.
+
+        Thread-safe: returns a snapshot taken under lock. Changes made after
+        this call are not reflected in the returned mapping.
+        """
+        with self._lock:
+            return MappingProxyType(self._known_references.copy())
