@@ -1036,3 +1036,29 @@ class ApplyOverridesWithProvenanceTests(TestCase):
         self.assertEqual("cli", epochs_entry.source_type)
         self.assertEqual(0.01, lr_entry.value)
         self.assertEqual(100, epochs_entry.value)
+
+
+class ApplyOverridesNonListTests(TestCase):
+    """Tests for override operations on non-list types with integer indices."""
+
+    def test_apply__SetIndexOnNonList__RaisesKeyError(self):
+        """Test that setting an index on a non-list raises KeyError."""
+        # Arrange
+        config = {"value": "string"}  # Not a list
+        overrides = [Override(path=["value", 0], value="new", operation="set")]
+
+        # Act & Assert
+        with self.assertRaises(KeyError) as ctx:
+            apply_overrides(config, overrides)
+        self.assertIn("non-list", str(ctx.exception))
+
+    def test_apply__RemoveIndexOnNonList__RaisesKeyError(self):
+        """Test that removing an index from a non-list raises KeyError."""
+        # Arrange
+        config = {"value": "string"}  # Not a list
+        overrides = [Override(path=["value", 0], value=None, operation="remove")]
+
+        # Act & Assert
+        with self.assertRaises(KeyError) as ctx:
+            apply_overrides(config, overrides)
+        self.assertIn("non-list", str(ctx.exception))
