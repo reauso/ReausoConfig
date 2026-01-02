@@ -409,6 +409,122 @@ service_b:
 **Special values:**
 - `_instance_: null` - Passes `None` to constructor
 
+### Lazy Instantiation
+
+Delay object creation until first attribute access. Useful for expensive initialization (loading models, database connections) that may not always be used.
+
+#### Global Lazy Mode
+
+Make all nested configs lazy:
+
+```python
+# All nested objects delay __init__ until first access
+trainer = rc.instantiate(Path("trainer.yaml"), lazy=True)
+
+# trainer.model is lazy - __init__ not called yet
+print(rc.is_lazy_proxy(trainer.model))  # True
+
+# Accessing any attribute triggers initialization
+print(trainer.model.hidden_size)  # NOW model.__init__ is called
+print(rc.is_lazy_proxy(trainer.model))  # False
+```
+
+#### Per-Field Lazy Mode
+
+Mark specific fields as lazy in YAML:
+
+```yaml
+_target_: trainer
+model:
+  _target_: model
+  _lazy_: true  # Only model is lazy
+  hidden_size: 256
+optimizer:
+  _target_: optimizer  # optimizer is eager (normal)
+  lr: 0.001
+```
+
+```python
+trainer = rc.instantiate(Path("trainer.yaml"))
+print(rc.is_lazy_proxy(trainer.model))      # True - lazy
+print(rc.is_lazy_proxy(trainer.optimizer))  # False - eager
+```
+
+**Note:** `_lazy_: true` only affects that specific field, not its children (non-cascading).
+
+#### Checking Lazy Status
+
+```python
+from rconfig import is_lazy_proxy, force_initialize
+
+trainer = rc.instantiate(Path("trainer.yaml"), lazy=True)
+
+# Check if object is uninitialized
+if is_lazy_proxy(trainer.model):
+    print("Model not yet initialized")
+
+# Force initialization without accessing attributes
+force_initialize(trainer.model)
+print(is_lazy_proxy(trainer.model))  # False
+```
+
+#### How It Works
+
+- Lazy proxies are dynamic subclasses of your target class
+- `isinstance(lazy_obj, TargetClass)` returns `True`
+- After initialization, the object behaves identically to an eager instance
+- Works correctly with `_instance_` sharing - all references share the same lazy proxy
+- **No framework dependency in user code**: The returned objects work without importing anything from rconfig
+
+#### Transparency Guarantees
+
+Lazy proxies are designed to be completely transparent to user code:
+
+| Operation | Works? | Notes |
+|-----------|--------|-------|
+| `isinstance(obj, MyClass)` | ✅ Yes | Proxy is a subclass of your class |
+| `obj.attribute` | ✅ Yes | Triggers init, then returns value |
+| `obj.method()` | ✅ Yes | Triggers init, then calls method |
+| `hasattr(obj, 'attr')` | ✅ Yes | Triggers init, then checks |
+| `len(obj)` | ✅ Yes | Triggers init, then calls `__len__` |
+| `for x in obj` | ✅ Yes | Triggers init, then iterates |
+| `obj[key]` | ✅ Yes | Triggers init, then indexes |
+| `obj()` | ✅ Yes | Triggers init, then calls `__call__` |
+| `dataclasses.asdict(obj)` | ✅ Yes | Triggers init, then converts |
+| `str(obj)` / `repr(obj)` | ✅ Yes | Triggers init, then formats |
+
+#### Known Limitations
+
+These edge cases behave differently from regular objects:
+
+| Operation | Behavior | Workaround |
+|-----------|----------|------------|
+| `type(obj)` | Returns proxy class | Use `isinstance()` instead |
+| `obj.__class__` | Returns proxy class | Use `isinstance()` instead |
+| `obj.__class__ == MyClass` | Returns `False` | Use `isinstance(obj, MyClass)` |
+
+**Impact**: These limitations only affect code that uses `type()` or `__class__` for exact type comparison. This is rare in practice - most code uses `isinstance()` which works correctly.
+
+#### Use Cases
+
+1. **Expensive resources**: Models that load weights, database connections
+2. **Conditional initialization**: Components only needed in certain code paths
+3. **Faster startup**: Defer heavy initialization until actually needed
+
+```yaml
+_target_: app
+# Large model only loaded if inference is called
+inference_model:
+  _target_: llm
+  _lazy_: true
+  model_path: /path/to/large_model.bin
+
+# Always needed
+config:
+  _target_: config
+  debug: false
+```
+
 ### Interpolation
 
 Reference config values and environment variables with `${...}` syntax:
@@ -748,7 +864,7 @@ result = rc.validate(
 )
 ```
 
-### `rc.instantiate(path, expected_type=None, *, inner_path=None, overrides=None, cli_overrides=True)`
+### `rc.instantiate(path, expected_type=None, *, inner_path=None, overrides=None, cli_overrides=True, lazy=False)`
 
 Load, validate, and instantiate a config file.
 
@@ -775,7 +891,13 @@ model = rc.instantiate(
 
 # Disable CLI overrides (for tests)
 model = rc.instantiate(Path("config.yaml"), cli_overrides=False)
+
+# With lazy instantiation (all nested configs are lazy)
+model = rc.instantiate(Path("config.yaml"), lazy=True)
 ```
+
+**Parameters:**
+- `lazy`: If `True`, all nested configs are lazily instantiated. Objects delay `__init__` until first attribute access. Default: `False`.
 
 ### `rc.known_references()`
 
@@ -832,6 +954,26 @@ Clear the config file cache:
 
 ```python
 rc.clear_cache()
+```
+
+### `rc.is_lazy_proxy(obj)`
+
+Check if an object is an uninitialized lazy proxy.
+
+```python
+model = rc.instantiate(Path("config.yaml"), lazy=True)
+print(rc.is_lazy_proxy(model))  # True
+_ = model.some_attr  # triggers init
+print(rc.is_lazy_proxy(model))  # False
+```
+
+### `rc.force_initialize(obj)`
+
+Force initialization of a lazy proxy without accessing attributes. No-op for regular objects.
+
+```python
+model = rc.instantiate(Path("config.yaml"), lazy=True)
+rc.force_initialize(model)  # model.__init__ called now
 ```
 
 ## Advanced Usage
@@ -940,6 +1082,7 @@ except InstantiationError as e:
 
 - **Minimal coupling**: Only your startup code imports rconfig
 - **Simple API**: Just `register`, `validate`, `instantiate`
+- **Lazy instantiation**: Defer expensive initialization until first access
 - **Type validation**: Catches type mismatches before instantiation
 - **Implicit target inference**: Omit `_target_` for concrete nested types
 - **Config composition**: Load and merge configs from files with `_ref_`

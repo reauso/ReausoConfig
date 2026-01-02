@@ -16,6 +16,9 @@ TARGET_KEY = "_target_"
 # Sentinel for _required_ key
 REQUIRED_KEY = "_required_"
 
+# Sentinel for _lazy_ key
+LAZY_KEY = "_lazy_"
+
 
 def is_class_type(hint: type) -> bool:
     """Check if a type hint represents a class that could be a config target.

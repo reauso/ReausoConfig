@@ -23,6 +23,7 @@ from rconfig.errors import (
 from rconfig._internal.path_utils import PathNavigationError, navigate_path
 from rconfig._internal.type_utils import (
     TARGET_KEY,
+    LAZY_KEY,
     could_be_implicit_nested,
     extract_class_from_hint,
     is_class_type,
