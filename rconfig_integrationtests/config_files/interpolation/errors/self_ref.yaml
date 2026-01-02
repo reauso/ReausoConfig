@@ -1,0 +1,4 @@
+_target_: self_ref_test
+# Self-reference test - should raise CircularInterpolationError
+
+value: ${/value}

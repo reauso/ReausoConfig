@@ -1,0 +1,17 @@
+_target_: config_paths_test
+# Source values for path reference tests
+source:
+  value: 42
+  nested:
+    deep:
+      item: 100
+
+items: [10, 20, 30, 40, 50]
+
+# Test various path reference syntaxes
+results:
+  absolute_path: ${/source.value}
+  nested_path: ${/source.nested.deep.item}
+  list_index: ${/items[0]}
+  list_negative_index: ${/items[-1]}
+  implicit_path: ${source.value}

@@ -1,0 +1,6 @@
+_target_: floor_division_by_zero_test
+# Floor division by zero test - should raise InterpolationResolutionError
+
+numerator: 10
+denominator: 0
+result: ${/numerator // /denominator}

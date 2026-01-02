@@ -14,7 +14,10 @@ from .Walker import (
 )
 from .Merger import deep_merge
 from .InstanceResolver import InstanceResolver
-from .Provenance import Provenance, ProvenanceEntry, InstanceRef
+from .Provenance import Provenance, ProvenanceEntry, ProvenanceNode, InstanceRef
+from .ProvenanceLayout import ProvenanceLayout, FormatContext
+from .ProvenanceFormat import ProvenanceFormat, ProvenancePreset
+from .TreeLayout import TreeLayout
 
 __all__ = [
     "ConfigComposer",
@@ -29,5 +32,11 @@ __all__ = [
     "InstanceResolver",
     "Provenance",
     "ProvenanceEntry",
+    "ProvenanceNode",
     "InstanceRef",
+    "ProvenanceLayout",
+    "FormatContext",
+    "ProvenanceFormat",
+    "ProvenancePreset",
+    "TreeLayout",
 ]

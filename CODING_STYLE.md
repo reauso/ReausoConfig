@@ -1,6 +1,7 @@
 # Coding Style Guide
 
 This guide documents the coding conventions for this project, derived from:
+
 - **Clean Code** by Robert C. Martin
 - **Clean Architecture** by Robert C. Martin
 - **The Art of Unit Testing** by Roy Osherove
@@ -151,13 +152,13 @@ def _check_errors(self) -> bool: ...
 
 ### Summary Table
 
-| Returns | Naming Pattern | Example |
-|---------|----------------|---------|
-| Collection of items | Noun (plural) | `_type_errors()` |
-| Single item or None | Noun (singular) | `_target_not_found_error()` |
-| Transformed data | Past participle | `_resolved_config()` |
-| Boolean | Predicate (`is_`, `has_`, `_matches`) | `_is_valid()` |
-| Nothing (void) | Imperative verb | `register()` |
+| Returns             | Naming Pattern                              | Example                       |
+| ------------------- | ------------------------------------------- | ----------------------------- |
+| Collection of items | Noun (plural)                               | `_type_errors()`            |
+| Single item or None | Noun (singular)                             | `_target_not_found_error()` |
+| Transformed data    | Past participle                             | `_resolved_config()`        |
+| Boolean             | Predicate (`is_`, `has_`, `_matches`) | `_is_valid()`               |
+| Nothing (void)      | Imperative verb                             | `register()`                |
 
 ---
 
@@ -199,13 +200,13 @@ def known_references(self) -> MappingProxyType[str, ConfigReference]:
 Use modern Python 3.9+ type hint syntax:
 
 | Old Style (typing module) | Modern Style (built-in) |
-|---------------------------|-------------------------|
-| `Type[X]` | `type[X]` |
-| `Optional[X]` | `X \| None` |
-| `List[X]` | `list[X]` |
-| `Dict[K, V]` | `dict[K, V]` |
-| `Tuple[X, Y]` | `tuple[X, Y]` |
-| `Set[X]` | `set[X]` |
+| ------------------------- | ----------------------- |
+| `Type[X]`               | `type[X]`             |
+| `Optional[X]`           | `X \| None`            |
+| `List[X]`               | `list[X]`             |
+| `Dict[K, V]`            | `dict[K, V]`          |
+| `Tuple[X, Y]`           | `tuple[X, Y]`         |
+| `Set[X]`                | `set[X]`              |
 
 ---
 
@@ -214,25 +215,6 @@ Use modern Python 3.9+ type hint syntax:
 ### Avoid Dead Code
 
 Remove code that is not used. Dead code creates confusion and maintenance burden.
-
-```python
-# Bad - unused helper function
-def _validate_list_access(current: Any, index: int) -> None:
-    if not isinstance(current, list):
-        raise KeyError(f"Cannot access index {index} on non-list")
-
-def _apply_set(current: Any, key: str | int, value: Any) -> None:
-    if isinstance(key, int):
-        _validate_list_access(current, key)  # Only call site
-        current[key] = value
-
-# Good - inline small helpers used only once
-def _apply_set(current: Any, key: str | int, value: Any) -> None:
-    if isinstance(key, int):
-        if not isinstance(current, list):
-            raise KeyError(f"Cannot access index {key} on non-list")
-        current[key] = value
-```
 
 ### Helper Function Guidelines
 

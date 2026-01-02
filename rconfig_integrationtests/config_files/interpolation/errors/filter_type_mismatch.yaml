@@ -1,0 +1,6 @@
+_target_: filter_type_mismatch_test
+# Filter type mismatch error test - should raise InterpolationResolutionError
+# Comparing string to number in filter
+
+items: [1, "a", 2, "b", 3]
+result: ${/items | filter(x > 1)}

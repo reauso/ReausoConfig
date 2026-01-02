@@ -1,0 +1,5 @@
+_target_: unary_minus_on_string_test
+# Unary minus on string error test - should raise InterpolationResolutionError
+
+text: hello
+result: ${-/text}

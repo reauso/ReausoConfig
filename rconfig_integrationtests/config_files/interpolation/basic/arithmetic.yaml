@@ -1,0 +1,20 @@
+_target_: arithmetic_test
+# Source values for arithmetic tests
+values:
+  a: 10
+  b: 3
+  c: 2.5
+
+# Test all arithmetic operators
+results:
+  addition: ${/values.a + /values.b}
+  subtraction: ${/values.a - /values.b}
+  multiplication: ${/values.a * /values.b}
+  division: ${/values.a / /values.b}
+  floor_division: ${/values.a // /values.b}
+  modulo: ${/values.a % /values.b}
+  power: ${/values.b ** 2}
+  unary_negative: ${-/values.a}
+  unary_positive: ${+/values.a}
+  complex_expr: ${(/values.a + /values.b) * /values.c}
+  chained: ${/values.a + /values.b * /values.c}

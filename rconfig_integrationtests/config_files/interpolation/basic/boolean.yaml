@@ -1,0 +1,22 @@
+_target_: boolean_test
+# Source values for boolean tests
+flags:
+  true_val: true
+  false_val: false
+
+items: [a, b, c]
+
+# Test all boolean operators
+results:
+  and_tf: ${/flags.true_val and /flags.false_val}
+  and_tt: ${/flags.true_val and /flags.true_val}
+  and_ff: ${/flags.false_val and /flags.false_val}
+  or_tf: ${/flags.true_val or /flags.false_val}
+  or_tt: ${/flags.true_val or /flags.true_val}
+  or_ff: ${/flags.false_val or /flags.false_val}
+  not_true: ${not /flags.true_val}
+  not_false: ${not /flags.false_val}
+  in_true: ${"a" in /items}
+  in_false: ${"z" in /items}
+  not_in_true: ${"z" not in /items}
+  not_in_false: ${"a" not in /items}

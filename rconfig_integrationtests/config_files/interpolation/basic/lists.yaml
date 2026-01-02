@@ -1,0 +1,31 @@
+_target_: lists_test
+# Source values for list operation tests
+numbers: [1, 2, 3, 4, 5]
+strings: [a, b, c]
+to_remove: [2, 3]
+
+# Test all list operations
+results:
+  # Indexing
+  first_item: ${/numbers[0]}
+  last_item: ${/numbers[-1]}
+  third_item: ${/numbers[2]}
+
+  # Slicing
+  slice_middle: ${/numbers[1:4]}
+  slice_from_start: ${/numbers[:3]}
+  slice_to_end: ${/numbers[3:]}
+
+  # Concatenation
+  concat: ${/numbers + [6, 7, 8]}
+
+  # Subtraction (removal by value)
+  subtract: ${/numbers - /to_remove}
+
+  # Remove by index
+  remove_first: ${/numbers.remove(0)}
+  remove_last: ${/numbers.remove(-1)}
+
+  # Length
+  length: ${len(/numbers)}
+  string_length: ${len(/strings)}

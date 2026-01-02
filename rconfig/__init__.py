@@ -56,12 +56,17 @@ from .override import (
 from .errors import (
     AmbiguousTargetError,
     CircularInstanceError,
+    CircularInterpolationError,
     CircularRefError,
     CompositionError,
     ConfigError,
     ConfigFileError,
+    EnvironmentVariableError,
     InstanceResolutionError,
     InstantiationError,
+    InterpolationError,
+    InterpolationResolutionError,
+    InterpolationSyntaxError,
     InvalidOverridePathError,
     InvalidOverrideSyntaxError,
     MergeError,
@@ -219,6 +224,11 @@ def instantiate(
     if all_overrides:
         config = apply_overrides(config, all_overrides)
 
+    # Resolve interpolations (${...} expressions)
+    from rconfig.interpolation import resolve_interpolations
+
+    config = resolve_interpolations(config)
+
     return _instantiator.instantiate(config, instance_targets=instance_targets)
 
 
@@ -244,8 +254,17 @@ def get_provenance(path: Path) -> Provenance:
         for path, entry in prov.items():
             print(f"{path}: {entry.file}:{entry.line}")
     """
+    from rconfig.interpolation import resolve_interpolations
+
     composer = ConfigComposer()
-    return composer.compose_with_provenance(path)
+    provenance = composer.compose_with_provenance(path)
+
+    # Resolve interpolations and update provenance with interpolation sources
+    config = provenance._config
+    resolved = resolve_interpolations(config, provenance)
+    provenance.set_config(resolved)
+
+    return provenance
 
 
 # Public API - Minimal root exports

@@ -1,0 +1,23 @@
+_target_: comparison_test
+# Source values for comparison tests
+values:
+  a: 10
+  b: 5
+  c: 10
+
+# Test all comparison operators
+results:
+  equal_true: ${/values.a == /values.c}
+  equal_false: ${/values.a == /values.b}
+  not_equal_true: ${/values.a != /values.b}
+  not_equal_false: ${/values.a != /values.c}
+  less_than_true: ${/values.b < /values.a}
+  less_than_false: ${/values.a < /values.b}
+  greater_than_true: ${/values.a > /values.b}
+  greater_than_false: ${/values.b > /values.a}
+  less_or_equal_true: ${/values.b <= /values.a}
+  less_or_equal_equal: ${/values.a <= /values.c}
+  less_or_equal_false: ${/values.a <= /values.b}
+  greater_or_equal_true: ${/values.a >= /values.b}
+  greater_or_equal_equal: ${/values.a >= /values.c}
+  greater_or_equal_false: ${/values.b >= /values.a}

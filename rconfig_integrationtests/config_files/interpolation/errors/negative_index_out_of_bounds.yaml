@@ -1,0 +1,5 @@
+_target_: negative_index_out_of_bounds_test
+# Negative index out of bounds error test - should raise InterpolationResolutionError
+
+items: [1, 2, 3]
+result: ${/items[-100]}

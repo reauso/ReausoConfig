@@ -1,0 +1,7 @@
+_target_: cycle_with_nested_test
+# Circular reference with nested path error test - should raise CircularInterpolationError
+# a -> b.inner -> a
+
+a: ${/b.inner}
+b:
+  inner: ${/a}

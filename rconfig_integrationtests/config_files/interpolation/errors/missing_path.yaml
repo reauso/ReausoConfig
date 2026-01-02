@@ -1,0 +1,4 @@
+_target_: missing_path_test
+# Missing path test - should raise InterpolationResolutionError
+
+value: ${/nonexistent.path.that.does.not.exist}

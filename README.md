@@ -310,6 +310,308 @@ service_b:
 **Special values:**
 - `_instance_: null` - Passes `None` to constructor
 
+### Interpolation
+
+Reference config values and environment variables with `${...}` syntax:
+
+```yaml
+_target_: trainer
+defaults:
+  learning_rate: 0.01
+  batch_size: 32
+
+model:
+  _target_: model
+  lr: ${/defaults.learning_rate}     # Reference another config value
+  scaled_lr: ${/defaults.learning_rate * 10}  # Arithmetic expressions
+
+training:
+  effective_batch: ${/defaults.batch_size * 4}
+  output_dir: ${env:OUTPUT_DIR,./output}  # Environment variable with default
+  user_path: /data/${env:USER}/runs       # Embedded in string
+```
+
+#### Config Path References
+
+| Syntax | Example | Description |
+|--------|---------|-------------|
+| Absolute | `${/model.lr}` | From root of composed config |
+| Relative | `${./local.value}` | From current document root |
+| Implicit | `${model.lr}` | Same as relative |
+| Parent | `${../sibling.value}` | Parent-relative path |
+
+#### Environment Variables
+
+```yaml
+# Required (raises error if not set)
+data_path: ${env:DATA_PATH}
+
+# With default value
+log_level: ${env:LOG_LEVEL,INFO}
+port: ${env:PORT,8080}  # Numbers are parsed
+debug: ${env:DEBUG,false}  # Booleans are parsed
+```
+
+#### Expression Support
+
+Full Python-like expression evaluation:
+
+```yaml
+# Arithmetic
+doubled: ${/learning_rate * 2}
+ratio: ${/a / /b}
+power: ${/base ** 2}
+
+# Comparisons
+is_large: ${/epochs > 100}
+is_valid: ${/lr >= 0.001 and /lr <= 1.0}
+
+# Boolean
+enabled: ${/use_gpu and not /debug_mode}
+
+# String concatenation
+filename: ${"model_" + /name + "_v" + /version}
+```
+
+#### List Operations
+
+```yaml
+items: [1, 2, 3, 4, 5]
+callbacks: [logger, checkpoint, early_stop]
+
+# Indexing and slicing
+first: ${/items[0]}          # 1
+last: ${/items[-1]}          # 5
+subset: ${/items[1:3]}       # [2, 3]
+from_start: ${/items[:3]}    # [1, 2, 3]
+to_end: ${/items[2:]}        # [3, 4, 5]
+
+# Concatenation
+all: ${/base_list + /extra_list}
+
+# Removal by value
+filtered: ${/callbacks - ["early_stop"]}  # [logger, checkpoint]
+
+# Remove by index
+without_first: ${/items.remove(0)}  # [2, 3, 4, 5]
+
+# Length
+count: ${len(/items)}  # 5
+
+# Membership
+has_gpu: ${"gpu" in /devices}
+```
+
+#### Type Behavior
+
+- **Standalone** `${expr}`: Preserves type (number stays number)
+- **Embedded** `"text ${expr} more"`: Result is always string
+
+```yaml
+# Standalone - type preserved
+lr: ${/defaults.learning_rate}     # float: 0.01
+count: ${len(/items)}               # int: 5
+enabled: ${/use_gpu}                # bool: true
+
+# Embedded - becomes string
+message: "Learning rate is ${/defaults.learning_rate}"  # str: "Learning rate is 0.01"
+```
+
+#### Circular Reference Detection
+
+Circular references are detected and raise `CircularInterpolationError`:
+
+```yaml
+# This will raise an error
+a: ${/b}
+b: ${/a}  # Circular: a → b → a
+```
+
+### Provenance Tracking
+
+Track the origin of every config value - essential for debugging complex configs.
+
+#### Basic Usage
+
+```python
+prov = rc.get_provenance(Path("trainer.yaml"))
+print(prov)  # Shows config with file:line annotations
+
+# Example output:
+# /model.layers = 50
+#   trainer.yaml:5
+#   Overrode: models/resnet.yaml:2
+# /model.dropout = 0.2
+#   models/resnet.yaml:3
+```
+
+#### Accessing Specific Entries
+
+```python
+entry = prov.get("model.layers")
+print(f"Defined at: {entry.file}:{entry.line}")
+if entry.overrode:
+    print(f"Overrode: {entry.overrode}")
+
+# Iterate all entries
+for path, entry in prov.items():
+    print(f"{path}: {entry.file}:{entry.line}")
+```
+
+#### Formatting Presets
+
+| Preset | Shows | Use Case |
+|--------|-------|----------|
+| `minimal()` | paths, files, lines | Quick overview |
+| `compact()` | + values, source type | Debugging values |
+| `full()` | everything (default) | Complete tracing |
+
+```python
+# Use presets
+print(prov.format().minimal())
+print(prov.format().compact())
+print(prov.format().full())  # Default
+
+# Enum alternative
+from rconfig.composition import ProvenancePreset
+print(prov.format().preset(ProvenancePreset.MINIMAL))
+```
+
+#### Show/Hide Toggles
+
+```python
+# All toggles (each has show/hide variant)
+prov.format()
+    .show_paths()      .hide_paths()      # Config paths (/model.lr)
+    .show_values()     .hide_values()     # Resolved values
+    .show_files()      .hide_files()      # Source file names
+    .show_lines()      .hide_lines()      # Line numbers
+    .show_source_type().hide_source_type()# Source markers (CLI/env/file)
+    .show_chain()      .hide_chain()      # Interpolation/instance chains
+    .show_overrides()  .hide_overrides()  # Override information
+
+# Combine with presets
+print(prov.format().minimal().show_values())
+print(prov.format().compact().hide_chain())
+```
+
+#### Filtering
+
+```python
+# Filter by config path (glob patterns)
+print(prov.format().for_path("/model.*"))      # Only model paths
+print(prov.format().for_path("/training.*"))   # Only training paths
+
+# Filter by source file
+print(prov.format().from_file("trainer.yaml")) # Only from trainer.yaml
+print(prov.format().from_file("models/*.yaml"))# From any file in models/
+
+# Combine filters (multiple calls = OR logic)
+print(prov.format()
+    .for_path("/model.*")
+    .from_file("config.yaml")
+)
+```
+
+#### Source Types
+
+Provenance tracks where values originate:
+
+| Source | Marker | Description |
+|--------|--------|-------------|
+| file | (none) | Regular config file |
+| cli | `CLI:` | Command-line override |
+| env | `env:` | Environment variable |
+| programmatic | `programmatic:` | Set via Python code |
+
+```python
+# CLI overrides show the argument
+# /model.lr = 0.01
+#   CLI: model.lr=0.01
+#   Overrode: config.yaml:5
+
+# Environment variables show the var name
+# /data.path = "/data/user"
+#   env: DATA_PATH
+```
+
+#### Override Tracking
+
+When values are overridden, provenance shows the chain:
+
+```python
+# /model.lr = 0.01
+#   trainer.yaml:5
+#   Overrode: models/base.yaml:10
+
+entry = prov.get("model.lr")
+if entry.overrode:
+    print(f"Replaced value from: {entry.overrode}")
+```
+
+#### Interpolation Chains
+
+For interpolated values, provenance shows the source tree:
+
+```
+# /model.lr = 0.02
+#   config.yaml:5
+#   Interpolation: ${/defaults.lr * 2}
+#     +-- *
+#          |-- /defaults.lr = 0.01
+#          |     defaults.yaml:3
+#          +-- 2 (literal)
+```
+
+#### Tree Tracing
+
+Build a full provenance tree for complex chains:
+
+```python
+tree = prov.trace("model.lr")
+if tree:
+    print(tree.source_type)  # "file", "cli", "env", etc.
+    print(tree.file, tree.line)
+    for child in tree.children:
+        print(f"  {child.source_type}: {child.path}")
+```
+
+#### Dict Export
+
+Export provenance as a dictionary for programmatic access:
+
+```python
+# Export entire provenance
+data = prov.to_dict()
+
+# Export single entry
+entry_data = prov.get("model.lr").to_dict()
+
+# Export tree node
+tree_data = prov.trace("model.lr").to_dict()
+```
+
+#### Custom Layouts
+
+Create custom output formats by extending ProvenanceLayout:
+
+```python
+from rconfig.composition import ProvenanceLayout, FormatContext
+
+class TableLayout(ProvenanceLayout):
+    def format_provenance(self, provenance, ctx: FormatContext) -> str:
+        lines = ["| Path | File | Line |", "|------|------|------|"]
+        for path, entry in provenance.items():
+            lines.append(f"| {path} | {entry.file} | {entry.line} |")
+        return "\n".join(lines)
+
+    def format_entry(self, entry, path, ctx: FormatContext) -> str:
+        return f"| {path} | {entry.file} | {entry.line} |"
+
+# Use custom layout
+print(prov.format().layout(TableLayout()))
+```
+
 ## API Reference
 
 ### `rc.register(name, target)`
@@ -371,16 +673,32 @@ for name, ref in refs.items():
 
 ### `rc.get_provenance(path)`
 
-Track the origin of each config value (useful for debugging):
+Get provenance tracking for a config file, showing where each value originated.
+
+Returns a `Provenance` object with methods:
+- `get(path)` - Get `ProvenanceEntry` for a specific config path
+- `items()` - Iterate all (path, entry) tuples
+- `format()` - Get fluent builder for customized output
+- `trace(path)` - Get full `ProvenanceNode` tree for a path
+- `to_dict()` - Export as dictionary
+
+See [Provenance Tracking](#provenance-tracking) for full documentation.
 
 ```python
 prov = rc.get_provenance(Path("trainer.yaml"))
-print(prov)  # Shows config with file:line annotations
 
-entry = prov.get("model.dropout")
-print(f"{entry.file}:{entry.line}")  # trainer.yaml:5
-if entry.overrode:
-    print(f"Overrode: {entry.overrode}")  # models/resnet.yaml:3
+# Print with default formatting
+print(prov)
+
+# Use presets
+print(prov.format().minimal())
+
+# Filter output
+print(prov.format().for_path("/model.*"))
+
+# Access specific entry
+entry = prov.get("model.lr")
+print(f"{entry.file}:{entry.line}")
 ```
 
 ### `rc.set_cache_size(size)`
@@ -464,6 +782,11 @@ ConfigError (base)
 │   ├── CircularInstanceError         # Circular _instance_ detected
 │   ├── InstanceResolutionError       # Cannot resolve _instance_ path
 │   └── MergeError                    # Deep merge failed
+├── InterpolationError            # Interpolation issues
+│   ├── InterpolationSyntaxError      # Invalid ${...} syntax
+│   ├── InterpolationResolutionError  # Path/env not found
+│   ├── CircularInterpolationError    # Circular ${...} reference
+│   └── EnvironmentVariableError      # Required env var not set
 ├── OverrideError                 # Override-related errors
 │   ├── InvalidOverridePathError      # Override path doesn't exist
 │   └── InvalidOverrideSyntaxError    # Override string malformed
@@ -503,6 +826,7 @@ except InstantiationError as e:
 - **Implicit target inference**: Omit `_target_` for concrete nested types
 - **Config composition**: Load and merge configs from files with `_ref_`
 - **Instance sharing**: Share objects across config with `_instance_`
+- **Interpolation**: Reference values with `${...}`, env vars, and full expressions
 - **Provenance tracking**: Debug where each config value originated
 - **Lightweight**: Focused feature set, no bloat
 - **Pure Python output**: Instantiated objects have no framework dependency
@@ -510,14 +834,11 @@ except InstantiationError as e:
 ### Cons
 
 - **Early stage**: Some features from the vision are not yet implemented
-- **No interpolation**: Cannot reference other config values with `${...}` (planned)
 
 ## Roadmap
 
 See [VISION.md](VISION.md) for planned features including:
 
-- Value interpolation (`${model.learning_rate}`)
-- Environment variable support
 - Config groups
 
 ## License

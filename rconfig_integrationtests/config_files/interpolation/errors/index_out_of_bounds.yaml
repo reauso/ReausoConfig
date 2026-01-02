@@ -1,0 +1,5 @@
+_target_: index_out_of_bounds_test
+# Index out of bounds test - should raise InterpolationResolutionError
+
+items: [1, 2, 3]
+result: ${/items[100]}

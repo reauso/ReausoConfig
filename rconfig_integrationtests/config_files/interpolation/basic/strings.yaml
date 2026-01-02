@@ -1,0 +1,15 @@
+_target_: string_test
+# Source values for string operation tests
+name: world
+version: 2
+prefix: hello_
+suffix: _end
+
+# Test string operations
+results:
+  concat_simple: ${"hello " + /name}
+  concat_multiple: ${/prefix + /name + /suffix}
+  embedded_single: "Hello ${/name}!"
+  embedded_multiple: "v${/version}: ${/name}"
+  embedded_expression: "${/name} (v${/version + 1})"
+  concat_with_number: ${"version_" + /version}

@@ -1,0 +1,4 @@
+_target_: missing_env_var_test
+# Missing required environment variable error test - should raise EnvironmentVariableError
+
+value: ${env:RCONFIG_TEST_NONEXISTENT_REQUIRED_VAR}

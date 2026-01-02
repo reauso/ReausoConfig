@@ -1,0 +1,5 @@
+_target_: len_on_number_test
+# Length on number error test - should raise InterpolationResolutionError
+
+value: 42
+result: ${len(/value)}

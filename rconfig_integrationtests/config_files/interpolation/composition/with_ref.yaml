@@ -1,0 +1,25 @@
+_target_: ref_interpolation_test
+# Test composition with interpolation using nested _ref_
+
+# Default values (could be overridden by a ref in a nested object)
+defaults:
+  learning_rate: 0.001
+  batch_size: 32
+  epochs: 100
+
+model:
+  name: base_model
+  layers: [64, 128, 256]
+
+# Computed values using interpolation
+training:
+  effective_lr: ${/defaults.learning_rate * 10}
+  doubled_batch: ${/defaults.batch_size * 2}
+  total_steps: ${/defaults.epochs * 1000}
+
+# Reference model from config
+model_info:
+  layer_count: ${len(/model.layers)}
+  first_layer: ${/model.layers[0]}
+  last_layer: ${/model.layers[-1]}
+  full_name: ${"model_" + /model.name}
