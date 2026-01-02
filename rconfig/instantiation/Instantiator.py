@@ -13,10 +13,12 @@ from rconfig.errors import InstantiationError
 from rconfig._internal.path_utils import build_child_path
 from rconfig._internal.type_utils import (
     TARGET_KEY,
+    LAZY_KEY,
     could_be_implicit_nested,
     extract_class_from_hint,
     is_concrete_type,
 )
+from rconfig.instantiation.LazyProxy import get_lazy_proxy_class
 
 
 class ConfigInstantiator:
@@ -39,6 +41,8 @@ class ConfigInstantiator:
         self._instance_targets: dict[str, str | None] = {}
         # Cache of instantiated objects by their config path
         self._instantiated_cache: dict[str, Any] = {}
+        # Global lazy mode flag
+        self._global_lazy: bool = False
 
     def instantiate(
         self,
@@ -47,6 +51,7 @@ class ConfigInstantiator:
         config_path: str = "",
         instance_targets: dict[str, str | None] | None = None,
         external_instances: dict[str, Any] | None = None,
+        lazy: bool = False,
     ) -> Any:
         """Create an object from a config dictionary.
 
@@ -60,6 +65,8 @@ class ConfigInstantiator:
         :param external_instances: Pre-instantiated objects for external refs.
                                    Used by partial instantiation to provide
                                    objects from outside the partial scope.
+        :param lazy: If True, all nested configs are lazily instantiated.
+                     Lazy objects delay __init__ until first attribute access.
         :return: Instantiated object.
         :raises ValidationError: If config is invalid (when validate=True).
         :raises InstantiationError: If instantiation fails.
@@ -70,6 +77,9 @@ class ConfigInstantiator:
         else:
             self._instance_targets = {}
         self._instantiated_cache = {}
+
+        # Set up lazy mode for this instantiation
+        self._global_lazy = lazy
 
         # Pre-populate cache with external instances
         if external_instances:
@@ -84,11 +94,20 @@ class ConfigInstantiator:
         target_name = config[TARGET_KEY]
         reference = self._store.known_references[target_name]
 
+        # Check for per-field _lazy_ marker on the root config
+        should_be_lazy = self._global_lazy or config.get(LAZY_KEY, False)
+
         # Process arguments, instantiating nested configs
-        kwargs = self._processed_arguments(config, config_path)
+        # Filter out _lazy_ key so it's not passed to constructor
+        filtered_config = {k: v for k, v in config.items() if k != LAZY_KEY}
+        kwargs = self._processed_arguments(filtered_config, config_path)
 
         try:
-            instance = reference.target_class(**kwargs)
+            if should_be_lazy:
+                proxy_class = get_lazy_proxy_class(reference.target_class)
+                instance = proxy_class(**kwargs)
+            else:
+                instance = reference.target_class(**kwargs)
             # Cache this instance for potential sharing
             if config_path:
                 self._instantiated_cache[config_path] = instance
@@ -224,19 +243,29 @@ class ConfigInstantiator:
         if cache_path in self._instantiated_cache:
             return self._instantiated_cache[cache_path]
 
+        # Check for per-field _lazy_ marker or global lazy mode
+        should_be_lazy = self._global_lazy or config.get(LAZY_KEY, False)
+
+        # Filter out _lazy_ key from config before validation and instantiation
+        filtered_config = {k: v for k, v in config.items() if k != LAZY_KEY}
+
         # Validate before instantiation
-        result = self._validator.validate(config, config_path)
+        result = self._validator.validate(filtered_config, config_path)
         if not result.valid:
             raise result.errors[0]
 
-        target_name = config[TARGET_KEY]
+        target_name = filtered_config[TARGET_KEY]
         reference = self._store.known_references[target_name]
 
         # Process arguments, instantiating nested configs
-        kwargs = self._processed_arguments(config, config_path)
+        kwargs = self._processed_arguments(filtered_config, config_path)
 
         try:
-            instance = reference.target_class(**kwargs)
+            if should_be_lazy:
+                proxy_class = get_lazy_proxy_class(reference.target_class)
+                instance = proxy_class(**kwargs)
+            else:
+                instance = reference.target_class(**kwargs)
             # Cache this instance for potential sharing
             self._instantiated_cache[cache_path] = instance
             return instance

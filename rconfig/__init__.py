@@ -37,7 +37,7 @@ from typing import Any, TypeVar, overload
 
 from .store import ConfigStore, ConfigReference
 from .validation import ConfigValidator, ValidationResult
-from .instantiation import ConfigInstantiator
+from .instantiation import ConfigInstantiator, is_lazy_proxy, force_initialize
 from .composition import (
     ConfigComposer,
     set_cache_size,
@@ -192,12 +192,12 @@ def validate(
 
 
 @overload
-def instantiate(path: Path, *, cli_overrides: bool = ...) -> Any: ...
+def instantiate(path: Path, *, cli_overrides: bool = ..., lazy: bool = ...) -> Any: ...
 @overload
-def instantiate(path: Path, expected_type: type[T], *, cli_overrides: bool = ...) -> T: ...
+def instantiate(path: Path, expected_type: type[T], *, cli_overrides: bool = ..., lazy: bool = ...) -> T: ...
 @overload
 def instantiate(
-    path: Path, *, overrides: dict[str, Any], cli_overrides: bool = ...
+    path: Path, *, overrides: dict[str, Any], cli_overrides: bool = ..., lazy: bool = ...
 ) -> Any: ...
 @overload
 def instantiate(
@@ -206,10 +206,11 @@ def instantiate(
     *,
     overrides: dict[str, Any],
     cli_overrides: bool = ...,
+    lazy: bool = ...,
 ) -> T: ...
 @overload
 def instantiate(
-    path: Path, *, inner_path: str, cli_overrides: bool = ...
+    path: Path, *, inner_path: str, cli_overrides: bool = ..., lazy: bool = ...
 ) -> Any: ...
 @overload
 def instantiate(
@@ -218,6 +219,7 @@ def instantiate(
     *,
     inner_path: str,
     cli_overrides: bool = ...,
+    lazy: bool = ...,
 ) -> T: ...
 @overload
 def instantiate(
@@ -226,6 +228,7 @@ def instantiate(
     inner_path: str,
     overrides: dict[str, Any],
     cli_overrides: bool = ...,
+    lazy: bool = ...,
 ) -> Any: ...
 @overload
 def instantiate(
@@ -235,6 +238,7 @@ def instantiate(
     inner_path: str,
     overrides: dict[str, Any],
     cli_overrides: bool = ...,
+    lazy: bool = ...,
 ) -> T: ...
 
 
@@ -245,6 +249,7 @@ def instantiate(
     inner_path: str | None = None,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
+    lazy: bool = False,
 ) -> T | Any:
     """Load, compose, validate, and instantiate a config file.
 
@@ -259,6 +264,8 @@ def instantiate(
                        extraction. External _instance_ refs are auto-instantiated.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv (default True).
+    :param lazy: If True, all nested configs are lazily instantiated.
+                 Lazy objects delay __init__ until first attribute access.
     :return: Instantiated object (typed if expected_type provided).
     :raises ConfigFileError: If file cannot be loaded.
     :raises CircularRefError: If circular _ref_ references are detected.
@@ -288,6 +295,9 @@ def instantiate(
 
         # Disable CLI overrides (for tests)
         model = rc.instantiate(Path("config.yaml"), cli_overrides=False)
+
+        # With lazy instantiation (all nested configs are lazy)
+        model = rc.instantiate(Path("config.yaml"), lazy=True)
     """
     # Compose config (resolve _ref_ and _instance_)
     composer = ConfigComposer()
@@ -356,9 +366,10 @@ def instantiate(
             sub_config,
             instance_targets=processed_targets,
             external_instances=external_instances,
+            lazy=lazy,
         )
 
-    return _instantiator.instantiate(config, instance_targets=instance_targets)
+    return _instantiator.instantiate(config, instance_targets=instance_targets, lazy=lazy)
 
 
 def known_references() -> MappingProxyType[str, ConfigReference]:
@@ -412,6 +423,9 @@ __all__ = [
     "get_provenance",
     "set_cache_size",
     "clear_cache",
+    # Lazy instantiation utilities
+    "is_lazy_proxy",
+    "force_initialize",
     # Exceptions (available at root for convenience)
     "AmbiguousTargetError",
     "CircularInstanceError",
