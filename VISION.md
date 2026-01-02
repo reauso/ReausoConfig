@@ -187,13 +187,16 @@ config.to_yaml("output_config.yaml")
 
 Generate JSON Schema from registered classes for YAML autocompletion in VSCode/PyCharm.
 
-### Partial Instantiation
+### ✓ Partial Instantiation
 
 Instantiate only part of the config tree:
 
 ```python
-model = config.instantiate("model")  # Only instantiate model section
+model = rc.instantiate(Path("trainer.yaml"), inner_path="model")  # Only instantiate model section
+encoder = rc.instantiate(Path("trainer.yaml"), inner_path="model.encoder")  # Nested paths work
 ```
+
+Interpolations are resolved from the full config before extraction, and external `_instance_` references are automatically handled.
 
 ### Lazy Instantiation
 

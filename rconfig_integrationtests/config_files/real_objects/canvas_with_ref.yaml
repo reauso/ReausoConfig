@@ -1,0 +1,5 @@
+_target_: canvas
+name: "referenced_canvas"
+shape:
+  _ref_: base_rectangle.yaml
+  height: 15.0

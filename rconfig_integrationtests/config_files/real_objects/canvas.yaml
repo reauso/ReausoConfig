@@ -1,0 +1,6 @@
+_target_: canvas
+name: "my_canvas"
+shape:
+  _target_: rectangle
+  width: 8.0
+  height: 4.0

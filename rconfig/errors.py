@@ -382,6 +382,21 @@ class CircularInstanceError(CompositionError):
         super().__init__(f"Circular _instance_ dependency detected: {chain_str}")
 
 
+class InvalidInnerPathError(CompositionError):
+    """Raised when inner_path for partial instantiation is invalid.
+
+    :param inner_path: The path that was invalid.
+    :param reason: Description of what went wrong.
+    """
+
+    def __init__(self, inner_path: str, reason: str) -> None:
+        self.inner_path = inner_path
+        self.reason = reason
+        super().__init__(
+            f"Invalid inner_path '{inner_path}' for partial instantiation: {reason}"
+        )
+
+
 class OverrideError(ConfigError):
     """Base exception for override-related errors."""
 
