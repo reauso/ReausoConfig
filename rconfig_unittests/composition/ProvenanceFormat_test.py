@@ -112,6 +112,17 @@ class ProvenanceFormatBuilderTests(TestCase):
         ctx = fmt._build_context()
         self.assertFalse(ctx.show_overrides)
 
+    def test_format__ShowHideTargets__SetsOverride(self) -> None:
+        fmt = self.provenance.format()
+
+        fmt.show_targets()
+        ctx = fmt._build_context()
+        self.assertTrue(ctx.show_targets)
+
+        fmt.hide_targets()
+        ctx = fmt._build_context()
+        self.assertFalse(ctx.show_targets)
+
     def test_format__MethodChaining__ReturnsSelf(self) -> None:
         fmt = self.provenance.format()
 
@@ -140,6 +151,7 @@ class ProvenanceFormatPresetTests(TestCase):
         self.assertFalse(ctx.show_source_type)
         self.assertFalse(ctx.show_chain)
         self.assertFalse(ctx.show_overrides)
+        self.assertFalse(ctx.show_targets)
 
     def test_format__CompactPreset__HidesChainAndOverrides(self) -> None:
         fmt = self.provenance.format().compact()
@@ -152,6 +164,7 @@ class ProvenanceFormatPresetTests(TestCase):
         self.assertTrue(ctx.show_source_type)
         self.assertFalse(ctx.show_chain)
         self.assertFalse(ctx.show_overrides)
+        self.assertTrue(ctx.show_targets)
 
     def test_format__FullPreset__ShowsEverything(self) -> None:
         fmt = self.provenance.format().full()
@@ -164,6 +177,7 @@ class ProvenanceFormatPresetTests(TestCase):
         self.assertTrue(ctx.show_source_type)
         self.assertTrue(ctx.show_chain)
         self.assertTrue(ctx.show_overrides)
+        self.assertTrue(ctx.show_targets)
 
     def test_format__PresetEnum__WorksLikeMethod(self) -> None:
         fmt_method = self.provenance.format().minimal()
