@@ -404,6 +404,9 @@ def get_provenance(path: Path) -> Provenance:
     resolved = resolve_interpolations(config, provenance)
     provenance.set_config(resolved)
 
+    # Resolve target class information from registered targets
+    provenance.resolve_targets(_store.known_references)
+
     return provenance
 
 

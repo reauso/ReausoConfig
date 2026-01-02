@@ -108,6 +108,10 @@ class ProvenanceEntry:
     :param cli_arg: CLI argument if source_type is "cli".
     :param env_var: Environment variable name if source_type is "env".
     :param value: The resolved value at this path.
+    :param target_name: The _target_ string from config (e.g., "resnet").
+    :param target_class: The resolved class name (e.g., "ResNet").
+    :param target_module: The module path (e.g., "myapp.models").
+    :param target_auto_registered: Whether the target was auto-registered.
     """
 
     file: str
@@ -119,6 +123,10 @@ class ProvenanceEntry:
     cli_arg: str | None = None
     env_var: str | None = None
     value: Any = None
+    target_name: str | None = None
+    target_class: str | None = None
+    target_module: str | None = None
+    target_auto_registered: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary representation.
@@ -156,6 +164,14 @@ class ProvenanceEntry:
             result["env_var"] = self.env_var
         if self.value is not None:
             result["value"] = self.value
+        if self.target_name is not None:
+            result["target_name"] = self.target_name
+        if self.target_class is not None:
+            result["target_class"] = self.target_class
+        if self.target_module is not None:
+            result["target_module"] = self.target_module
+        if self.target_auto_registered:
+            result["target_auto_registered"] = True
 
         return result
 
@@ -297,6 +313,7 @@ class Provenance:
         line: int,
         overrode: str | None = None,
         instance: list[InstanceRef] | None = None,
+        target_name: str | None = None,
     ) -> None:
         """Add a provenance entry for a config path.
 
@@ -305,12 +322,14 @@ class Provenance:
         :param line: Line number in source file.
         :param overrode: What this value overrode (format: "file:line").
         :param instance: Chain of instance references.
+        :param target_name: The _target_ string if this entry has one.
         """
         self._entries[path] = ProvenanceEntry(
             file=file,
             line=line,
             overrode=overrode,
             instance=instance,
+            target_name=target_name,
         )
 
     def set_config(self, config: dict) -> None:
@@ -397,6 +416,46 @@ class Provenance:
                 print(f"{path}: {entry_data}")
         """
         return {path: entry.to_dict() for path, entry in self._entries.items()}
+
+    def resolve_targets(
+        self,
+        known_references: dict[str, Any],
+        auto_registered: set[str] | None = None,
+    ) -> None:
+        """Resolve target class information from registered targets.
+
+        For each entry with a target_name, looks up the target in the
+        known_references and populates target_class and target_module.
+
+        :param known_references: Mapping of target names to ConfigReference objects.
+                                Each ConfigReference must have a `target_class` attribute.
+        :param auto_registered: Optional set of target names that were auto-registered.
+                               These will be marked with target_auto_registered=True.
+
+        Example::
+
+            prov.resolve_targets(store.known_references)
+        """
+        auto_registered = auto_registered or set()
+
+        for entry in self._entries.values():
+            if entry.target_name is None:
+                continue
+
+            # Look up the target in known_references
+            ref = known_references.get(entry.target_name)
+            if ref is None:
+                # Target not registered - leave target_class as None
+                continue
+
+            # Get class information
+            target_class = ref.target_class
+            entry.target_class = target_class.__name__
+            entry.target_module = target_class.__module__
+
+            # Mark if auto-registered
+            if entry.target_name in auto_registered:
+                entry.target_auto_registered = True
 
     def trace(self, path: str) -> ProvenanceNode | None:
         """Get the provenance tree for a specific path.

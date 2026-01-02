@@ -374,3 +374,87 @@ class ProvenanceWithInterpolationIntegrationTests(TestCase):
         self.assertEqual(0.02, entry.value)
         self.assertIsNotNone(entry.interpolation)
         self.assertEqual("*", entry.interpolation.operator)
+
+
+class ProvenanceTargetIntegrationTests(TestCase):
+    """Integration tests for provenance target info tracking."""
+
+    def setUp(self):
+        # Clear the store before each test
+        rc._store._known_references.clear()
+        # Register test targets
+        rc.register("model", ModelConfig)
+        rc.register("trainer", TrainerConfig)
+
+    def test_getProvenance__SimpleConfig__ShowsTargetInfo(self):
+        """Test that get_provenance shows target class info for registered targets."""
+        # Arrange
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Act
+        prov = rc.get_provenance(config_path)
+
+        # Assert
+        entry = prov.get("")  # Root entry
+        self.assertIsNotNone(entry)
+        self.assertEqual("trainer", entry.target_name)
+        self.assertEqual("TrainerConfig", entry.target_class)
+        self.assertIn("provenance_integration_test", entry.target_module)
+
+    def test_getProvenance__NestedConfigs__ShowsAllTargets(self):
+        """Test that all nested targets get their info resolved."""
+        # Arrange
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Act
+        prov = rc.get_provenance(config_path)
+
+        # Assert
+        root_entry = prov.get("")
+        self.assertEqual("TrainerConfig", root_entry.target_class)
+
+        model_entry = prov.get("model")
+        self.assertEqual("model", model_entry.target_name)
+        self.assertEqual("ModelConfig", model_entry.target_class)
+
+    def test_getProvenance__UnregisteredTarget__ShowsNotRegisteredInFormat(self):
+        """Test that unregistered targets show 'not registered' when formatted."""
+        # Arrange - clear registrations and use a config with unknown target
+        rc._store._known_references.clear()
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Act
+        prov = rc.get_provenance(config_path)
+        output = str(prov.format().compact())
+
+        # Assert - the target name is captured but not resolved
+        root_entry = prov.get("")
+        self.assertEqual("trainer", root_entry.target_name)
+        self.assertIsNone(root_entry.target_class)
+        # The formatted output should show "not registered"
+        self.assertIn("(not registered)", output)
+
+    def test_getProvenance__FormatMinimal__HidesTargets(self):
+        """Test that minimal preset hides target info."""
+        # Arrange
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Act
+        prov = rc.get_provenance(config_path)
+        output = str(prov.format().minimal())
+
+        # Assert
+        self.assertNotIn("Target:", output)
+
+    def test_getProvenance__FormatFull__ShowsTargets(self):
+        """Test that full preset shows target info."""
+        # Arrange
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Act
+        prov = rc.get_provenance(config_path)
+        output = str(prov.format().full())
+
+        # Assert
+        self.assertIn("Target:", output)
+        self.assertIn("TrainerConfig", output)

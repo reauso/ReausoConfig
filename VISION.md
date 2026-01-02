@@ -166,13 +166,19 @@ ConfigurationError: Missing required parameter 'hidden_size'
 
 ## Potential Additional Features
 
-### (partial) Dry-Run Mode
+### ✓ Dry-Run Mode
 
 Validate and preview what would be instantiated without actually doing it:
 
 ```python
-config.validate()  # ✓ Check everything is valid
-config.preview()   # Show instantiation plan
+result = rc.validate(Path("config.yaml"))  # ✓ Check everything is valid
+if not result.valid:
+    for error in result.errors:
+        print(error)
+
+# Preview with full provenance including target class info
+prov = rc.get_provenance(Path("config.yaml"))
+print(prov.format())  # Shows targets: model -> myapp.models.Model
 ```
 
 ### Serialization
@@ -198,7 +204,7 @@ encoder = rc.instantiate(Path("trainer.yaml"), inner_path="model.encoder")  # Ne
 
 Interpolations are resolved from the full config before extraction, and external `_instance_` references are automatically handled.
 
-### Lazy Instantiation
+### ✓ Lazy Instantiation
 
 Objects created on first access rather than all at once:
 
@@ -209,8 +215,6 @@ model = config.model  # Now model is created
 ```
 
 ---
-
-
 
 ## Challenges to Address
 

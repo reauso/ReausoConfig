@@ -85,6 +85,7 @@ class ProvenanceFormat:
             "show_source_type": None,
             "show_chain": None,
             "show_overrides": None,
+            "show_targets": None,
         }
 
     # --- Show/Hide Toggles ---
@@ -201,6 +202,22 @@ class ProvenanceFormat:
         self._overrides["show_overrides"] = False
         return self
 
+    def show_targets(self) -> Self:
+        """Show target class information in the output.
+
+        :return: Self for method chaining.
+        """
+        self._overrides["show_targets"] = True
+        return self
+
+    def hide_targets(self) -> Self:
+        """Hide target class information from the output.
+
+        :return: Self for method chaining.
+        """
+        self._overrides["show_targets"] = False
+        return self
+
     # --- Presets ---
 
     def minimal(self) -> Self:
@@ -215,10 +232,11 @@ class ProvenanceFormat:
         self._overrides["show_source_type"] = False
         self._overrides["show_chain"] = False
         self._overrides["show_overrides"] = False
+        self._overrides["show_targets"] = False
         return self
 
     def compact(self) -> Self:
-        """Apply compact preset: paths, values, files, lines, source type.
+        """Apply compact preset: paths, values, files, lines, source type, targets.
 
         :return: Self for method chaining.
         """
@@ -229,6 +247,7 @@ class ProvenanceFormat:
         self._overrides["show_source_type"] = True
         self._overrides["show_chain"] = False
         self._overrides["show_overrides"] = False
+        self._overrides["show_targets"] = True
         return self
 
     def full(self) -> Self:
@@ -243,6 +262,7 @@ class ProvenanceFormat:
         self._overrides["show_source_type"] = True
         self._overrides["show_chain"] = True
         self._overrides["show_overrides"] = True
+        self._overrides["show_targets"] = True
         return self
 
     def preset(self, preset: ProvenancePreset) -> Self:
@@ -325,6 +345,7 @@ class ProvenanceFormat:
             show_source_type=self._ctx.show_source_type,
             show_chain=self._ctx.show_chain,
             show_overrides=self._ctx.show_overrides,
+            show_targets=self._ctx.show_targets,
             indent_size=self._ctx.indent_size,
             path_filters=list(self._ctx.path_filters),
             file_filters=list(self._ctx.file_filters),

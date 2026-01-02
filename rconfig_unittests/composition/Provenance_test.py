@@ -946,3 +946,190 @@ class ProvenanceSetConfigExtendedTests(TestCase):
 
         # Assert
         self.assertIsNone(prov.get("items[5]").value)
+
+
+class ProvenanceEntryTargetTests(TestCase):
+    """Tests for ProvenanceEntry target fields."""
+
+    def test_ProvenanceEntry__WithTargetFields__StoresValues(self):
+        """Test that target fields are stored correctly."""
+        # Act
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            target_name="model",
+            target_class="MyModel",
+            target_module="myapp.models",
+            target_auto_registered=True,
+        )
+
+        # Assert
+        self.assertEqual(entry.target_name, "model")
+        self.assertEqual(entry.target_class, "MyModel")
+        self.assertEqual(entry.target_module, "myapp.models")
+        self.assertTrue(entry.target_auto_registered)
+
+    def test_ProvenanceEntry__WithDefaults__HasNoneForTargetFields(self):
+        """Test that target fields default to None/False."""
+        # Act
+        entry = ProvenanceEntry(file="config.yaml", line=1)
+
+        # Assert
+        self.assertIsNone(entry.target_name)
+        self.assertIsNone(entry.target_class)
+        self.assertIsNone(entry.target_module)
+        self.assertFalse(entry.target_auto_registered)
+
+    def test_ProvenanceEntry__toDict__WithTargetInfo__IncludesTargetFields(self):
+        """Test that to_dict includes target info when present."""
+        # Arrange
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            target_name="model",
+            target_class="MyModel",
+            target_module="myapp.models",
+            target_auto_registered=True,
+        )
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        self.assertEqual(result["target_name"], "model")
+        self.assertEqual(result["target_class"], "MyModel")
+        self.assertEqual(result["target_module"], "myapp.models")
+        self.assertTrue(result["target_auto_registered"])
+
+    def test_ProvenanceEntry__toDict__WithoutTargetInfo__OmitsTargetFields(self):
+        """Test that to_dict omits target fields when not present."""
+        # Arrange
+        entry = ProvenanceEntry(file="config.yaml", line=5)
+
+        # Act
+        result = entry.to_dict()
+
+        # Assert
+        self.assertNotIn("target_name", result)
+        self.assertNotIn("target_class", result)
+        self.assertNotIn("target_module", result)
+        self.assertNotIn("target_auto_registered", result)
+
+
+class ProvenanceResolveTargetsTests(TestCase):
+    """Tests for Provenance.resolve_targets method."""
+
+    def test_resolveTargets__RegisteredTarget__PopulatesClassAndModule(self):
+        """Test that registered target gets class and module info."""
+        # Arrange
+        prov = Provenance()
+        prov.add("model", file="config.yaml", line=5, target_name="mymodel")
+
+        # Create a mock reference with target_class
+        class MockModel:
+            pass
+
+        MockModel.__name__ = "MyModel"
+        MockModel.__module__ = "myapp.models"
+
+        class MockRef:
+            target_class = MockModel
+
+        known_refs = {"mymodel": MockRef()}
+
+        # Act
+        prov.resolve_targets(known_refs)
+
+        # Assert
+        entry = prov.get("model")
+        self.assertEqual(entry.target_class, "MyModel")
+        self.assertEqual(entry.target_module, "myapp.models")
+        self.assertFalse(entry.target_auto_registered)
+
+    def test_resolveTargets__UnregisteredTarget__LeavesClassNone(self):
+        """Test that unregistered target leaves class as None."""
+        # Arrange
+        prov = Provenance()
+        prov.add("model", file="config.yaml", line=5, target_name="unknown")
+
+        # Act
+        prov.resolve_targets({})
+
+        # Assert
+        entry = prov.get("model")
+        self.assertEqual(entry.target_name, "unknown")
+        self.assertIsNone(entry.target_class)
+        self.assertIsNone(entry.target_module)
+
+    def test_resolveTargets__AutoRegisteredTarget__SetsAutoRegisteredFlag(self):
+        """Test that auto-registered target gets the flag set."""
+        # Arrange
+        prov = Provenance()
+        prov.add("model", file="config.yaml", line=5, target_name="mymodel")
+
+        class MockModel:
+            pass
+
+        MockModel.__name__ = "MyModel"
+        MockModel.__module__ = "myapp.models"
+
+        class MockRef:
+            target_class = MockModel
+
+        known_refs = {"mymodel": MockRef()}
+        auto_registered = {"mymodel"}
+
+        # Act
+        prov.resolve_targets(known_refs, auto_registered)
+
+        # Assert
+        entry = prov.get("model")
+        self.assertTrue(entry.target_auto_registered)
+
+    def test_resolveTargets__NoTargetInConfig__DoesNothing(self):
+        """Test that entries without target_name are skipped."""
+        # Arrange
+        prov = Provenance()
+        prov.add("model.layers", file="config.yaml", line=5)
+
+        # Act
+        prov.resolve_targets({})
+
+        # Assert
+        entry = prov.get("model.layers")
+        self.assertIsNone(entry.target_name)
+        self.assertIsNone(entry.target_class)
+
+    def test_resolveTargets__NestedTargets__ResolvesAll(self):
+        """Test that multiple entries with targets are all resolved."""
+        # Arrange
+        prov = Provenance()
+        prov.add("model", file="config.yaml", line=5, target_name="model")
+        prov.add("trainer", file="config.yaml", line=10, target_name="trainer")
+
+        class ModelClass:
+            pass
+
+        ModelClass.__name__ = "Model"
+        ModelClass.__module__ = "models"
+
+        class TrainerClass:
+            pass
+
+        TrainerClass.__name__ = "Trainer"
+        TrainerClass.__module__ = "trainers"
+
+        class ModelRef:
+            target_class = ModelClass
+
+        class TrainerRef:
+            target_class = TrainerClass
+
+        known_refs = {"model": ModelRef(), "trainer": TrainerRef()}
+
+        # Act
+        prov.resolve_targets(known_refs)
+
+        # Assert
+        self.assertEqual(prov.get("model").target_class, "Model")
+        self.assertEqual(prov.get("trainer").target_class, "Trainer")

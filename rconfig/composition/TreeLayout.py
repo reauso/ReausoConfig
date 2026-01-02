@@ -46,6 +46,7 @@ class TreeLayout(ProvenanceLayout):
             show_source_type=True,
             show_chain=True,
             show_overrides=True,
+            show_targets=True,
             indent_size=2,
         )
 
@@ -113,6 +114,11 @@ class TreeLayout(ProvenanceLayout):
         if location_parts:
             lines.append(self.indent(" ".join(location_parts), 1, ctx))
 
+        # Target info
+        if ctx.show_targets and entry.target_name is not None:
+            target_line = self._format_target(entry, ctx)
+            lines.append(self.indent(target_line, 1, ctx))
+
         # Interpolation chain
         if ctx.show_chain and entry.interpolation:
             lines.append(
@@ -139,6 +145,33 @@ class TreeLayout(ProvenanceLayout):
             lines.append(self.indent(self.format_override(entry.overrode, ctx), 1, ctx))
 
         return "\n".join(lines)
+
+    def _format_target(
+        self,
+        entry: ProvenanceEntry,
+        ctx: FormatContext,
+    ) -> str:
+        """Format target class information.
+
+        :param entry: The entry with target info.
+        :param ctx: Format context.
+        :return: Formatted target string.
+        """
+        if entry.target_class is not None and entry.target_module is not None:
+            # Fully resolved: Target: resnet -> myapp.models.ResNet
+            result = f"Target: {entry.target_name} -> {entry.target_module}.{entry.target_class}"
+            if entry.target_auto_registered:
+                result += " (auto-registered)"
+            return result
+        elif entry.target_class is not None:
+            # Class without module (shouldn't happen normally)
+            result = f"Target: {entry.target_name} -> {entry.target_class}"
+            if entry.target_auto_registered:
+                result += " (auto-registered)"
+            return result
+        else:
+            # Not registered
+            return f"Target: {entry.target_name} (not registered)"
 
     def _format_interpolation_tree(
         self,
