@@ -101,7 +101,7 @@ class ConfigStoreTests(TestCase):
         with self.assertRaises(TypeError):
             references["new"] = object()
 
-    def test_known_references__RetrievedViewReflectsRegistrations(self):
+    def test_known_references__ReturnsSnapshot__DoesNotReflectLaterChanges(self):
         # Arrange
         store = self._empty_store()
 
@@ -109,13 +109,17 @@ class ConfigStoreTests(TestCase):
             def __init__(self):
                 pass
 
-        references = store.known_references
+        # Get snapshot before registration
+        references_before = store.known_references
 
         # Act
         store.register(name="example", target=Example)
 
-        # Assert
-        self.assertIn("example", references)
+        # Assert - snapshot should NOT reflect later changes (thread-safe behavior)
+        self.assertNotIn("example", references_before)
+        # But a new call should show the registration
+        references_after = store.known_references
+        self.assertIn("example", references_after)
 
     def test_unregister__RegisteredName__RemovesReference(self):
         # Arrange

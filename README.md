@@ -1018,6 +1018,18 @@ class JsonConfigLoader(ConfigFileLoader):
 register_loader(JsonConfigLoader())
 ```
 
+## Thread Safety
+
+ReausoConfig is thread-safe for concurrent access. The following operations can be safely called from multiple threads:
+
+- `rc.register()` / `rc.unregister()` - Thread-safe class registration
+- `rc.instantiate()` - Thread-safe config loading and instantiation
+- `rc.validate()` - Thread-safe validation
+- `rc.set_cache_size()` / `rc.clear_cache()` - Thread-safe cache management
+- `register_loader()` / `unregister_loader()` - Thread-safe loader registration
+
+**Note:** `rc.known_references()` returns a snapshot of registrations at call time. Changes made after the call are not reflected in the returned mapping.
+
 ## Error Handling
 
 ReausoConfig provides a hierarchy of exceptions:
