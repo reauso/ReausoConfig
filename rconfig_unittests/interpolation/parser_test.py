@@ -111,20 +111,20 @@ class InterpolationParserTests(unittest.TestCase):
         tree = self.parser.parse("env:PATH")
         self.assertIsNotNone(tree)
 
-    def test_parse__EnvVarWithDefault__Succeeds(self):
-        tree = self.parser.parse("env:HOME,/default")
+    def test_parse__EnvVarWithDefaultCoalesce__Succeeds(self):
+        tree = self.parser.parse('env:HOME ?: "/default"')
         self.assertIsNotNone(tree)
 
-    def test_parse__EnvVarWithStringDefault__Succeeds(self):
-        tree = self.parser.parse('env:NAME,"default_value"')
+    def test_parse__EnvVarWithStringDefaultCoalesce__Succeeds(self):
+        tree = self.parser.parse('env:NAME ?: "default_value"')
         self.assertIsNotNone(tree)
 
-    def test_parse__EnvVarWithNumberDefault__Succeeds(self):
-        tree = self.parser.parse("env:PORT,8080")
+    def test_parse__EnvVarWithNumberDefaultCoalesce__Succeeds(self):
+        tree = self.parser.parse("env:PORT ?: 8080")
         self.assertIsNotNone(tree)
 
-    def test_parse__EnvVarWithBoolDefault__Succeeds(self):
-        tree = self.parser.parse("env:DEBUG,true")
+    def test_parse__EnvVarWithBoolDefaultCoalesce__Succeeds(self):
+        tree = self.parser.parse("env:DEBUG ?: true")
         self.assertIsNotNone(tree)
 
     # === Arithmetic operators ===
@@ -372,6 +372,208 @@ class InterpolationParserTests(unittest.TestCase):
     def test_parse__MixedOperators__Succeeds(self):
         tree = self.parser.parse("/a + /b * /c - /d / /e")
         self.assertIsNotNone(tree)
+
+    # === App resolver syntax ===
+
+    def test_parse__AppResolverNoArgs__Succeeds(self):
+        """app:uuid - no parens, no args"""
+        tree = self.parser.parse("app:uuid")
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverEmptyParens__Succeeds(self):
+        """app:uuid() - explicit empty parens"""
+        tree = self.parser.parse("app:uuid()")
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverSingleStringArg__Succeeds(self):
+        """app:greet("World") - single string arg"""
+        tree = self.parser.parse('app:greet("World")')
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverMultipleNumericArgs__Succeeds(self):
+        """app:add(1, 2) - multiple numeric args"""
+        tree = self.parser.parse("app:add(1, 2)")
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverNamespaced__Succeeds(self):
+        """app:math:add(1, 2) - namespaced with args"""
+        tree = self.parser.parse("app:math:add(1, 2)")
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverKeywordArg__Succeeds(self):
+        """app:now(fmt="%Y-%m-%d") - keyword argument"""
+        tree = self.parser.parse('app:now(fmt="%Y-%m-%d")')
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverDeepNamespaceWithKwargs__Succeeds(self):
+        """app:db:cache:get("key", ttl=300) - deep namespace with mixed args"""
+        tree = self.parser.parse('app:db:cache:get("key", ttl=300)')
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverConfigRefAsArg__Succeeds(self):
+        """app:derive(/config.path) - config ref as argument"""
+        tree = self.parser.parse("app:derive(/config.path)")
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverExpressionAsArg__Succeeds(self):
+        """app:compute(/path, 2 + 3) - expression as argument"""
+        tree = self.parser.parse("app:compute(/path, 2 + 3)")
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverNestedCall__Succeeds(self):
+        """app:outer(app:inner()) - resolver result as argument"""
+        tree = self.parser.parse("app:outer(app:inner())")
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverInExpression__Succeeds(self):
+        """app:get_value() + 10 - resolver in arithmetic expression"""
+        tree = self.parser.parse("app:get_value() + 10")
+        self.assertIsNotNone(tree)
+
+    def test_parse__AppResolverMixedPositionalAndKeyword__Succeeds(self):
+        """app:func("pos1", "pos2", key1=1, key2=2)"""
+        tree = self.parser.parse('app:func("pos1", "pos2", key1=1, key2=2)')
+        self.assertIsNotNone(tree)
+
+    # === Ternary operator ===
+
+    def test_parse__TernaryBasic__Succeeds(self):
+        """/debug ? "verbose" : "quiet" - basic ternary"""
+        tree = self.parser.parse('/debug ? "verbose" : "quiet"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__TernaryWithComparison__Succeeds(self):
+        """/count > 10 ? "high" : "low" - comparison as condition"""
+        tree = self.parser.parse('/count > 10 ? "high" : "low"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__TernaryWithResolver__Succeeds(self):
+        """app:ready() ? "go" : "wait" - resolver as condition"""
+        tree = self.parser.parse('app:ready() ? "go" : "wait"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__TernaryNested__Succeeds(self):
+        """a ? b : c ? d : e - nested ternary (right-associative)"""
+        tree = self.parser.parse('/a ? /b : /c ? /d : /e')
+        self.assertIsNotNone(tree)
+
+    def test_parse__TernaryInExpression__Succeeds(self):
+        """(/a ? /b : /c) + 1 - ternary in expression"""
+        tree = self.parser.parse("(/a ? /b : /c) + 1")
+        self.assertIsNotNone(tree)
+
+    def test_parse__TernaryWithBooleanCondition__Succeeds(self):
+        """/a and /b ? 1 : 0 - boolean condition"""
+        tree = self.parser.parse("/a and /b ? 1 : 0")
+        self.assertIsNotNone(tree)
+
+    def test_parse__TernaryWithLiterals__Succeeds(self):
+        """true ? 1 : 0 - literal condition"""
+        tree = self.parser.parse("true ? 1 : 0")
+        self.assertIsNotNone(tree)
+
+    # === Coalesce operators ===
+
+    def test_parse__ElvisCoalesceWithResolver__Succeeds(self):
+        """app:uuid ?: "fallback" - Elvis coalesce with resolver"""
+        tree = self.parser.parse('app:uuid ?: "fallback"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__ElvisCoalesceWithEnv__Succeeds(self):
+        """env:VAR ?: "default" - Elvis coalesce with env"""
+        tree = self.parser.parse('env:VAR ?: "default"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__ErrorCoalesceWithResolver__Succeeds(self):
+        """app:risky() ?? "safe" - error coalesce with resolver"""
+        tree = self.parser.parse('app:risky() ?? "safe"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__ErrorCoalesceWithEnv__Succeeds(self):
+        """env:VAR ?? "default" - error coalesce with env"""
+        tree = self.parser.parse('env:VAR ?? "default"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__ChainedErrorCoalesce__Succeeds(self):
+        """app:a ?? app:b ?? "c" - chained (right-associative)"""
+        tree = self.parser.parse('app:a ?? app:b ?? "c"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__ChainedElvisCoalesce__Succeeds(self):
+        """app:a ?: app:b ?: "c" - chained Elvis coalesce"""
+        tree = self.parser.parse('app:a ?: app:b ?: "c"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__NullWithCoalesce__Succeeds(self):
+        """null ?: "fallback" - literal null with coalesce"""
+        tree = self.parser.parse('null ?: "fallback"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__CoalesceWithConfigRef__Succeeds(self):
+        """app:x ?? /fallback.path - config ref as fallback"""
+        tree = self.parser.parse("app:x ?? /fallback.path")
+        self.assertIsNotNone(tree)
+
+    def test_parse__CoalesceWithExpression__Succeeds(self):
+        """app:x + 1 ?: 0 - expression with coalesce"""
+        tree = self.parser.parse("app:x + 1 ?: 0")
+        self.assertIsNotNone(tree)
+
+    def test_parse__MixedCoalesceOperators__Succeeds(self):
+        """app:a ?: app:b ?? "c" - mixed coalesce types"""
+        tree = self.parser.parse('app:a ?: app:b ?? "c"')
+        self.assertIsNotNone(tree)
+
+    # === Combined operators (ternary + coalesce) ===
+
+    def test_parse__CoalesceInTernaryCondition__Succeeds(self):
+        """(app:x ?? 0) > 5 ? "high" : "low" - coalesce in ternary condition"""
+        tree = self.parser.parse('(app:x ?? 0) > 5 ? "high" : "low"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__TernaryWithCoalesceBranches__Succeeds(self):
+        """/flag ? app:a ?? "x" : app:b ?? "y" - coalesce in ternary branches"""
+        tree = self.parser.parse('/flag ? app:a ?? "x" : app:b ?? "y"')
+        self.assertIsNotNone(tree)
+
+    def test_parse__ResolverInTernaryBranch__Succeeds(self):
+        """/debug ? app:verbose_log() : app:quiet_log()"""
+        tree = self.parser.parse("/debug ? app:verbose_log() : app:quiet_log()")
+        self.assertIsNotNone(tree)
+
+    # === App resolver error cases ===
+
+    def test_parse__AppResolverMissingName__RaisesError(self):
+        """app: alone should fail"""
+        with self.assertRaises(InterpolationSyntaxError):
+            self.parser.parse("app:")
+
+    def test_parse__AppResolverEmptyArg__RaisesError(self):
+        """app:resolver(,) - empty argument should fail"""
+        with self.assertRaises(InterpolationSyntaxError):
+            self.parser.parse("app:resolver(,)")
+
+    def test_parse__AppResolverMissingKeywordValue__RaisesError(self):
+        """app:resolver(key=) - missing keyword value should fail"""
+        with self.assertRaises(InterpolationSyntaxError):
+            self.parser.parse("app:resolver(key=)")
+
+    def test_parse__AppResolverUnclosedParens__RaisesError(self):
+        """app:resolver( - unclosed parentheses should fail"""
+        with self.assertRaises(InterpolationSyntaxError):
+            self.parser.parse("app:resolver(")
+
+    # === Ternary error cases ===
+
+    def test_parse__TernaryMissingColon__RaisesError(self):
+        """/a ? /b - missing colon should fail"""
+        with self.assertRaises(InterpolationSyntaxError):
+            self.parser.parse("/a ? /b")
+
+    def test_parse__TernaryMissingFalseBranch__RaisesError(self):
+        """/a ? /b : - missing false branch should fail"""
+        with self.assertRaises(InterpolationSyntaxError):
+            self.parser.parse("/a ? /b :")
 
     # === Error cases ===
 

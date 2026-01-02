@@ -106,12 +106,28 @@ class ConfigStore:
         with self._lock:
             self._known_references.clear()
 
-    @property
-    def known_references(self) -> MappingProxyType[str, ConfigReference]:
-        """Read-only snapshot of all registered configuration references.
+    def __contains__(self, name: str) -> bool:
+        """Check if a reference is registered using 'in' keyword.
 
-        Thread-safe: returns a snapshot taken under lock. Changes made after
-        this call are not reflected in the returned mapping.
+        Thread-safe: protected by internal lock.
+
+        :param name: Identifier of the reference to check.
+        :return: True if the reference is registered.
+
+        Example::
+
+            if "model" in store:
+                ...
         """
         with self._lock:
-            return MappingProxyType(self._known_references.copy())
+            return name in self._known_references
+
+    @property
+    def known_references(self) -> MappingProxyType[str, ConfigReference]:
+        """Read-only view of all registered configuration references.
+
+        Returns a live view - changes made after this call ARE reflected.
+        Individual read operations are thread-safe, but iteration during
+        concurrent mutation may raise RuntimeError.
+        """
+        return MappingProxyType(self._known_references)

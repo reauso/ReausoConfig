@@ -1,26 +1,26 @@
 _target_: env_vars_test
 # Environment variable interpolation tests
 
-# Paths with defaults
+# Paths with defaults (using coalesce operators)
 paths:
-  data_dir: ${env:TEST_DATA_DIR,/default/data}
-  output_dir: ${env:TEST_OUTPUT_DIR,./outputs}
+  data_dir: '${env:TEST_DATA_DIR ?: "/default/data"}'
+  output_dir: '${env:TEST_OUTPUT_DIR ?: "./outputs"}'
 
 # Settings with typed defaults
 settings:
-  debug: ${env:TEST_DEBUG,false}
-  port: ${env:TEST_PORT,8080}
-  log_level: ${env:TEST_LOG_LEVEL,"INFO"}
-  timeout: ${env:TEST_TIMEOUT,30.5}
-  enabled: ${env:TEST_ENABLED,true}
-  null_default: ${env:TEST_NULL,null}
+  debug: '${env:TEST_DEBUG ?: false}'
+  port: '${env:TEST_PORT ?: 8080}'
+  log_level: '${env:TEST_LOG_LEVEL ?: "INFO"}'
+  timeout: '${env:TEST_TIMEOUT ?: 30.5}'
+  enabled: '${env:TEST_ENABLED ?: true}'
+  null_default: '${env:TEST_NULL ?: null}'
 
-# String with raw path default (no quotes needed)
+# String with raw path default (using coalesce operators)
 raw_defaults:
-  config_path: ${env:TEST_CONFIG_PATH,/etc/app/config.yaml}
-  cache_path: ${env:TEST_CACHE_PATH,~/.cache/app}
+  config_path: '${env:TEST_CONFIG_PATH ?: "/etc/app/config.yaml"}'
+  cache_path: '${env:TEST_CACHE_PATH ?: "~/.cache/app"}'
 
 # Embedded env vars in strings
 embedded:
-  full_path: "${env:TEST_BASE_PATH,/home}/output/${env:TEST_USER,anonymous}"
-  message: "Running as ${env:TEST_USER,user} on port ${env:TEST_PORT,8080}"
+  full_path: '${env:TEST_BASE_PATH ?: "/home"}/output/${env:TEST_USER ?: "anonymous"}'
+  message: 'Running as ${env:TEST_USER ?: "user"} on port ${env:TEST_PORT ?: 8080}'

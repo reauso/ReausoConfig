@@ -23,11 +23,11 @@ class ProvenanceNode:
     """Node in a provenance tree.
 
     Used for tracing the full origin of a value through refs, instances,
-    interpolations, and operators. Forms a tree structure for compound
+    interpolations, operators, and resolvers. Forms a tree structure for compound
     expressions.
 
     :param source_type: Type of source (file, ref, instance, interpolation,
-                        cli, env, programmatic, operator).
+                        cli, env, programmatic, operator, resolver).
     :param path: Config path (e.g., "/model.lr").
     :param file: Source file name.
     :param line: Line number in source file.
@@ -36,11 +36,22 @@ class ProvenanceNode:
     :param operator: Operator for compound expressions (+, *, etc.).
     :param env_var: Environment variable name for env sources.
     :param cli_arg: CLI argument for CLI sources.
+    :param resolver_name: Registered resolver path (e.g., "uuid", "db:lookup").
+    :param resolver_func: Function name of the resolver (e.g., "gen_uuid").
+    :param resolver_module: Module where the resolver is defined (e.g., "myapp.resolvers").
     :param children: Child nodes in the tree.
     """
 
     source_type: Literal[
-        "file", "ref", "instance", "interpolation", "cli", "env", "programmatic", "operator"
+        "file",
+        "ref",
+        "instance",
+        "interpolation",
+        "cli",
+        "env",
+        "programmatic",
+        "operator",
+        "resolver",
     ]
     path: str | None = None
     file: str | None = None
@@ -50,6 +61,9 @@ class ProvenanceNode:
     operator: str | None = None
     env_var: str | None = None
     cli_arg: str | None = None
+    resolver_name: str | None = None
+    resolver_func: str | None = None
+    resolver_module: str | None = None
     children: list[ProvenanceNode] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -75,6 +89,12 @@ class ProvenanceNode:
             result["env_var"] = self.env_var
         if self.cli_arg is not None:
             result["cli_arg"] = self.cli_arg
+        if self.resolver_name is not None:
+            result["resolver_name"] = self.resolver_name
+        if self.resolver_func is not None:
+            result["resolver_func"] = self.resolver_func
+        if self.resolver_module is not None:
+            result["resolver_module"] = self.resolver_module
         if self.children:
             result["children"] = [child.to_dict() for child in self.children]
 
@@ -268,6 +288,19 @@ class ProvenanceEntry:
                 expression=source.expression,
             )
             # Add children from compound expression
+            for child_source in source.sources:
+                child_node = self._build_interpolation_tree(child_source)
+                node.children.append(child_node)
+        elif source.kind == "resolver":
+            node = ProvenanceNode(
+                source_type="resolver",
+                value=source.value,
+                expression=source.expression,
+                resolver_name=source.resolver_path,
+                resolver_func=source.resolver_func,
+                resolver_module=source.resolver_module,
+            )
+            # Add children from resolver arguments
             for child_source in source.sources:
                 child_node = self._build_interpolation_tree(child_source)
                 node.children.append(child_node)

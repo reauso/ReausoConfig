@@ -36,6 +36,10 @@ from rconfig.interpolation.parser import (
     has_interpolation,
     is_standalone_interpolation,
 )
+from rconfig.interpolation.registry import (
+    ResolverReference,
+    ResolverRegistry,
+)
 from rconfig.interpolation.resolver import (
     InterpolationResolver,
     resolve_interpolations,
@@ -55,4 +59,7 @@ __all__ = [
     "ExpressionEvaluator",
     "EvalResult",
     "InterpolationSource",
+    # Registry
+    "ResolverRegistry",
+    "ResolverReference",
 ]
