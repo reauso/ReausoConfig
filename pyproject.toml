@@ -4,6 +4,7 @@ requires = ["hatchling"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["rconfig"]
+include = ["rconfig/**/*.lark"]
 
 [project]
 authors = [{ name = "Rene Ebertowski", email = "r.ebertowski@gmx.de" }]
