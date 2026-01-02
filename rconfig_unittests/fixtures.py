@@ -136,9 +136,9 @@ class MockFileSystem:
 
             stream = StringIO()
             yaml.dump(content, stream)
-            self._files[path] = stream.getvalue()
+            self._files[Path(path).as_posix()] = stream.getvalue()
         else:
-            self._files[path] = content
+            self._files[Path(path).as_posix()] = content
         return self
 
     def exists(self, path: str) -> bool:
@@ -147,7 +147,7 @@ class MockFileSystem:
         :param path: Path to check (as string).
         :return: True if the file exists in the mock filesystem.
         """
-        return path in self._files
+        return Path(path).as_posix() in self._files
 
     def get_content(self, path: str) -> str:
         """Get the YAML content of a file.
@@ -156,8 +156,9 @@ class MockFileSystem:
         :return: YAML string content.
         :raises KeyError: If the file is not found.
         """
-        if path in self._files:
-            return self._files[path]
+        posix_path = Path(path).as_posix()
+        if posix_path in self._files:
+            return self._files[posix_path]
         raise KeyError(f"Mock file not found: {path}")
 
     @property
