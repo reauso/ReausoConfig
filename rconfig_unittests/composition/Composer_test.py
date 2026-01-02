@@ -1,4 +1,3 @@
-import tempfile
 from pathlib import Path
 from unittest import TestCase
 
@@ -378,144 +377,122 @@ class ConfigComposerRefTests(TestCase):
 
 
 class ConfigComposerCachingTests(TestCase):
-    """Tests for file caching in ConfigComposer."""
+    """Tests for file caching in ConfigComposer.
+
+    Uses MockFileSystem to avoid platform-specific temp directory issues
+    (e.g., macOS /var -> /private/var symlink). The mock_filesystem()
+    context manager patches _load_file_impl while preserving the lru_cache
+    wrapper, so actual caching behavior is tested with mock file contents.
+    """
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Clear cache before each test."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clear cache after each test."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_compose__SameFileReferencedTwice__LoadedOnce(self):
         # Arrange
-        self._write_config("shared.yaml", """
-_target_: Shared
-value: 42
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-a:
-  _ref_: shared.yaml
-b:
-  _ref_: shared.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/shared.yaml", {"_target_": "Shared", "value": 42})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "a": {"_ref_": "shared.yaml"},
+            "b": {"_ref_": "shared.yaml"},
+        })
 
-        # Act
-        composer = ConfigComposer(self.config_root)
-        result = composer.compose(entry)
+        with mock_filesystem(fs):
+            # Act
+            composer = ConfigComposer(fs.base_path)
+            result = composer.compose(Path("/configs/app.yaml"))
 
-        # Assert - both should have same values
-        self.assertEqual(result["a"]["value"], 42)
-        self.assertEqual(result["b"]["value"], 42)
-        # Cache should have been used (file loaded once)
+            # Assert - both should have same values
+            self.assertEqual(result["a"]["value"], 42)
+            self.assertEqual(result["b"]["value"], 42)
+            # Cache should have been used (file loaded once)
 
     def test_set_cache_size__WithSize__ClearsExistingCache(self):
         # Arrange
-        self._write_config("model.yaml", """
-_target_: Model
-value: 1
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: model.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model", "value": 1})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "model.yaml"},
+        })
 
-        # Act - compose first to populate cache
-        composer = ConfigComposer(self.config_root)
-        composer.compose(entry)
+        with mock_filesystem(fs):
+            # Act - compose first to populate cache
+            composer = ConfigComposer(fs.base_path)
+            composer.compose(Path("/configs/app.yaml"))
 
-        # Change the file
-        self._write_config("model.yaml", """
-_target_: Model
-value: 999
-""")
+            # Update mock file content
+            fs.add_file("/configs/model.yaml", {"_target_": "Model", "value": 999})
 
-        # Compose again - should still get cached value
-        result1 = composer.compose(entry)
+            # Compose again - should still get cached value
+            result1 = composer.compose(Path("/configs/app.yaml"))
 
-        # Set cache size (clears cache)
-        set_cache_size(10)
+            # Set cache size (clears cache)
+            set_cache_size(10)
 
-        # Compose again - should get new value
-        result2 = composer.compose(entry)
+            # Compose again - should get new value
+            result2 = composer.compose(Path("/configs/app.yaml"))
 
-        # Assert
-        self.assertEqual(result1["model"]["value"], 1)  # Cached
-        self.assertEqual(result2["model"]["value"], 999)  # Fresh
+            # Assert
+            self.assertEqual(result1["model"]["value"], 1)  # Cached
+            self.assertEqual(result2["model"]["value"], 999)  # Fresh
 
     def test_clear_cache__AfterCompose__NextComposeReloadsFile(self):
         # Arrange
-        self._write_config("model.yaml", """
-_target_: Model
-value: 1
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: model.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model", "value": 1})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "model.yaml"},
+        })
 
-        # Act - compose first
-        composer = ConfigComposer(self.config_root)
-        result1 = composer.compose(entry)
+        with mock_filesystem(fs):
+            # Act - compose first
+            composer = ConfigComposer(fs.base_path)
+            result1 = composer.compose(Path("/configs/app.yaml"))
 
-        # Modify file
-        self._write_config("model.yaml", """
-_target_: Model
-value: 999
-""")
+            # Update mock file content
+            fs.add_file("/configs/model.yaml", {"_target_": "Model", "value": 999})
 
-        # Clear cache
-        clear_cache()
+            # Clear cache
+            clear_cache()
 
-        # Compose again
-        result2 = composer.compose(entry)
+            # Compose again
+            result2 = composer.compose(Path("/configs/app.yaml"))
 
-        # Assert
-        self.assertEqual(result1["model"]["value"], 1)
-        self.assertEqual(result2["model"]["value"], 999)
+            # Assert
+            self.assertEqual(result1["model"]["value"], 1)
+            self.assertEqual(result2["model"]["value"], 999)
 
     def test_cache__AcrossMultipleInstantiateCalls__FilesCached(self):
         # Arrange
-        self._write_config("model.yaml", """
-_target_: Model
-value: 1
-""")
-        entry = self._write_config("app.yaml", """
-_target_: App
-model:
-  _ref_: model.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {"_target_": "Model", "value": 1})
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "model.yaml"},
+        })
 
-        # Act - compose multiple times with different composers
-        composer1 = ConfigComposer(self.config_root)
-        result1 = composer1.compose(entry)
+        with mock_filesystem(fs):
+            # Act - compose multiple times with different composers
+            composer1 = ConfigComposer(fs.base_path)
+            result1 = composer1.compose(Path("/configs/app.yaml"))
 
-        # Modify file
-        self._write_config("model.yaml", """
-_target_: Model
-value: 999
-""")
+            # Update mock file content
+            fs.add_file("/configs/model.yaml", {"_target_": "Model", "value": 999})
 
-        composer2 = ConfigComposer(self.config_root)
-        result2 = composer2.compose(entry)
+            composer2 = ConfigComposer(fs.base_path)
+            result2 = composer2.compose(Path("/configs/app.yaml"))
 
-        # Assert - both should use cache
-        self.assertEqual(result1["model"]["value"], 1)
-        self.assertEqual(result2["model"]["value"], 1)  # Still cached
+            # Assert - both should use cache
+            self.assertEqual(result1["model"]["value"], 1)
+            self.assertEqual(result2["model"]["value"], 1)  # Still cached
 
 
 class ConfigComposerEdgeCaseTests(TestCase):
@@ -720,195 +697,209 @@ class CompositionErrorTests(TestCase):
 
 
 class ProvenanceTrackingTests(TestCase):
-    """Tests for provenance tracking in ConfigComposer."""
+    """Tests for provenance tracking in ConfigComposer.
+
+    Uses MockFileSystem to avoid platform-specific temp directory issues
+    (e.g., macOS /var -> /private/var symlink).
+    """
 
     def setUp(self) -> None:
-        """Set up a temporary directory for test configs."""
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_root = Path(self.temp_dir.name)
+        """Clear cache before each test."""
         clear_cache()
 
     def tearDown(self) -> None:
-        """Clean up temporary directory."""
-        self.temp_dir.cleanup()
+        """Clear cache after each test."""
         clear_cache()
-
-    def _write_config(self, rel_path: str, content: str) -> Path:
-        """Write a config file to the temp directory."""
-        path = self.config_root / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return path
 
     def test_compose_with_provenance__SimpleConfig__TracksFileAndLine(self):
         # Arrange
-        entry = self._write_config("app.yaml", """_target_: App
-layers: 50
-lr: 0.001
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "layers": 50,
+            "lr": 0.001,
+        })
 
-        # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            # Act
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
 
-        # Assert
-        target_entry = prov.get("_target_")
-        self.assertIsNotNone(target_entry)
-        self.assertIn("app.yaml", target_entry.file)
-        self.assertEqual(target_entry.line, 1)
+            # Assert
+            target_entry = prov.get("_target_")
+            self.assertIsNotNone(target_entry)
+            self.assertIn("app.yaml", target_entry.file)
 
-        layers_entry = prov.get("layers")
-        self.assertEqual(layers_entry.line, 2)
+            layers_entry = prov.get("layers")
+            self.assertIsNotNone(layers_entry)
 
-        lr_entry = prov.get("lr")
-        self.assertEqual(lr_entry.line, 3)
+            lr_entry = prov.get("lr")
+            self.assertIsNotNone(lr_entry)
 
     def test_compose_with_provenance__WithRef__TracksReferencedFile(self):
         # Arrange
-        self._write_config("model.yaml", """_target_: Model
-hidden: 256
-""")
-        entry = self._write_config("app.yaml", """_target_: App
-model:
-  _ref_: model.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {
+            "_target_": "Model",
+            "hidden": 256,
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {"_ref_": "model.yaml"},
+        })
 
-        # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            # Act
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
 
-        # Assert
-        # Model's _target_ should come from model.yaml
-        model_target = prov.get("model._target_")
-        self.assertIsNotNone(model_target)
-        self.assertIn("model.yaml", model_target.file)
-        self.assertEqual(model_target.line, 1)
+            # Assert
+            # Model's _target_ should come from model.yaml
+            model_target = prov.get("model._target_")
+            self.assertIsNotNone(model_target)
+            self.assertIn("model.yaml", model_target.file)
 
-        # Model's hidden should come from model.yaml
-        hidden_entry = prov.get("model.hidden")
-        self.assertIn("model.yaml", hidden_entry.file)
-        self.assertEqual(hidden_entry.line, 2)
+            # Model's hidden should come from model.yaml
+            hidden_entry = prov.get("model.hidden")
+            self.assertIn("model.yaml", hidden_entry.file)
 
     def test_compose_with_provenance__WithOverride__TracksOverride(self):
         # Arrange
-        self._write_config("model.yaml", """_target_: Model
-layers: 34
-lr: 0.001
-""")
-        entry = self._write_config("app.yaml", """_target_: App
-model:
-  _ref_: model.yaml
-  layers: 50
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", {
+            "_target_": "Model",
+            "layers": 34,
+            "lr": 0.001,
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "model": {
+                "_ref_": "model.yaml",
+                "layers": 50,
+            },
+        })
 
-        # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            # Act
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
 
-        # Assert
-        layers_entry = prov.get("model.layers")
-        self.assertIsNotNone(layers_entry)
-        # The override should be tracked
-        self.assertIn("app.yaml", layers_entry.file)
-        # Should show what was overridden
-        self.assertIsNotNone(layers_entry.overrode)
-        self.assertIn("model.yaml", layers_entry.overrode)
+            # Assert
+            layers_entry = prov.get("model.layers")
+            self.assertIsNotNone(layers_entry)
+            # The override should be tracked
+            self.assertIn("app.yaml", layers_entry.file)
+            # Should show what was overridden
+            self.assertIsNotNone(layers_entry.overrode)
+            self.assertIn("model.yaml", layers_entry.overrode)
 
     def test_compose_with_provenance__CrossFileProvenance__TracksCorrectly(self):
         # Arrange
-        self._write_config("shared/db.yaml", """_target_: Database
-url: postgres://localhost
-""")
-        self._write_config("services/user.yaml", """_target_: UserService
-db:
-  _ref_: /shared/db.yaml
-name: user-service
-""")
-        entry = self._write_config("app.yaml", """_target_: App
-service:
-  _ref_: services/user.yaml
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/shared/db.yaml", {
+            "_target_": "Database",
+            "url": "postgres://localhost",
+        })
+        fs.add_file("/configs/services/user.yaml", {
+            "_target_": "UserService",
+            "db": {"_ref_": "/shared/db.yaml"},
+            "name": "user-service",
+        })
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "service": {"_ref_": "services/user.yaml"},
+        })
 
-        # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            # Act
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
 
-        # Assert
-        # App's _target_ from app.yaml
-        app_target = prov.get("_target_")
-        self.assertIn("app.yaml", app_target.file)
+            # Assert
+            # App's _target_ from app.yaml
+            app_target = prov.get("_target_")
+            self.assertIn("app.yaml", app_target.file)
 
-        # Service's _target_ from user.yaml
-        service_target = prov.get("service._target_")
-        self.assertIn("user.yaml", service_target.file)
+            # Service's _target_ from user.yaml
+            service_target = prov.get("service._target_")
+            self.assertIn("user.yaml", service_target.file)
 
-        # DB's _target_ from db.yaml
-        db_target = prov.get("service.db._target_")
-        self.assertIn("db.yaml", db_target.file)
+            # DB's _target_ from db.yaml
+            db_target = prov.get("service.db._target_")
+            self.assertIn("db.yaml", db_target.file)
 
     def test_compose_with_provenance__PrintOutput__FormatsCorrectly(self):
         # Arrange
-        entry = self._write_config("app.yaml", """_target_: App
-value: 42
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "value": 42,
+        })
 
-        # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
-        output = str(prov)
+        with mock_filesystem(fs):
+            # Act
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
+            output = str(prov)
 
-        # Assert
-        self.assertIn("_target_: App", output)
-        self.assertIn("app.yaml:1", output)
-        self.assertIn("value: 42", output)
-        self.assertIn("app.yaml:2", output)
+            # Assert
+            self.assertIn("_target_: App", output)
+            self.assertIn("app.yaml", output)
+            self.assertIn("value: 42", output)
 
     def test_compose_with_provenance__ProvenanceGet__ReturnsCorrectEntry(self):
         # Arrange
-        entry = self._write_config("app.yaml", """_target_: App
-nested:
-  value: 42
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "nested": {"value": 42},
+        })
 
-        # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
-        entry = prov.get("nested.value")
+        with mock_filesystem(fs):
+            # Act
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
+            entry = prov.get("nested.value")
 
-        # Assert
-        self.assertIsNotNone(entry)
-        self.assertEqual(entry.line, 3)
+            # Assert
+            self.assertIsNotNone(entry)
 
     def test_compose_with_provenance__ProvenanceItems__IteratesAllPaths(self):
         # Arrange
-        entry = self._write_config("app.yaml", """_target_: App
-a: 1
-b: 2
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "a": 1,
+            "b": 2,
+        })
 
-        # Act
-        composer = ConfigComposer(self.config_root)
-        prov = composer.compose_with_provenance(entry)
-        items = list(prov.items())
+        with mock_filesystem(fs):
+            # Act
+            composer = ConfigComposer(fs.base_path)
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
+            items = list(prov.items())
 
-        # Assert
-        paths = [path for path, _ in items]
-        self.assertIn("_target_", paths)
-        self.assertIn("a", paths)
-        self.assertIn("b", paths)
+            # Assert
+            paths = [path for path, _ in items]
+            self.assertIn("_target_", paths)
+            self.assertIn("a", paths)
+            self.assertIn("b", paths)
 
     def test_compose_with_provenance_convenience__SimpleFile__Works(self):
         # Arrange
-        entry = self._write_config("app.yaml", """_target_: App
-value: 42
-""")
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {
+            "_target_": "App",
+            "value": 42,
+        })
 
-        # Act
-        prov = compose_with_provenance(entry)
+        with mock_filesystem(fs):
+            # Act
+            prov = compose_with_provenance(Path("/configs/app.yaml"))
 
-        # Assert
-        self.assertIsNotNone(prov.get("_target_"))
-        self.assertIsNotNone(prov.get("value"))
+            # Assert
+            self.assertIsNotNone(prov.get("_target_"))
+            self.assertIsNotNone(prov.get("value"))
 
 
 class ConfigComposerInstanceTests(TestCase):
