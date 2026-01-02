@@ -209,7 +209,9 @@ def mock_filesystem(fs: MockFileSystem) -> Generator[None, None, None]:
 
     def mock_resolve(path_self: Path) -> Path:
         # Normalize the path to handle .. and . segments
-        normalized = posixpath.normpath(str(path_self))
+        # Use as_posix() to ensure consistent forward slashes on all platforms
+        posix_str = path_self.as_posix()
+        normalized = posixpath.normpath(posix_str)
         return Path(normalized)
 
     with (
