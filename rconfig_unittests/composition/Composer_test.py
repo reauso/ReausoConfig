@@ -1987,3 +1987,30 @@ class ConfigComposerInternalMethodTests(TestCase):
 
         # Assert - should return None for unresolved marker
         self.assertIsNone(result)
+
+
+class ConfigComposerPropertyTests(TestCase):
+    """Tests for ConfigComposer property edge cases."""
+
+    def setUp(self) -> None:
+        """Set up for tests."""
+        clear_cache()
+
+    def tearDown(self) -> None:
+        """Clean up after tests."""
+        clear_cache()
+
+    def test_instanceTargets__BeforeCompose__ReturnsEmptyDict(self):
+        """Test that instance_targets returns {} before compose() is called."""
+        # Arrange
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/app.yaml", {"_target_": "App"})
+
+        # Act
+        with mock_filesystem(fs):
+            composer = ConfigComposer(fs.base_path)
+            # Don't call compose()
+            result = composer.instance_targets
+
+        # Assert
+        self.assertEqual(result, {})
