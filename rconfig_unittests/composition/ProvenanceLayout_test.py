@@ -25,6 +25,7 @@ class FormatContextDefaultTests(TestCase):
         self.assertTrue(ctx.show_source_type)
         self.assertTrue(ctx.show_chain)
         self.assertTrue(ctx.show_overrides)
+        self.assertTrue(ctx.show_targets)
 
     def test_FormatContext__DefaultInit__IndentSizeIsTwo(self) -> None:
         """Test that default indent size is 2."""

@@ -196,6 +196,22 @@ class CompositionWalker:
             resolved = self._resolved_dict(
                 config, path.parent, parent_config_path, path_str
             )
+            # Record provenance for root-level _target_ if present
+            if (
+                parent_config_path == ""
+                and isinstance(resolved, dict)
+                and _TARGET_KEY in resolved
+            ):
+                target_name = resolved.get(_TARGET_KEY)
+                if isinstance(target_name, str):
+                    # Get line number for the root dict (line 1)
+                    line = self._get_line_number(config, _TARGET_KEY) or 1
+                    self._provenance.add(
+                        "",  # root path
+                        file=path_str,
+                        line=line,
+                        target_name=target_name,
+                    )
             return resolved
         finally:
             self._loading_stack.pop()
@@ -236,6 +252,21 @@ class CompositionWalker:
                     value, current_dir, current_path, file_path
                 )
                 result[key] = resolved_value
+                # Record provenance for dict with _target_
+                if (
+                    isinstance(resolved_value, dict)
+                    and _TARGET_KEY in resolved_value
+                    and line is not None
+                    and should_record
+                ):
+                    target_name = resolved_value.get(_TARGET_KEY)
+                    if isinstance(target_name, str):
+                        self._provenance.add(
+                            current_path,
+                            file=file_path,
+                            line=line,
+                            target_name=target_name,
+                        )
             elif isinstance(value, list):
                 result[key] = self._resolved_list(
                     value, current_dir, current_path, file_path

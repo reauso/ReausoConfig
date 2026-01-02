@@ -31,6 +31,7 @@ class TreeLayoutDefaultContextTests(TestCase):
         self.assertTrue(ctx.show_source_type)
         self.assertTrue(ctx.show_chain)
         self.assertTrue(ctx.show_overrides)
+        self.assertTrue(ctx.show_targets)
 
     def test_getDefaultContext__IndentSizeIsTwo(self) -> None:
         """Test that default indent size is 2."""
@@ -858,3 +859,102 @@ class TreeLayoutProgrammaticSourceTests(TestCase):
 
         # Assert
         self.assertIn("env", result)
+
+
+class TreeLayoutTargetDisplayTests(TestCase):
+    """Tests for TreeLayout target info display."""
+
+    def test_formatEntry__WithTargetInfo__ShowsTargetLine(self) -> None:
+        """Test that target info is displayed."""
+        # Arrange
+        layout = TreeLayout()
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            target_name="model",
+            target_class="MyModel",
+            target_module="myapp.models",
+        )
+        ctx = FormatContext(show_targets=True)
+
+        # Act
+        result = layout.format_entry(entry, "model", ctx)
+
+        # Assert
+        self.assertIn("Target: model -> myapp.models.MyModel", result)
+
+    def test_formatEntry__WithAutoRegisteredTarget__ShowsAutoRegisteredMarker(
+        self,
+    ) -> None:
+        """Test that auto-registered targets are marked."""
+        # Arrange
+        layout = TreeLayout()
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            target_name="model",
+            target_class="MyModel",
+            target_module="myapp.models",
+            target_auto_registered=True,
+        )
+        ctx = FormatContext(show_targets=True)
+
+        # Act
+        result = layout.format_entry(entry, "model", ctx)
+
+        # Assert
+        self.assertIn("(auto-registered)", result)
+
+    def test_formatEntry__UnregisteredTarget__ShowsNotRegistered(self) -> None:
+        """Test that unregistered targets show 'not registered'."""
+        # Arrange
+        layout = TreeLayout()
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            target_name="unknown",
+            target_class=None,
+            target_module=None,
+        )
+        ctx = FormatContext(show_targets=True)
+
+        # Act
+        result = layout.format_entry(entry, "model", ctx)
+
+        # Assert
+        self.assertIn("Target: unknown (not registered)", result)
+
+    def test_formatEntry__ShowTargetsFalse__OmitsTargetLine(self) -> None:
+        """Test that targets are hidden when show_targets is False."""
+        # Arrange
+        layout = TreeLayout()
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+            target_name="model",
+            target_class="MyModel",
+            target_module="myapp.models",
+        )
+        ctx = FormatContext(show_targets=False)
+
+        # Act
+        result = layout.format_entry(entry, "model", ctx)
+
+        # Assert
+        self.assertNotIn("Target:", result)
+
+    def test_formatEntry__NoTargetName__OmitsTargetLine(self) -> None:
+        """Test that entries without target_name don't show Target line."""
+        # Arrange
+        layout = TreeLayout()
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=5,
+        )
+        ctx = FormatContext(show_targets=True)
+
+        # Act
+        result = layout.format_entry(entry, "model.layers", ctx)
+
+        # Assert
+        self.assertNotIn("Target:", result)

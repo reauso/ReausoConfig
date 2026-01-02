@@ -28,6 +28,7 @@ class FormatContext:
     :param show_source_type: Show source type markers (CLI/env/file).
     :param show_chain: Show full provenance chain (refs, instances, interpolations).
     :param show_overrides: Show what was overridden.
+    :param show_targets: Show target class information.
     :param indent_size: Number of spaces per indentation level.
     :param path_filters: Glob patterns to filter by config path.
     :param file_filters: Glob patterns to filter by source file.
@@ -40,6 +41,7 @@ class FormatContext:
     show_source_type: bool = True
     show_chain: bool = True
     show_overrides: bool = True
+    show_targets: bool = True
     indent_size: int = 2
     path_filters: list[str] = field(default_factory=list)
     file_filters: list[str] = field(default_factory=list)

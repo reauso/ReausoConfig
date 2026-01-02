@@ -83,6 +83,7 @@ rc.register("my_dataset", MyDataset)
 ### Validation
 
 Before instantiation, configs are validated for:
+
 - Required fields (parameters without defaults)
 - Type compatibility
 - Target existence in registry
@@ -106,12 +107,12 @@ trainer = rc.instantiate(
 
 #### Override Syntax
 
-| Syntax | Example | Description |
-|--------|---------|-------------|
-| Dot notation | `model.lr=0.01` | Set nested value |
+| Syntax        | Example                | Description      |
+| ------------- | ---------------------- | ---------------- |
+| Dot notation  | `model.lr=0.01`      | Set nested value |
 | List indexing | `layers[0].size=128` | Set list element |
-| Add to list | `+callbacks=logger` | Append to list |
-| Remove key | `~dropout` | Delete key |
+| Add to list   | `+callbacks=logger`  | Append to list   |
+| Remove key    | `~dropout`           | Delete key       |
 
 #### Disabling CLI Overrides
 
@@ -147,6 +148,7 @@ first_callback = rc.instantiate(Path("trainer.yaml"), inner_path="callbacks[0]")
 ```
 
 **How it works:**
+
 1. The full config is composed (all `_ref_` resolved)
 2. Overrides are applied to the full config
 3. Interpolations (`${...}`) are resolved from the full config
@@ -209,6 +211,7 @@ timeout:
 ```
 
 Required values can be satisfied by:
+
 - CLI overrides: `api_key=secret123`
 - Programmatic overrides: `overrides={"api_key": "secret"}`
 - Environment variable interpolation: `api_key: ${env:API_KEY}`
@@ -271,6 +274,7 @@ epochs: 10
 ```
 
 **When `_target_` is required:**
+
 - Abstract classes (cannot be instantiated directly)
 - Base classes with multiple registered subclasses (ambiguous)
 
@@ -345,12 +349,14 @@ pretrained: false
 ```
 
 **Auto-registration requirements:**
+
 - Parent field must have a type hint
 - `_target_` name must match the type hint's class name (case-insensitive)
 - The class must not be abstract
 - The type hint must be a single class (not `Union[A, B]`)
 
 **When auto-registration fails:**
+
 - `TargetNotFoundError`: Target name doesn't match expected class
 - `AmbiguousTargetError`: Type is abstract or has multiple implementations
 
@@ -373,6 +379,7 @@ epochs: 10
 ```
 
 **Path resolution:**
+
 - `models/resnet.yaml` - Relative to current file
 - `./local.yaml` - Explicit relative
 - `../shared/base.yaml` - Parent directory
@@ -402,11 +409,13 @@ service_b:
 ```
 
 **Path resolution:**
+
 - `shared_cache` - Relative to config root
 - `/shared.database` - Absolute from composed root
 - `databases[0]` - List indexing supported
 
 **Special values:**
+
 - `_instance_: null` - Passes `None` to constructor
 
 ### Lazy Instantiation
@@ -480,28 +489,28 @@ print(is_lazy_proxy(trainer.model))  # False
 
 Lazy proxies are designed to be completely transparent to user code:
 
-| Operation | Works? | Notes |
-|-----------|--------|-------|
-| `isinstance(obj, MyClass)` | ✅ Yes | Proxy is a subclass of your class |
-| `obj.attribute` | ✅ Yes | Triggers init, then returns value |
-| `obj.method()` | ✅ Yes | Triggers init, then calls method |
-| `hasattr(obj, 'attr')` | ✅ Yes | Triggers init, then checks |
-| `len(obj)` | ✅ Yes | Triggers init, then calls `__len__` |
-| `for x in obj` | ✅ Yes | Triggers init, then iterates |
-| `obj[key]` | ✅ Yes | Triggers init, then indexes |
-| `obj()` | ✅ Yes | Triggers init, then calls `__call__` |
-| `dataclasses.asdict(obj)` | ✅ Yes | Triggers init, then converts |
-| `str(obj)` / `repr(obj)` | ✅ Yes | Triggers init, then formats |
+| Operation                    | Works? | Notes                                  |
+| ---------------------------- | ------ | -------------------------------------- |
+| `isinstance(obj, MyClass)` | ✅ Yes | Proxy is a subclass of your class      |
+| `obj.attribute`            | ✅ Yes | Triggers init, then returns value      |
+| `obj.method()`             | ✅ Yes | Triggers init, then calls method       |
+| `hasattr(obj, 'attr')`     | ✅ Yes | Triggers init, then checks             |
+| `len(obj)`                 | ✅ Yes | Triggers init, then calls `__len__`  |
+| `for x in obj`             | ✅ Yes | Triggers init, then iterates           |
+| `obj[key]`                 | ✅ Yes | Triggers init, then indexes            |
+| `obj()`                    | ✅ Yes | Triggers init, then calls `__call__` |
+| `dataclasses.asdict(obj)`  | ✅ Yes | Triggers init, then converts           |
+| `str(obj)` / `repr(obj)` | ✅ Yes | Triggers init, then formats            |
 
 #### Known Limitations
 
 These edge cases behave differently from regular objects:
 
-| Operation | Behavior | Workaround |
-|-----------|----------|------------|
-| `type(obj)` | Returns proxy class | Use `isinstance()` instead |
-| `obj.__class__` | Returns proxy class | Use `isinstance()` instead |
-| `obj.__class__ == MyClass` | Returns `False` | Use `isinstance(obj, MyClass)` |
+| Operation                    | Behavior            | Workaround                       |
+| ---------------------------- | ------------------- | -------------------------------- |
+| `type(obj)`                | Returns proxy class | Use `isinstance()` instead     |
+| `obj.__class__`            | Returns proxy class | Use `isinstance()` instead     |
+| `obj.__class__ == MyClass` | Returns `False`   | Use `isinstance(obj, MyClass)` |
 
 **Impact**: These limitations only affect code that uses `type()` or `__class__` for exact type comparison. This is rare in practice - most code uses `isinstance()` which works correctly.
 
@@ -548,12 +557,12 @@ training:
 
 #### Config Path References
 
-| Syntax | Example | Description |
-|--------|---------|-------------|
-| Absolute | `${/model.lr}` | From root of composed config |
-| Relative | `${./local.value}` | From current document root |
-| Implicit | `${model.lr}` | Same as relative |
-| Parent | `${../sibling.value}` | Parent-relative path |
+| Syntax   | Example                 | Description                  |
+| -------- | ----------------------- | ---------------------------- |
+| Absolute | `${/model.lr}`        | From root of composed config |
+| Relative | `${./local.value}`    | From current document root   |
+| Implicit | `${model.lr}`         | Same as relative             |
+| Parent   | `${../sibling.value}` | Parent-relative path         |
 
 #### Environment Variables
 
@@ -655,6 +664,7 @@ print(prov)  # Shows config with file:line annotations
 # Example output:
 # /model.layers = 50
 #   trainer.yaml:5
+#   Target: model -> myapp.models.Model
 #   Overrode: models/resnet.yaml:2
 # /model.dropout = 0.2
 #   models/resnet.yaml:3
@@ -675,11 +685,11 @@ for path, entry in prov.items():
 
 #### Formatting Presets
 
-| Preset | Shows | Use Case |
-|--------|-------|----------|
-| `minimal()` | paths, files, lines | Quick overview |
-| `compact()` | + values, source type | Debugging values |
-| `full()` | everything (default) | Complete tracing |
+| Preset        | Shows                          | Use Case         |
+| ------------- | ------------------------------ | ---------------- |
+| `minimal()` | paths, files, lines            | Quick overview   |
+| `compact()` | + values, source type, targets | Debugging values |
+| `full()`    | everything (default)           | Complete tracing |
 
 ```python
 # Use presets
@@ -704,6 +714,7 @@ prov.format()
     .show_source_type().hide_source_type()# Source markers (CLI/env/file)
     .show_chain()      .hide_chain()      # Interpolation/instance chains
     .show_overrides()  .hide_overrides()  # Override information
+    .show_targets()    .hide_targets()    # Target class information
 
 # Combine with presets
 print(prov.format().minimal().show_values())
@@ -732,12 +743,12 @@ print(prov.format()
 
 Provenance tracks where values originate:
 
-| Source | Marker | Description |
-|--------|--------|-------------|
-| file | (none) | Regular config file |
-| cli | `CLI:` | Command-line override |
-| env | `env:` | Environment variable |
-| programmatic | `programmatic:` | Set via Python code |
+| Source       | Marker            | Description           |
+| ------------ | ----------------- | --------------------- |
+| file         | (none)            | Regular config file   |
+| cli          | `CLI:`          | Command-line override |
+| env          | `env:`          | Environment variable  |
+| programmatic | `programmatic:` | Set via Python code   |
 
 ```python
 # CLI overrides show the argument
@@ -897,6 +908,7 @@ model = rc.instantiate(Path("config.yaml"), lazy=True)
 ```
 
 **Parameters:**
+
 - `lazy`: If `True`, all nested configs are lazily instantiated. Objects delay `__init__` until first attribute access. Default: `False`.
 
 ### `rc.known_references()`
@@ -914,6 +926,7 @@ for name, ref in refs.items():
 Get provenance tracking for a config file, showing where each value originated.
 
 Returns a `Provenance` object with methods:
+
 - `get(path)` - Get `ProvenanceEntry` for a specific config path
 - `items()` - Iterate all (path, entry) tuples
 - `format()` - Get fluent builder for customized output
@@ -1103,16 +1116,6 @@ except InstantiationError as e:
 - **Provenance tracking**: Debug where each config value originated
 - **Lightweight**: Focused feature set, no bloat
 - **Pure Python output**: Instantiated objects have no framework dependency
-
-### Cons
-
-- **Early stage**: Some features from the vision are not yet implemented
-
-## Roadmap
-
-See [VISION.md](VISION.md) for planned features including:
-
-- Config groups
 
 ## License
 
