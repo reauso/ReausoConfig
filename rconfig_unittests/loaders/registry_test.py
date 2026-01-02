@@ -168,6 +168,6 @@ class LoadConfigTests(TestCase):
 
                 # Assert
                 self.assertTrue(result["test_loader"])
-                self.assertEqual(result["path"], "/configs/test.test")
+                self.assertEqual(Path(result["path"]).as_posix(), "/configs/test.test")
         finally:
             unregister_loader(test_loader)

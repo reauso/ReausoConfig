@@ -39,7 +39,8 @@ class ConfigFileErrorTests(TestCase):
         self.assertIsInstance(error, ConfigError)
         self.assertEqual(error.path, path)
         self.assertEqual(error.reason, "file not found")
-        self.assertIn("/config/test.yaml", str(error))
+        self.assertIn("config", str(error))
+        self.assertIn("test.yaml", str(error))
         self.assertIn("file not found", str(error))
 
 
