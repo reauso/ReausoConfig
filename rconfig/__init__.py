@@ -53,6 +53,14 @@ from .override import (
     parse_dict_overrides,
     parse_override_value,
 )
+from .export import (
+    Exporter,
+    DictExporter,
+    YamlExporter,
+    FileExporter,
+    SingleFileExporter,
+    MultiFileExporter,
+)
 from .errors import (
     AmbiguousTargetError,
     CircularInstanceError,
@@ -496,6 +504,262 @@ def get_provenance(path: Path) -> Provenance:
     return provenance
 
 
+# === Config Export / Serialization API ===
+
+
+def _resolved_config(
+    path: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+) -> tuple[dict[str, Any], ConfigComposer]:
+    """Internal helper: run resolution pipeline without instantiation.
+
+    :param path: Path to config file.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    :return: Tuple of (resolved config dict, composer instance).
+    """
+    from rconfig.interpolation import resolve_interpolations
+    from rconfig.validation.required import find_required_markers
+
+    composer = ConfigComposer()
+    config = composer.compose(path)
+
+    # Collect all overrides
+    all_overrides: list[Override] = []
+
+    # Programmatic overrides first
+    if overrides:
+        all_overrides.extend(parse_dict_overrides(overrides))
+
+    # CLI overrides second (wins on conflict)
+    if cli_overrides:
+        all_overrides.extend(extract_cli_overrides(sys.argv[1:]))
+
+    # Validate paths and coerce values
+    for override in all_overrides:
+        expected_type_hint = _validator.validate_override_path(override.path, config)
+        if override.operation == "set" and isinstance(override.value, str):
+            override.value = parse_override_value(override.value, expected_type_hint)
+
+    # Apply overrides
+    if all_overrides:
+        config = apply_overrides(config, all_overrides)
+
+    # Check for unsatisfied _required_ values
+    required_markers = find_required_markers(config)
+    if required_markers:
+        missing = [(m.path, m.expected_type) for m in required_markers]
+        raise RequiredValueError(missing)
+
+    # Resolve interpolations
+    config = resolve_interpolations(config)
+
+    return config, composer
+
+
+def export(
+    path: Path,
+    exporter: Exporter,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+) -> Any:
+    """Export resolved config using a custom exporter.
+
+    :param path: Path to config file.
+    :param exporter: Exporter instance to use.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    :return: The exported data in the exporter's target format.
+
+    Example::
+
+        class TomlExporter(rc.Exporter):
+            def export(self, config: dict) -> str:
+                import tomli_w
+                return tomli_w.dumps(config)
+
+        toml_str = rc.export(Path("config.yaml"), exporter=TomlExporter())
+    """
+    config, _ = _resolved_config(path, overrides=overrides, cli_overrides=cli_overrides)
+    return exporter.export(config)
+
+
+def to_dict(
+    path: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> dict[str, Any]:
+    """Export resolved config as a Python dictionary.
+
+    :param path: Path to config file.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    :param exclude_markers: If True, remove internal markers (_target_, etc.).
+    :return: Resolved config as a dictionary.
+
+    Example::
+
+        config = rc.to_dict(Path("config.yaml"))
+        print(config["model"]["hidden_size"])
+
+        # With overrides
+        config = rc.to_dict(
+            Path("config.yaml"),
+            overrides={"model.lr": 0.01},
+        )
+
+        # Without internal markers
+        clean = rc.to_dict(Path("config.yaml"), exclude_markers=True)
+    """
+    exporter = DictExporter(exclude_markers=exclude_markers)
+    return export(path, exporter, overrides=overrides, cli_overrides=cli_overrides)
+
+
+def to_yaml(
+    path: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> str:
+    """Export resolved config as a YAML string.
+
+    :param path: Path to config file.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    :param exclude_markers: If True, remove internal markers (_target_, etc.).
+    :return: Resolved config as a YAML string.
+
+    Example::
+
+        yaml_str = rc.to_yaml(Path("config.yaml"))
+        print(yaml_str)
+
+        # With overrides
+        yaml_str = rc.to_yaml(
+            Path("config.yaml"),
+            overrides={"model.lr": 0.01},
+        )
+    """
+    exporter = YamlExporter(exclude_markers=exclude_markers)
+    return export(path, exporter, overrides=overrides, cli_overrides=cli_overrides)
+
+
+def export_to_file(
+    path: Path,
+    file_exporter: FileExporter,
+    output_path: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+) -> None:
+    """Export resolved config to file(s) using a custom file exporter.
+
+    :param path: Path to config file.
+    :param file_exporter: FileExporter instance to use.
+    :param output_path: Output file or directory path.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+
+    Example::
+
+        class JsonFileExporter(rc.FileExporter):
+            def export_to_file(self, config, output_path, **kwargs):
+                import json
+                output_path.write_text(json.dumps(config, indent=2))
+
+        rc.export_to_file(
+            Path("config.yaml"),
+            file_exporter=JsonFileExporter(),
+            output_path=Path("config.json"),
+        )
+    """
+    config, composer = _resolved_config(
+        path, overrides=overrides, cli_overrides=cli_overrides
+    )
+    ref_graph = composer.ref_graph()
+    file_exporter.export_to_file(
+        config,
+        output_path,
+        source_path=path,
+        ref_graph=ref_graph,
+    )
+
+
+def to_yaml_file(
+    path: Path,
+    output_path: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> None:
+    """Export resolved config to a single YAML file.
+
+    All references are flattened into a single standalone file.
+
+    :param path: Path to config file.
+    :param output_path: Output file path.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    :param exclude_markers: If True, remove internal markers (_target_, etc.).
+
+    Example::
+
+        rc.to_yaml_file(Path("trainer.yaml"), output_path=Path("resolved.yaml"))
+    """
+    file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
+    export_to_file(
+        path,
+        file_exporter,
+        output_path,
+        overrides=overrides,
+        cli_overrides=cli_overrides,
+    )
+
+
+def to_yaml_files(
+    path: Path,
+    output_dir: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> None:
+    """Export resolved config preserving the original file structure.
+
+    Each referenced file is exported separately with interpolations resolved.
+    The _ref_ paths are preserved so the exported config maintains the same
+    structure as the original.
+
+    :param path: Path to config file.
+    :param output_dir: Output directory path.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    :param exclude_markers: If True, remove internal markers (_target_, etc.).
+
+    Example::
+
+        rc.to_yaml_files(Path("trainer.yaml"), output_dir=Path("output/"))
+        # Creates:
+        #   output/trainer.yaml (with _ref_: ./models/resnet.yaml)
+        #   output/models/resnet.yaml
+    """
+    file_exporter = MultiFileExporter(exclude_markers=exclude_markers)
+    export_to_file(
+        path,
+        file_exporter,
+        output_dir,
+        overrides=overrides,
+        cli_overrides=cli_overrides,
+    )
+
+
 # Public API - Minimal root exports
 # For classes like ConfigStore, ConfigValidator, etc., import from submodules:
 #   from rconfig.store import ConfigStore
@@ -519,6 +783,20 @@ __all__ = [
     # Lazy instantiation utilities
     "is_lazy_proxy",
     "force_initialize",
+    # Export API
+    "export",
+    "to_dict",
+    "to_yaml",
+    "export_to_file",
+    "to_yaml_file",
+    "to_yaml_files",
+    # Export classes (for custom exporters)
+    "Exporter",
+    "DictExporter",
+    "YamlExporter",
+    "FileExporter",
+    "SingleFileExporter",
+    "MultiFileExporter",
     # Exceptions (available at root for convenience)
     "AmbiguousTargetError",
     "CircularInstanceError",
