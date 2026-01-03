@@ -48,6 +48,7 @@ class ConfigComposer:
         self._config_root = config_root
         self._provenance: Provenance | None = None
         self._instance_resolver: InstanceResolver | None = None
+        self._ref_graph: dict[str, list[str]] = {}
 
     def compose(self, path: Path) -> dict[str, Any]:
         """Compose a config file by resolving all _ref_ references.
@@ -67,6 +68,9 @@ class ConfigComposer:
         # Compose the config tree, resolving _ref_ and collecting _instance_ markers
         walker = CompositionWalker(self._config_root, self._provenance)
         result = walker.compose(path)
+
+        # Store ref graph from walker
+        self._ref_graph = walker.ref_graph
 
         # Resolve all _instance_ references
         self._instance_resolver = InstanceResolver(self._provenance)
@@ -114,6 +118,27 @@ class ConfigComposer:
                 print(prov)  # Shows config with file:line annotations
         """
         return self._provenance
+
+    def ref_graph(self) -> dict[str, list[str]]:
+        """Get the graph of _ref_ relationships from the last composition.
+
+        Returns a mapping of source file path -> list of referenced file paths.
+        This is populated during composition and can be used by multi-file
+        exporters to preserve the original file structure.
+
+        :return: Dictionary mapping file paths to their referenced file paths.
+
+        Example::
+
+            composer = ConfigComposer()
+            config = composer.compose(Path("trainer.yaml"))
+            graph = composer.ref_graph()
+            # {
+            #   "/path/to/trainer.yaml": ["/path/to/models/resnet.yaml"],
+            #   "/path/to/models/resnet.yaml": ["/path/to/optim/adam.yaml"],
+            # }
+        """
+        return self._ref_graph
 
     def compose_with_provenance(self, path: Path) -> Provenance:
         """Compose a config file and track the origin of each value.

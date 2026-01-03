@@ -791,6 +791,62 @@ rc.unregister_resolver("uuid")
 rc.unregister_resolver("db", "lookup")  # Namespaced
 ```
 
+### Config Export / Serialization
+
+Export resolved configs to various formats without instantiation:
+
+```python
+import rconfig as rc
+from pathlib import Path
+
+# Export to Python dict (fully resolved)
+config_dict = rc.to_dict(Path("config.yaml"))
+print(config_dict["model"]["hidden_size"])  # 256
+
+# Export to YAML string
+yaml_str = rc.to_yaml(Path("config.yaml"))
+
+# With overrides
+config = rc.to_dict(
+    Path("config.yaml"),
+    overrides={"model.lr": 0.01}
+)
+
+# Remove internal markers (_target_, _ref_, _instance_, _lazy_)
+clean_dict = rc.to_dict(Path("config.yaml"), exclude_markers=True)
+```
+
+#### File Export
+
+Export to files directly:
+
+```python
+# Single file (all refs flattened)
+rc.to_yaml_file(Path("trainer.yaml"), output_path=Path("resolved.yaml"))
+
+# Multi-file (preserves _ref_ structure)
+rc.to_yaml_files(Path("trainer.yaml"), output_dir=Path("output/"))
+# Creates:
+#   output/trainer.yaml (with _ref_: ./models/resnet.yaml)
+#   output/models/resnet.yaml
+```
+
+#### Custom Exporters
+
+Create custom exporters by subclassing `Exporter` or `FileExporter`:
+
+```python
+from rconfig import Exporter, FileExporter
+import tomli_w
+
+class TomlExporter(Exporter):
+    def export(self, config: dict) -> str:
+        return tomli_w.dumps(config)
+
+# Use with rc.export()
+toml_str = rc.export(Path("config.yaml"), exporter=TomlExporter())
+```
+
 ### Provenance Tracking
 
 Track the origin of every config value - essential for debugging complex configs.
@@ -1127,6 +1183,55 @@ Force initialization of a lazy proxy without accessing attributes. No-op for reg
 ```python
 model = rc.instantiate(Path("config.yaml"), lazy=True)
 rc.force_initialize(model)  # model.__init__ called now
+```
+
+### `rc.to_dict(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+
+Export resolved config as a Python dictionary.
+
+```python
+config = rc.to_dict(Path("config.yaml"))
+clean = rc.to_dict(Path("config.yaml"), exclude_markers=True)
+```
+
+### `rc.to_yaml(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+
+Export resolved config as a YAML string.
+
+```python
+yaml_str = rc.to_yaml(Path("config.yaml"))
+```
+
+### `rc.to_yaml_file(path, output_path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+
+Export resolved config to a single YAML file (all refs flattened).
+
+```python
+rc.to_yaml_file(Path("config.yaml"), output_path=Path("resolved.yaml"))
+```
+
+### `rc.to_yaml_files(path, output_dir, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+
+Export resolved config preserving the original file structure.
+
+```python
+rc.to_yaml_files(Path("trainer.yaml"), output_dir=Path("output/"))
+```
+
+### `rc.export(path, exporter, *, overrides=None, cli_overrides=True)`
+
+Export resolved config using a custom `Exporter` subclass.
+
+```python
+result = rc.export(Path("config.yaml"), exporter=MyCustomExporter())
+```
+
+### `rc.export_to_file(path, file_exporter, output_path, *, overrides=None, cli_overrides=True)`
+
+Export resolved config to file(s) using a custom `FileExporter` subclass.
+
+```python
+rc.export_to_file(Path("config.yaml"), file_exporter=MyFileExporter(), output_path=Path("out/"))
 ```
 
 ## Advanced Usage
