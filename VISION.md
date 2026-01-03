@@ -94,9 +94,11 @@ def derive_from(path: str, *, _config_: dict) -> Any:
 
 ---
 
-## 2. Config Export / Serialization
+## 2. ✅ Config Export / Serialization
 
 **Adopted by:** OmegaConf, Dynaconf, Pydantic Settings
+
+**Status:** Implemented
 
 ### Description
 
@@ -1234,7 +1236,7 @@ This vision document outlines 11 features that would enhance rconfig based on pr
 ### High Priority (Widely Adopted)
 
 1. ✅ Custom Resolvers
-2. Config Export / Serialization
+2. ✅ Config Export / Serialization
 3. Built-in TOML and JSON Loaders
 4. Frozen Config Mode
 5. Structured Config Schemas

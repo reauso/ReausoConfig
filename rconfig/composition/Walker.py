@@ -138,6 +138,7 @@ class CompositionWalker:
         self._provenance = provenance
         self._instances: dict[str, InstanceMarker] = {}
         self._loading_stack: list[str] = []
+        self._ref_graph: dict[str, list[str]] = {}
 
     def compose(self, path: Path) -> CompositionResult:
         """Compose a config file by resolving _ref_ and collecting _instance_ markers.
@@ -165,6 +166,25 @@ class CompositionWalker:
             config=config,
             instances=self._instances,
         )
+
+    @property
+    def ref_graph(self) -> dict[str, list[str]]:
+        """Get the graph of _ref_ relationships.
+
+        Returns a mapping of source file path -> list of referenced file paths.
+        This is populated during composition.
+
+        Example::
+
+            walker = CompositionWalker(config_root, provenance)
+            result = walker.compose(Path("trainer.yaml"))
+            # {
+            #   "/path/trainer.yaml": ["/path/models/resnet.yaml"],
+            #   "/path/models/resnet.yaml": ["/path/optim/adam.yaml"],
+            # }
+            graph = walker.ref_graph
+        """
+        return self._ref_graph
 
     # =========================================================================
     # Core walking algorithm
@@ -376,6 +396,13 @@ class CompositionWalker:
 
         # Resolve the file path
         resolved_path = self._resolve_file_path(ref_path, current_dir, config_path)
+
+        # Track the ref relationship for the ref graph
+        resolved_path_str = str(resolved_path)
+        if file_path not in self._ref_graph:
+            self._ref_graph[file_path] = []
+        if resolved_path_str not in self._ref_graph[file_path]:
+            self._ref_graph[file_path].append(resolved_path_str)
 
         # Load and walk the referenced file
         try:
