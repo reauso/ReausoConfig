@@ -242,7 +242,9 @@ class ExportEdgeCasesTests(TestCase):
         """Export preserves unicode content."""
         # Create a temp YAML file with unicode
         unicode_yaml = self.output_dir / "unicode.yaml"
-        unicode_yaml.write_text("emoji: '\U0001F600'\nchinese: '\u4e2d\u6587'\n")
+        unicode_yaml.write_text(
+            "emoji: '\U0001F600'\nchinese: '\u4e2d\u6587'\n", encoding="utf-8"
+        )
 
         result = rc.to_yaml(unicode_yaml, cli_overrides=False)
         parsed = parse_yaml(result)
