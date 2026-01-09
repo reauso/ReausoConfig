@@ -52,6 +52,31 @@ class ConfigStore:
         """Extend behavior by registering new targets."""
 ```
 
+**Use `singledispatchmethod` for extensibility:**
+
+```python
+from functools import singledispatchmethod
+
+class CardCollection:
+    @singledispatchmethod
+    def filter(self, attribute_value) -> Self:
+        """Base method raises TypeError for unsupported types."""
+        message = f"Invalid value type '{type(attribute_value)}'"
+        raise TypeError(message)
+
+    @filter.register
+    def _(self, attribute_value: CardType) -> Self:
+        """Filter by card type - extends without modifying base."""
+        return self.__class__([card for card in self if card.card_type == attribute_value])
+
+    @filter.register
+    def _(self, attribute_value: FactionType) -> Self:
+        """Filter by faction type - extends without modifying base."""
+        return self.__class__([card for card in self if card.faction_type == attribute_value])
+```
+
+This pattern allows adding new filter types without changing existing code. Always consider `singledispatchmethod` when you need type-based polymorphism.
+
 ### Liskov Substitution Principle (LSP)
 
 Subtypes must be substitutable for their base types.
@@ -136,6 +161,38 @@ def register(self, name: str, target: type) -> None: ...
 def clear_cache() -> None: ...
 ```
 
+### Validation Methods That Raise Exceptions
+
+Methods that validate and raise exceptions on failure should use the imperative verb `validate_`:
+
+```python
+# Good - imperative verb, raises exception on failure
+def _validate_reputation(self) -> None:
+    """Validate reputation and raise ValueError if invalid."""
+    if self.card_type in types_with_reputation and self.reputation is None:
+        raise ValueError("Expected reputation")
+
+def _validate_faction_type(self) -> None:
+    """Validate faction type and raise ValueError if invalid."""
+    if self.card_type == CardType.FACTION and self.faction_type is None:
+        raise ValueError("Expected faction_type")
+```
+
+**Note:** This is distinct from methods that *collect* errors for accumulation:
+
+```python
+# Different pattern - returns errors for accumulation
+def _type_errors(self) -> list[ValidationError]:
+    """Collect and return type validation errors."""
+    errors = []
+    # ... collect errors ...
+    return errors
+```
+
+**When to use each:**
+- Use `validate_*()` (raises) for fail-fast validation in `__post_init__`
+- Use `*_errors()` (returns) for error accumulation in validation scenarios
+
 ### Boolean-Returning Methods
 
 Use predicates that read naturally as questions:
@@ -187,12 +244,27 @@ class ConfigReference:
 
 ### Read-Only Views
 
-Return `MappingProxyType` for internal collections to prevent mutation:
+Return immutable data structures to prevent mutation. The key requirement is **immutability**, not a specific type:
+
+- For dictionaries: Use `MappingProxyType`
+- For lists: Use `tuple` (tuples are immutable and therefore read-only)
+- For sets: Use `frozenset`
 
 ```python
+# Good - tuple is immutable
+@property
+def cards(self) -> tuple[Card, ...]:
+    return tuple(self._cards)
+
+# Good - MappingProxyType for dict
 @property
 def known_references(self) -> MappingProxyType[str, ConfigReference]:
     return MappingProxyType(self._known_references)
+
+# Good - frozenset is immutable
+@property
+def tags(self) -> frozenset[str]:
+    return frozenset(self._tags)
 ```
 
 ### Type Hints
@@ -207,6 +279,154 @@ Use modern Python 3.9+ type hint syntax:
 | `Dict[K, V]`            | `dict[K, V]`          |
 | `Tuple[X, Y]`           | `tuple[X, Y]`         |
 | `Set[X]`                | `set[X]`              |
+
+---
+
+## Separation of Concerns: Construction and Public APIs
+
+### Factory Pattern for Complex Construction
+
+Use factory classes to separate object construction from business logic. Factories handle the complexity of creating objects, allowing domain classes to focus on their core responsibilities.
+
+**When to use factories:**
+- Objects require complex initialization or validation
+- Construction involves data transformation (e.g., JSON → domain objects)
+- Multiple construction methods are needed (from file, from dict, etc.)
+- Dependencies need to be injected
+
+**Example from this codebase:**
+
+```python
+# Good - Factory handles complex construction
+class CardFactory:
+    def __init__(self, effect_factory: EffectFactory) -> None:
+        self._effect_factory = effect_factory
+
+    def from_json_dict(self, data: dict) -> Card:
+        # Normalize data
+        data = {key.lower(): value for key, value in data.items()}
+
+        # Transform types
+        data['card_type'] = CardType(data['card_type'].lower())
+
+        # Conditional field handling
+        if 'reputation' in data:
+            data['reputation'] = Reputation(data['reputation'].lower())
+
+        # Delegate to nested factory
+        data['effect'] = self._effect_factory.from_json_list(data=data['effect'])
+
+        # Simple construction at the end
+        return Card(**data)
+```
+
+**Domain class stays focused:**
+
+```python
+# Good - Card focuses on validation, not construction
+@dataclass(kw_only=True, frozen=True)
+class Card:
+    card_type: CardType
+    name: str
+    base_value: int
+    effect: Effect
+    reputation: Reputation | None = None
+    faction_type: FactionType | None = None
+
+    def __post_init__(self):
+        # Only validation logic here, not construction
+        self._validate_reputation()
+        self._validate_faction_type()
+```
+
+**Factory chains support Dependency Inversion:**
+
+```python
+# Good - Dependencies injected through constructors
+effect_factory = EffectFactory()
+card_factory = CardFactory(effect_factory)
+deck_factory = CardDeckFactory(card_factory)
+```
+
+**When NOT to use factories:**
+- Simple objects with no transformation logic
+- Objects that are straightforward to construct directly
+- When the constructor is already simple and clear
+
+### Facade Pattern for Module APIs
+
+Expose a public API through module `__init__.py` files to provide a single import location, hide internal implementation details, and enable loose coupling.
+
+**When to use facades:**
+- Modules with multiple internal files
+- Clear distinction between public API and internal implementation
+- Users would otherwise need to know the directory structure
+- You want to enable refactoring without breaking external code
+
+**Before (fragmented imports):**
+
+```python
+# Bad - Users must know internal structure
+from n7tactics.gameobjects.card_collection import CardDeckFactory
+from n7tactics.gameobjects.cards import CardFactory
+from n7tactics.gameobjects.effects import EffectFactory
+from n7tactics.gameobjects.effects.evaluator import LarkEffectEvaluator  # Deep import
+from n7tactics.gameobjects.hand import HandCards
+```
+
+**After (facade pattern):**
+
+```python
+# Good - Single import location with clear public API
+from n7tactics.gameobjects import (
+    CardDeckFactory,
+    CardFactory,
+    EffectFactory,
+    LarkEffectEvaluator,
+    HandCards
+)
+```
+
+**Example facade implementation:**
+
+```python
+# n7tactics/gameobjects/__init__.py
+"""Public API for game objects."""
+
+# Core data classes
+from .cards import Card, CardFactory, CardType, FactionType, Reputation, WeaponType
+from .card_collection import CardCollection, CardDeck, CardDeckFactory
+from .hand import HandCards
+
+# Effects (re-exported from effects module)
+from .effects import Effect, SubEffect, SubEffectType, EffectFactory, LarkEffectEvaluator
+
+__all__ = [
+    # Cards
+    'Card', 'CardFactory', 'CardType', 'FactionType', 'Reputation', 'WeaponType',
+    # Collections
+    'CardCollection', 'CardDeck', 'CardDeckFactory',
+    'HandCards',
+    # Effects
+    'Effect', 'SubEffect', 'SubEffectType', 'EffectFactory', 'LarkEffectEvaluator',
+]
+```
+
+**Benefits:**
+- **Discoverability**: Users know where to find the public API
+- **Loose coupling**: Internal refactoring doesn't break external code
+- **Reduced cognitive load**: One import location instead of memorizing directory structure
+- **Clear boundaries**: Distinguishes public API from internal implementation
+
+**When NOT to use facades:**
+- Single-file modules
+- Internal packages not meant for external use
+- When every class is part of the public API anyway
+
+**Connection to SOLID:**
+- Supports **Interface Segregation Principle** by exposing only what clients need
+- Enables **Dependency Inversion** by providing stable abstractions
+- Maintains **Single Responsibility** by keeping API concerns separate from implementation
 
 ---
 
@@ -246,6 +466,69 @@ Development scratch files, debug scripts, and temporary code should not be commi
 - Use `.gitignore` for local scratch files
 - Keep experiments in separate branches
 - Remove `print()` debugging statements before committing
+
+---
+
+## Code Quality Examples
+
+This section documents excellent patterns found in this codebase that should be followed.
+
+### Frozen Dataclasses for Immutability
+
+```python
+@dataclass(kw_only=True, frozen=True)
+class Card:
+    """Immutable card representation with keyword-only arguments."""
+    card_type: CardType
+    name: str
+    base_value: int
+    effect: Effect
+    reputation: Reputation | None = None
+```
+
+**Why this is excellent:**
+- `frozen=True` ensures immutability after creation
+- `kw_only=True` forces explicit field names at call sites (better readability)
+- Comprehensive type hints
+
+### Singledispatch for Type-Based Polymorphism
+
+```python
+from functools import singledispatchmethod
+
+class CardCollection:
+    @singledispatchmethod
+    def filter(self, attribute_value) -> Self:
+        raise TypeError(f"Invalid type: {type(attribute_value)}")
+
+    @filter.register
+    def _(self, attribute_value: CardType) -> Self:
+        return self.__class__([card for card in self if card.card_type == attribute_value])
+```
+
+**Why this is excellent:**
+- Open/Closed Principle - extend without modifying base
+- Type-safe dispatch
+- Clear error for unsupported types
+
+### Guard Clauses for Readability
+
+```python
+def _implicit_nested_errors(self, value: dict, expected_type: type) -> list[ValidationError]:
+    class_type = extract_class_from_hint(expected_type)
+
+    # Guard clause - early return reduces nesting
+    if class_type is None:
+        return []
+
+    # Main logic continues with minimal nesting
+    # ...
+```
+
+**Why this is excellent:**
+- Reduces cognitive complexity
+- Happy path is not buried in nesting
+- Makes preconditions explicit
 
 ---
 
@@ -311,9 +594,34 @@ def _implicit_nested_errors(self, value: dict, expected_type: type) -> list[Vali
 
 ### Custom Exceptions
 
-Create specific exception types with rich context:
+**Prefer built-in exceptions when they accurately represent the error:**
+
+- `ValueError` - invalid value for the type
+- `TypeError` - wrong type passed
+- `KeyError` - missing dictionary key
+- `AttributeError` - missing attribute
+- `IndexError` - index out of range
+
+**Create custom exceptions when you need:**
+- Domain-specific error handling (catch specific business logic errors)
+- Rich structured context beyond a message string
+- Error hierarchies for granular exception handling
 
 ```python
+# Good - ValueError is appropriate for card validation
+def _validate_reputation(self):
+    if self.card_type in types_with_reputation and self.reputation is None:
+        raise ValueError(f"Card type {self.card_type} requires reputation")
+
+# Good - Custom exception when you need structured context for caller
+class CircularReferenceError(Exception):
+    """Raised when circular references detected in config chain."""
+    def __init__(self, reference_chain: list[str]):
+        self.reference_chain = reference_chain
+        chain_str = " -> ".join(reference_chain)
+        super().__init__(f"Circular reference detected: {chain_str}")
+
+# Good - Custom exception with rich context
 class TypeMismatchError(ValidationError):
     """Raised when a config value doesn't match the expected type."""
 
@@ -332,6 +640,8 @@ class TypeMismatchError(ValidationError):
             config_path,
         )
 ```
+
+Only create custom exceptions where they provide clear value.
 
 ---
 
