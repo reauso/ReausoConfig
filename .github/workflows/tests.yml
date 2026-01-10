@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install . pytest coverage parameterized
+          pip install ".[test]"
       - name: Run tests
         run: coverage run -m pytest
       - name: Generate coverage report
