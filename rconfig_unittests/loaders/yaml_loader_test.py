@@ -21,26 +21,6 @@ class YamlConfigLoaderTests(TestCase):
         # Assert
         self.assertIsInstance(loader, ConfigFileLoader)
 
-    def test_supports__YamlExtension__ReturnsTrue(self):
-        # Arrange
-        loader = YamlConfigLoader()
-
-        # Act & Assert
-        self.assertTrue(loader.supports(Path("config.yaml")))
-        self.assertTrue(loader.supports(Path("config.yml")))
-        self.assertTrue(loader.supports(Path("/path/to/config.YAML")))
-        self.assertTrue(loader.supports(Path("/path/to/config.YML")))
-
-    def test_supports__NonYamlExtension__ReturnsFalse(self):
-        # Arrange
-        loader = YamlConfigLoader()
-
-        # Act & Assert
-        self.assertFalse(loader.supports(Path("config.json")))
-        self.assertFalse(loader.supports(Path("config.toml")))
-        self.assertFalse(loader.supports(Path("config.txt")))
-        self.assertFalse(loader.supports(Path("config")))
-
     def test_load__ValidYamlFile__ReturnsDict(self):
         # Arrange
         loader = YamlConfigLoader()
@@ -183,9 +163,9 @@ class YamlConfigLoaderPositionsTests(TestCase):
     def setUp(self):
         clear_cache()
 
-    def test_load_with_positions__ValidYaml__ReturnsCommentedMap(self):
+    def test_load_with_positions__ValidYaml__ReturnsPositionMap(self):
         # Arrange
-        from ruamel.yaml.comments import CommentedMap
+        from rconfig.loaders.position_map import PositionMap
 
         loader = YamlConfigLoader()
         fs = MockFileSystem("/configs")
@@ -196,7 +176,7 @@ class YamlConfigLoaderPositionsTests(TestCase):
             result = loader.load_with_positions(Path("/configs/model.yaml"))
 
             # Assert
-            self.assertIsInstance(result, CommentedMap)
+            self.assertIsInstance(result, PositionMap)
             self.assertEqual(result["_target_"], "model")
             self.assertEqual(result["layers"], 50)
 
@@ -210,19 +190,28 @@ class YamlConfigLoaderPositionsTests(TestCase):
             # Act
             result = loader.load_with_positions(Path("/configs/model.yaml"))
 
-            # Assert - line numbers are 0-indexed
-            line, _ = result.lc.key("_target_")
-            self.assertEqual(line, 0)
+            # Assert - line numbers are 1-indexed in PositionMap
+            self.assertEqual(result.get_line("_target_"), 1)
+            self.assertEqual(result.get_line("layers"), 2)
+            self.assertEqual(result.get_line("lr"), 3)
 
-            line, _ = result.lc.key("layers")
-            self.assertEqual(line, 1)
-
-            line, _ = result.lc.key("lr")
-            self.assertEqual(line, 2)
-
-    def test_load_with_positions__EmptyFile__ReturnsEmptyCommentedMap(self):
+    def test_load_with_positions__HasColumnInfo__CanGetColumnNumbers(self):
         # Arrange
-        from ruamel.yaml.comments import CommentedMap
+        loader = YamlConfigLoader()
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", "_target_: model\nlayers: 50\n")
+
+        with mock_filesystem(fs):
+            # Act
+            result = loader.load_with_positions(Path("/configs/model.yaml"))
+
+            # Assert - column numbers are 1-indexed
+            self.assertEqual(result.get_column("_target_"), 1)
+            self.assertEqual(result.get_column("layers"), 1)
+
+    def test_load_with_positions__EmptyFile__ReturnsEmptyPositionMap(self):
+        # Arrange
+        from rconfig.loaders.position_map import PositionMap
 
         loader = YamlConfigLoader()
         fs = MockFileSystem("/configs")
@@ -233,7 +222,7 @@ class YamlConfigLoaderPositionsTests(TestCase):
             result = loader.load_with_positions(Path("/configs/empty.yaml"))
 
             # Assert
-            self.assertIsInstance(result, CommentedMap)
+            self.assertIsInstance(result, PositionMap)
             self.assertEqual(len(result), 0)
 
     def test_load_with_positions__FileNotFound__RaisesConfigFileError(self):

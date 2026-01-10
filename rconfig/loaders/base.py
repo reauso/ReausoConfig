@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
+from rconfig.loaders.position_map import PositionMap
+
 
 class ConfigFileLoader(ABC):
     """Abstract base class for config file loaders.
@@ -16,16 +18,21 @@ class ConfigFileLoader(ABC):
     Implementations must handle file reading and parsing, converting
     the file contents to a Python dictionary.
 
-    Example::
+    To register a custom loader, use the register_loader function::
 
-        class JsonConfigLoader(ConfigFileLoader):
+        from rconfig.loaders import register_loader
+
+        class IniConfigLoader(ConfigFileLoader):
             def load(self, path: Path) -> dict[str, Any]:
-                import json
-                with open(path) as f:
-                    return json.load(f)
+                import configparser
+                parser = configparser.ConfigParser()
+                parser.read(path)
+                return {s: dict(parser[s]) for s in parser.sections()}
 
-            def supports(self, path: Path) -> bool:
-                return path.suffix.lower() == '.json'
+            def load_with_positions(self, path: Path) -> PositionMap:
+                return PositionMap(self.load(path))
+
+        register_loader(IniConfigLoader(), ".ini")
     """
 
     @abstractmethod
@@ -38,11 +45,18 @@ class ConfigFileLoader(ABC):
         """
 
     @abstractmethod
-    def supports(self, path: Path) -> bool:
-        """Check if this loader supports the given file.
+    def load_with_positions(self, path: Path) -> PositionMap:
+        """Load a config file preserving line and column position information.
 
-        Typically checks the file extension to determine compatibility.
+        This method returns a PositionMap which provides position lookup
+        for each key via the ``get_position()`` method.
 
-        :param path: Path to check.
-        :return: True if this loader can handle the file.
+        :param path: Path to the config file.
+        :return: PositionMap with position information.
+        :raises ConfigFileError: If the file cannot be read or parsed.
+
+        Example::
+
+            config = loader.load_with_positions(Path("config.json"))
+            pos = config.get_position("_target_")  # Position(line=1, column=3)
         """

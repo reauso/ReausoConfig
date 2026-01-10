@@ -3,7 +3,9 @@
 These tests verify the complete export system works end-to-end using real YAML files.
 """
 
+import json
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -123,25 +125,25 @@ class FileExportIntegrationTests(TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_to_yaml_file__SimpleConfig__CreatesValidFile(self):
-        """to_yaml_file creates a valid YAML file."""
+    def test_to_file__YamlOutput__CreatesValidFile(self):
+        """to_file creates a valid YAML file when output has .yaml extension."""
         config_path = CONFIG_DIR / "trainer_config.yaml"
         output_path = self.output_dir / "output.yaml"
 
-        rc.to_yaml_file(config_path, output_path, cli_overrides=False)
+        rc.to_file(config_path, output_path, cli_overrides=False)
 
         self.assertTrue(output_path.exists())
         content = output_path.read_text()
         parsed = parse_yaml(content)
         self.assertEqual(parsed["epochs"], 10)
 
-    def test_to_yaml_file__OutputCanBeReloaded__RoundTrip(self):
+    def test_to_file__OutputCanBeReloaded__RoundTrip(self):
         """Exported file can be loaded back and matches original."""
         config_path = CONFIG_DIR / "trainer_config.yaml"
         output_path = self.output_dir / "exported.yaml"
 
         # Export
-        rc.to_yaml_file(config_path, output_path, cli_overrides=False)
+        rc.to_file(config_path, output_path, cli_overrides=False)
 
         # Load original
         original = rc.to_dict(config_path, cli_overrides=False)
@@ -159,25 +161,24 @@ class FileExportIntegrationTests(TestCase):
             exported["model"]["hidden_size"],
         )
 
-    def test_to_yaml_files__SingleFile__WritesToDirectory(self):
-        """to_yaml_files writes config to directory."""
+    def test_to_files__SingleFile__WritesToDirectory(self):
+        """to_files writes config to specified file path."""
         config_path = CONFIG_DIR / "trainer_config.yaml"
-        output_dir = self.output_dir / "exported"
+        output_file = self.output_dir / "exported" / "trainer_config.yaml"
 
-        rc.to_yaml_files(config_path, output_dir, cli_overrides=False)
+        rc.to_files(config_path, output_file, cli_overrides=False)
 
-        output_file = output_dir / "trainer_config.yaml"
         self.assertTrue(output_file.exists())
         content = output_file.read_text()
         parsed = parse_yaml(content)
         self.assertEqual(parsed["epochs"], 10)
 
-    def test_to_yaml_file__WithOverrides__AppliesOverrides(self):
-        """to_yaml_file applies overrides to the output."""
+    def test_to_file__WithOverrides__AppliesOverrides(self):
+        """to_file applies overrides to the output."""
         config_path = CONFIG_DIR / "trainer_config.yaml"
         output_path = self.output_dir / "output.yaml"
 
-        rc.to_yaml_file(
+        rc.to_file(
             config_path,
             output_path,
             overrides={"epochs": 100},
@@ -188,12 +189,12 @@ class FileExportIntegrationTests(TestCase):
         parsed = parse_yaml(content)
         self.assertEqual(parsed["epochs"], 100)
 
-    def test_to_yaml_file__ExcludeMarkers__RemovesTargets(self):
-        """to_yaml_file with exclude_markers removes _target_."""
+    def test_to_file__ExcludeMarkers__RemovesTargets(self):
+        """to_file with exclude_markers removes _target_."""
         config_path = CONFIG_DIR / "trainer_config.yaml"
         output_path = self.output_dir / "output.yaml"
 
-        rc.to_yaml_file(
+        rc.to_file(
             config_path,
             output_path,
             exclude_markers=True,
@@ -286,3 +287,247 @@ class RefGraphIntegrationTests(TestCase):
 
         # Should be empty since trainer_config.yaml has no refs
         self.assertEqual(ref_graph, {})
+
+
+class JsonExportIntegrationTests(TestCase):
+    """Integration tests for JSON export with real config files."""
+
+    def setUp(self):
+        rc._store._known_references.clear()
+        rc.register("model", ModelConfig)
+        rc.register("trainer", TrainerConfig)
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.output_dir = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_to_json__ConfigPath__ReturnsValidJson(self):
+        """to_json returns valid JSON string."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        result = rc.to_json(config_path, cli_overrides=False)
+
+        self.assertIsInstance(result, str)
+        parsed = json.loads(result)
+        self.assertEqual(parsed["epochs"], 10)
+        self.assertEqual(parsed["model"]["hidden_size"], 256)
+
+    def test_to_json__WithRefComposition__ResolvesReferences(self):
+        """JSON export resolves _ref_ references correctly."""
+        config_path = CONFIG_DIR / "trainer_with_ref.yaml"
+
+        result = rc.to_json(config_path, cli_overrides=False)
+        parsed = json.loads(result)
+
+        self.assertIn("model", parsed)
+        self.assertEqual(parsed["model"]["hidden_size"], 256)
+        self.assertEqual(parsed["model"]["dropout"], 0.2)
+
+    def test_to_json__WithOverrides__AppliesOverrides(self):
+        """JSON export applies overrides correctly."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        result = rc.to_json(
+            config_path,
+            overrides={"epochs": 50},
+            cli_overrides=False,
+        )
+        parsed = json.loads(result)
+
+        self.assertEqual(parsed["epochs"], 50)
+
+    def test_to_json__ExcludeMarkers__RemovesMarkers(self):
+        """JSON export removes markers when exclude_markers=True."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        result = rc.to_json(
+            config_path,
+            exclude_markers=True,
+            cli_overrides=False,
+        )
+        parsed = json.loads(result)
+
+        self.assertNotIn("_target_", parsed)
+        self.assertNotIn("_target_", parsed["model"])
+
+    def test_to_file__JsonOutput__CreatesValidFile(self):
+        """to_file creates a valid JSON file when output has .json extension."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+        output_path = self.output_dir / "output.json"
+
+        rc.to_file(config_path, output_path, cli_overrides=False)
+
+        self.assertTrue(output_path.exists())
+        content = output_path.read_text()
+        parsed = json.loads(content)
+        self.assertEqual(parsed["epochs"], 10)
+
+    def test_to_file__JsonRoundTrip__CanBeReloaded(self):
+        """Exported JSON can be loaded back via rconfig."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+        output_path = self.output_dir / "exported.json"
+
+        # Export to JSON
+        rc.to_file(config_path, output_path, cli_overrides=False)
+
+        # Load back via rconfig
+        exported = rc.to_dict(output_path, cli_overrides=False)
+
+        self.assertEqual(exported["epochs"], 10)
+        self.assertEqual(exported["model"]["hidden_size"], 256)
+
+
+class TomlExportIntegrationTests(TestCase):
+    """Integration tests for TOML export with real config files."""
+
+    def setUp(self):
+        rc._store._known_references.clear()
+        rc.register("model", ModelConfig)
+        rc.register("trainer", TrainerConfig)
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.output_dir = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_to_toml__ConfigPath__ReturnsValidToml(self):
+        """to_toml returns valid TOML string."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        result = rc.to_toml(config_path, cli_overrides=False)
+
+        self.assertIsInstance(result, str)
+        parsed = tomllib.loads(result)
+        self.assertEqual(parsed["epochs"], 10)
+        self.assertEqual(parsed["model"]["hidden_size"], 256)
+
+    def test_to_toml__WithRefComposition__ResolvesReferences(self):
+        """TOML export resolves _ref_ references correctly."""
+        config_path = CONFIG_DIR / "trainer_with_ref.yaml"
+
+        result = rc.to_toml(config_path, cli_overrides=False)
+        parsed = tomllib.loads(result)
+
+        self.assertIn("model", parsed)
+        self.assertEqual(parsed["model"]["hidden_size"], 256)
+        self.assertEqual(parsed["model"]["dropout"], 0.2)
+
+    def test_to_toml__WithOverrides__AppliesOverrides(self):
+        """TOML export applies overrides correctly."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        result = rc.to_toml(
+            config_path,
+            overrides={"epochs": 50},
+            cli_overrides=False,
+        )
+        parsed = tomllib.loads(result)
+
+        self.assertEqual(parsed["epochs"], 50)
+
+    def test_to_toml__ExcludeMarkers__RemovesMarkers(self):
+        """TOML export removes markers when exclude_markers=True."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        result = rc.to_toml(
+            config_path,
+            exclude_markers=True,
+            cli_overrides=False,
+        )
+        parsed = tomllib.loads(result)
+
+        self.assertNotIn("_target_", parsed)
+        self.assertNotIn("_target_", parsed["model"])
+
+    def test_to_file__TomlOutput__CreatesValidFile(self):
+        """to_file creates a valid TOML file when output has .toml extension."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+        output_path = self.output_dir / "output.toml"
+
+        rc.to_file(config_path, output_path, cli_overrides=False)
+
+        self.assertTrue(output_path.exists())
+        content = output_path.read_text()
+        parsed = tomllib.loads(content)
+        self.assertEqual(parsed["epochs"], 10)
+
+    def test_to_file__TomlRoundTrip__CanBeReloaded(self):
+        """Exported TOML can be loaded back via rconfig."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+        output_path = self.output_dir / "exported.toml"
+
+        # Export to TOML
+        rc.to_file(config_path, output_path, cli_overrides=False)
+
+        # Load back via rconfig
+        exported = rc.to_dict(output_path, cli_overrides=False)
+
+        self.assertEqual(exported["epochs"], 10)
+        self.assertEqual(exported["model"]["hidden_size"], 256)
+
+
+class CrossFormatExportIntegrationTests(TestCase):
+    """Integration tests for cross-format export scenarios."""
+
+    def setUp(self):
+        rc._store._known_references.clear()
+        rc.register("model", ModelConfig)
+        rc.register("trainer", TrainerConfig)
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.output_dir = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_yaml_to_json__Conversion__PreservesValues(self):
+        """Converting YAML config to JSON preserves values."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Load via YAML, export as JSON
+        yaml_dict = rc.to_dict(config_path, cli_overrides=False)
+        json_str = rc.to_json(config_path, cli_overrides=False)
+        json_dict = json.loads(json_str)
+
+        self.assertEqual(yaml_dict["epochs"], json_dict["epochs"])
+        self.assertEqual(
+            yaml_dict["model"]["hidden_size"],
+            json_dict["model"]["hidden_size"],
+        )
+
+    def test_yaml_to_toml__Conversion__PreservesValues(self):
+        """Converting YAML config to TOML preserves values."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Load via YAML, export as TOML
+        yaml_dict = rc.to_dict(config_path, cli_overrides=False)
+        toml_str = rc.to_toml(config_path, cli_overrides=False)
+        toml_dict = tomllib.loads(toml_str)
+
+        self.assertEqual(yaml_dict["epochs"], toml_dict["epochs"])
+        self.assertEqual(
+            yaml_dict["model"]["hidden_size"],
+            toml_dict["model"]["hidden_size"],
+        )
+
+    def test_chain_export__YamlToJsonToToml__ValuesPreserved(self):
+        """Chaining exports (YAML -> JSON -> TOML) preserves values."""
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+        json_path = self.output_dir / "intermediate.json"
+        toml_path = self.output_dir / "final.toml"
+
+        # Export YAML to JSON
+        rc.to_file(config_path, json_path, cli_overrides=False)
+
+        # Export JSON to TOML
+        rc.to_file(json_path, toml_path, cli_overrides=False)
+
+        # Load original and final
+        original = rc.to_dict(config_path, cli_overrides=False)
+        final = rc.to_dict(toml_path, cli_overrides=False)
+
+        self.assertEqual(original["epochs"], final["epochs"])
+        self.assertEqual(
+            original["model"]["hidden_size"],
+            final["model"]["hidden_size"],
+        )

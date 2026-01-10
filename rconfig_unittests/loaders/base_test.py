@@ -3,6 +3,7 @@ from typing import Any
 from unittest import TestCase
 
 from rconfig.loaders.base import ConfigFileLoader
+from rconfig.loaders.position_map import PositionMap
 
 
 class ConfigFileLoaderTests(TestCase):
@@ -19,6 +20,9 @@ class ConfigFileLoaderTests(TestCase):
             def load(self, path: Path) -> dict[str, Any]:
                 return {"test": "value"}
 
+            def load_with_positions(self, path: Path) -> PositionMap:
+                return PositionMap({"test": "value"})
+
             def supports(self, path: Path) -> bool:
                 return path.suffix == ".test"
 
@@ -33,6 +37,9 @@ class ConfigFileLoaderTests(TestCase):
         class TestLoader(ConfigFileLoader):
             def load(self, path: Path) -> dict[str, Any]:
                 return {"key": "value", "number": 42}
+
+            def load_with_positions(self, path: Path) -> PositionMap:
+                return PositionMap({"key": "value", "number": 42})
 
             def supports(self, path: Path) -> bool:
                 return True
@@ -51,6 +58,9 @@ class ConfigFileLoaderTests(TestCase):
             def load(self, path: Path) -> dict[str, Any]:
                 return {}
 
+            def load_with_positions(self, path: Path) -> PositionMap:
+                return PositionMap()
+
             def supports(self, path: Path) -> bool:
                 return path.suffix in (".yaml", ".yml")
 
@@ -67,7 +77,7 @@ class ConfigFileLoaderTests(TestCase):
             def load(self, path: Path) -> dict[str, Any]:
                 return {}
 
-            # Missing supports() method
+            # Missing supports() and load_with_positions() methods
 
         # Act & Assert
         with self.assertRaises(TypeError):

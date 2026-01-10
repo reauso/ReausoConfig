@@ -1,10 +1,10 @@
 # ReausoConfig
 
-A lightweight Python configuration library that turns YAML files into Python objects with minimal runtime coupling.
+A lightweight Python configuration library that turns YAML, JSON, and TOML files into Python objects with minimal runtime coupling.
 
 ## What is ReausoConfig?
 
-ReausoConfig provides a simple way to load YAML configuration files and instantiate Python objects from them. Unlike heavier frameworks, your application code doesn't need to know about ReausoConfig—only the startup/registration code does.
+ReausoConfig provides a simple way to load configuration files (YAML, JSON, or TOML) and instantiate Python objects from them. Unlike heavier frameworks, your application code doesn't need to know about ReausoConfig—only the startup/registration code does.
 
 After instantiation, you get pure Python objects with no framework dependency.
 
@@ -28,13 +28,29 @@ class ModelConfig:
     dropout: float = 0.1
 ```
 
-### 2. Create a YAML config file
+### 2. Create a config file
 
+**YAML** (config.yaml):
 ```yaml
-# config.yaml
 _target_: model
 hidden_size: 256
 dropout: 0.2
+```
+
+**JSON** (config.json):
+```json
+{
+    "_target_": "model",
+    "hidden_size": 256,
+    "dropout": 0.2
+}
+```
+
+**TOML** (config.toml):
+```toml
+_target_ = "model"
+hidden_size = 256
+dropout = 0.2
 ```
 
 The `_target_` key maps to a registered class name.
@@ -61,6 +77,36 @@ if not result.valid:
 ```
 
 ## Core Concepts
+
+### Supported File Formats
+
+ReausoConfig has built-in support for three configuration formats:
+
+| Format | Extensions | Notes |
+|--------|------------|-------|
+| YAML | `.yaml`, `.yml` | Primary format, preserves comments with ruamel.yaml |
+| JSON | `.json` | Standard JSON, good for programmatic generation |
+| TOML | `.toml` | Python 3.11+ (uses stdlib tomllib) |
+
+The loader is selected automatically based on file extension:
+
+```python
+# All work the same way
+model = rc.instantiate(Path("config.yaml"))
+model = rc.instantiate(Path("config.json"))
+model = rc.instantiate(Path("config.toml"))
+```
+
+**Cross-format composition:** You can mix formats with `_ref_`:
+
+```yaml
+# trainer.yaml
+_target_: trainer
+model:
+  _ref_: ./models/resnet.json  # Load JSON from YAML
+settings:
+  _ref_: ./settings.toml       # Load TOML from YAML
+```
 
 ### The `_target_` Key
 
@@ -806,6 +852,12 @@ print(config_dict["model"]["hidden_size"])  # 256
 # Export to YAML string
 yaml_str = rc.to_yaml(Path("config.yaml"))
 
+# Export to JSON string
+json_str = rc.to_json(Path("config.yaml"))
+
+# Export to TOML string
+toml_str = rc.to_toml(Path("config.yaml"))
+
 # With overrides
 config = rc.to_dict(
     Path("config.yaml"),
@@ -818,33 +870,69 @@ clean_dict = rc.to_dict(Path("config.yaml"), exclude_markers=True)
 
 #### File Export
 
-Export to files directly:
+Export to files with automatic format detection based on output file extension:
 
 ```python
-# Single file (all refs flattened)
-rc.to_yaml_file(Path("trainer.yaml"), output_path=Path("resolved.yaml"))
+# Single file export - format auto-detected from extension
+rc.to_file(Path("trainer.yaml"), Path("output.json"))   # YAML -> JSON
+rc.to_file(Path("trainer.yaml"), Path("output.toml"))   # YAML -> TOML
+rc.to_file(Path("trainer.yaml"), Path("output.yaml"))   # YAML -> YAML
 
-# Multi-file (preserves _ref_ structure)
-rc.to_yaml_files(Path("trainer.yaml"), output_dir=Path("output/"))
+# Export from dict (useful for post-processing)
+config = {"model": {"lr": 0.01}, "epochs": 10}
+rc.to_file(config, Path("output.yaml"))
+
+# Post-processing workflow
+config = rc.to_dict(Path("config.yaml"), cli_overrides=False)
+config["extra_key"] = "added_value"
+rc.to_file(config, Path("output.json"))
+
+# Multi-file export preserving _ref_ structure
+rc.to_files(Path("trainer.yaml"), Path("output/trainer.json"))
 # Creates:
-#   output/trainer.yaml (with _ref_: ./models/resnet.yaml)
-#   output/models/resnet.yaml
+#   output/trainer.json (root file in JSON format)
+#   output/models/resnet.yaml (preserves original YAML format)
+#   output/settings.toml (preserves original TOML format)
+```
+
+#### Cross-Format Export
+
+Load configs from any format and export to another:
+
+```python
+# Load YAML, export as JSON string
+json_str = rc.to_json(Path("config.yaml"))
+
+# Load TOML, export as YAML string
+yaml_str = rc.to_yaml(Path("config.toml"))
+
+# Load JSON, export to TOML file
+rc.to_file(Path("config.json"), Path("output.toml"))
 ```
 
 #### Custom Exporters
 
-Create custom exporters by subclassing `Exporter` or `FileExporter`:
+Register custom exporters for additional formats:
 
 ```python
-from rconfig import Exporter, FileExporter
-import tomli_w
+from rconfig import Exporter, register_exporter
 
-class TomlExporter(Exporter):
+class XmlExporter(Exporter):
     def export(self, config: dict) -> str:
-        return tomli_w.dumps(config)
+        # Custom XML serialization logic
+        return dict_to_xml(config)
 
-# Use with rc.export()
-toml_str = rc.export(Path("config.yaml"), exporter=TomlExporter())
+# Register for .xml extension
+register_exporter(XmlExporter(), ".xml")
+
+# Now works with to_file
+rc.to_file(Path("config.yaml"), Path("output.xml"))
+```
+
+For more control, use the `export()` function with a custom exporter instance:
+
+```python
+result = rc.export(Path("config.yaml"), exporter=MyCustomExporter())
 ```
 
 ### Provenance Tracking
@@ -1202,20 +1290,56 @@ Export resolved config as a YAML string.
 yaml_str = rc.to_yaml(Path("config.yaml"))
 ```
 
-### `rc.to_yaml_file(path, output_path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+### `rc.to_json(path, *, overrides=None, cli_overrides=True, exclude_markers=False, indent=2)`
 
-Export resolved config to a single YAML file (all refs flattened).
+Export resolved config as a JSON string.
 
 ```python
-rc.to_yaml_file(Path("config.yaml"), output_path=Path("resolved.yaml"))
+json_str = rc.to_json(Path("config.yaml"))
 ```
 
-### `rc.to_yaml_files(path, output_dir, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+### `rc.to_toml(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
-Export resolved config preserving the original file structure.
+Export resolved config as a TOML string.
 
 ```python
-rc.to_yaml_files(Path("trainer.yaml"), output_dir=Path("output/"))
+toml_str = rc.to_toml(Path("config.yaml"))
+```
+
+### `rc.to_file(source, output_path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+
+Export config to a single file with format auto-detected from output path extension.
+
+- `source`: Path to config file, or dict
+- When source is a dict, `overrides` and `cli_overrides` are ignored
+
+```python
+# From file path
+rc.to_file(Path("config.yaml"), Path("output.json"))   # YAML -> JSON
+rc.to_file(Path("config.yaml"), Path("output.toml"))   # YAML -> TOML
+
+# From dict
+config = {"model": {"lr": 0.01}, "epochs": 10}
+rc.to_file(config, Path("output.yaml"))
+```
+
+### `rc.to_files(source, config_root_file, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+
+Export config preserving the `_ref_` file structure. The root file format is determined by the output path extension, while referenced files preserve their original formats.
+
+- `source`: Path to config file, or dict
+- When source is a dict, `overrides` and `cli_overrides` are ignored, and only the root file is written (no ref_graph available)
+
+```python
+# From file path
+rc.to_files(Path("trainer.yaml"), Path("output/trainer.json"))
+# Creates:
+#   output/trainer.json (root file in JSON)
+#   output/models/resnet.yaml (preserves original YAML)
+
+# From dict (writes root file only)
+config = {"key": "value"}
+rc.to_files(config, Path("output/app.yaml"))
 ```
 
 ### `rc.export(path, exporter, *, overrides=None, cli_overrides=True)`
@@ -1226,12 +1350,66 @@ Export resolved config using a custom `Exporter` subclass.
 result = rc.export(Path("config.yaml"), exporter=MyCustomExporter())
 ```
 
-### `rc.export_to_file(path, file_exporter, output_path, *, overrides=None, cli_overrides=True)`
+### `rc.register_exporter(exporter, *extensions)`
 
-Export resolved config to file(s) using a custom `FileExporter` subclass.
+Register an exporter for specific file extensions.
 
 ```python
-rc.export_to_file(Path("config.yaml"), file_exporter=MyFileExporter(), output_path=Path("out/"))
+from rconfig import Exporter, register_exporter
+
+class XmlExporter(Exporter):
+    def export(self, config: dict) -> str:
+        return dict_to_xml(config)
+
+register_exporter(XmlExporter(), ".xml")
+```
+
+### `rc.unregister_exporter(extension)`
+
+Unregister an exporter by extension.
+
+```python
+rc.unregister_exporter(".xml")  # Raises KeyError if not found
+```
+
+### `rc.supported_exporter_extensions()`
+
+Get all supported export file extensions.
+
+```python
+extensions = rc.supported_exporter_extensions()
+# frozenset({'.yaml', '.yml', '.json', '.toml'})
+```
+
+### `rc.register_loader(loader, *extensions)`
+
+Register a loader for specific file extensions.
+
+```python
+from rconfig import ConfigFileLoader, register_loader
+
+class IniConfigLoader(ConfigFileLoader):
+    def load(self, path: Path) -> dict[str, Any]:
+        ...
+
+register_loader(IniConfigLoader(), ".ini")
+```
+
+### `rc.unregister_loader(extension)`
+
+Unregister a loader by extension.
+
+```python
+rc.unregister_loader(".ini")  # Raises KeyError if not found
+```
+
+### `rc.supported_loader_extensions()`
+
+Get all supported loader file extensions.
+
+```python
+extensions = rc.supported_loader_extensions()
+# frozenset({'.yaml', '.yml', '.json', '.toml'})
 ```
 
 ## Advanced Usage
@@ -1257,23 +1435,32 @@ if result.valid:
 
 ### Custom File Loaders
 
-Add support for additional file formats:
+ReausoConfig includes built-in loaders for YAML, JSON, and TOML:
+
+- `YamlConfigLoader` - `.yaml`, `.yml` files
+- `JsonConfigLoader` - `.json` files
+- `TomlConfigLoader` - `.toml` files (Python 3.11+)
+
+To add support for additional file formats, create a custom loader and register it for specific extensions:
 
 ```python
-from rconfig.loaders import ConfigFileLoader, register_loader
+from rconfig import ConfigFileLoader, register_loader
 from pathlib import Path
 from typing import Any
-import json
+import configparser
 
-class JsonConfigLoader(ConfigFileLoader):
+class IniConfigLoader(ConfigFileLoader):
     def load(self, path: Path) -> dict[str, Any]:
-        with open(path) as f:
-            return json.load(f)
+        parser = configparser.ConfigParser()
+        parser.read(path)
+        # Convert to nested dict
+        return {s: dict(parser[s]) for s in parser.sections()}
 
-    def supports(self, path: Path) -> bool:
-        return path.suffix.lower() == '.json'
+# Register for .ini extension
+register_loader(IniConfigLoader(), ".ini")
 
-register_loader(JsonConfigLoader())
+# Now works with instantiate
+model = rc.instantiate(Path("config.ini"))
 ```
 
 ## Thread Safety
@@ -1285,6 +1472,7 @@ ReausoConfig is thread-safe for concurrent access. The following operations can 
 - `rc.validate()` - Thread-safe validation
 - `rc.set_cache_size()` / `rc.clear_cache()` - Thread-safe cache management
 - `register_loader()` / `unregister_loader()` - Thread-safe loader registration
+- `register_exporter()` / `unregister_exporter()` - Thread-safe exporter registration
 
 **Note:** `rc.known_references()` returns a live view of registrations. Individual read operations are thread-safe, but iteration during concurrent mutation may raise RuntimeError.
 

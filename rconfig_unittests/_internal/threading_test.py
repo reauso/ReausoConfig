@@ -13,7 +13,7 @@ from unittest import TestCase
 
 from rconfig._internal.singleton import Singleton
 from rconfig.store import ConfigStore
-from rconfig.loaders import register_loader, unregister_loader, get_loader
+from rconfig.loaders import register_loader, unregister_loader, get_loader, PositionMap
 from rconfig.loaders.base import ConfigFileLoader
 from rconfig.composition.Walker import set_cache_size, clear_cache
 from rconfig.interpolation.parser import InterpolationParser
@@ -173,33 +173,27 @@ class LoaderRegistryThreadSafetyTests(TestCase):
     def test_concurrent_register_unregister__no_errors(self) -> None:
         """Verify mixed loader registration doesn't cause errors."""
         errors: list[Exception] = []
-        loaders: list[ConfigFileLoader] = []
+        extensions: list[str] = [f".test{i}" for i in range(10)]
 
-        # Create test loaders
-        for i in range(10):
-            class TestLoader(ConfigFileLoader):
-                _SUPPORTED_EXTENSIONS = {f".test{i}"}
-
-                def load(self, path: Path) -> dict:
-                    return {}
-
-                def supports(self, path: Path) -> bool:
-                    return path.suffix == f".test{i}"
-
-            loaders.append(TestLoader())
-
-        def register_and_unregister(loader: ConfigFileLoader) -> None:
+        def register_and_unregister(ext: str) -> None:
             try:
-                register_loader(loader)
+                class TestLoader(ConfigFileLoader):
+                    def load(self, path: Path) -> dict:
+                        return {}
+
+                    def load_with_positions(self, path: Path) -> PositionMap:
+                        return PositionMap()
+
+                register_loader(TestLoader(), ext)
                 # Small operation in between
-                unregister_loader(loader)
-            except ValueError:
+                unregister_loader(ext)
+            except KeyError:
                 pass  # Already unregistered
             except Exception as e:
                 errors.append(e)
 
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(register_and_unregister, l) for l in loaders]
+            futures = [executor.submit(register_and_unregister, ext) for ext in extensions]
             for f in as_completed(futures):
                 pass
 
@@ -219,18 +213,20 @@ class LoaderRegistryThreadSafetyTests(TestCase):
             except Exception as e:
                 errors.append(e)
 
-        def register_dummy_loader() -> None:
+        def register_dummy_loader(i: int) -> None:
             try:
                 class DummyLoader(ConfigFileLoader):
                     def load(self, path: Path) -> dict:
                         return {}
 
-                    def supports(self, path: Path) -> bool:
-                        return False
+                    def load_with_positions(self, path: Path) -> PositionMap:
+                        return PositionMap()
 
-                loader = DummyLoader()
-                register_loader(loader)
-                unregister_loader(loader)
+                ext = f".dummy{i}"
+                register_loader(DummyLoader(), ext)
+                unregister_loader(ext)
+            except KeyError:
+                pass  # Already unregistered
             except Exception as e:
                 errors.append(e)
 
@@ -238,8 +234,8 @@ class LoaderRegistryThreadSafetyTests(TestCase):
             futures = []
             for _ in range(5):
                 futures.append(executor.submit(call_get_loader))
-            for _ in range(5):
-                futures.append(executor.submit(register_dummy_loader))
+            for i in range(5):
+                futures.append(executor.submit(register_dummy_loader, i))
 
             for f in as_completed(futures):
                 pass
