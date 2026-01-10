@@ -155,6 +155,80 @@ class ResolverRegistryTests(TestCase):
         # Assert
         self.assertEqual(self.registry.known_resolvers["test"].func, second_resolver)
 
+    def test_register__ColonDelimitedString__RegistersCorrectly(self):
+        # Arrange
+        def my_resolver() -> str:
+            return "result"
+
+        # Act
+        self.registry.register("db:lookup", func=my_resolver)
+
+        # Assert
+        self.assertIn("db:lookup", self.registry)
+        self.assertEqual(self.registry.known_resolvers["db:lookup"].func, my_resolver)
+
+    def test_register__DotDelimitedString__RegistersWithColonKey(self):
+        # Arrange
+        def my_resolver() -> str:
+            return "result"
+
+        # Act
+        self.registry.register("db.lookup", func=my_resolver)
+
+        # Assert
+        self.assertIn("db:lookup", self.registry)
+        self.assertEqual(self.registry.known_resolvers["db:lookup"].func, my_resolver)
+
+    def test_register__DeeplyNestedColonString__RegistersCorrectly(self):
+        # Arrange
+        def my_resolver() -> str:
+            return "cached"
+
+        # Act
+        self.registry.register("db:cache:get", func=my_resolver)
+
+        # Assert
+        self.assertIn("db:cache:get", self.registry)
+
+    def test_register__DeeplyNestedDotString__RegistersCorrectly(self):
+        # Arrange
+        def my_resolver() -> str:
+            return "cached"
+
+        # Act
+        self.registry.register("db.cache.get", func=my_resolver)
+
+        # Assert
+        self.assertIn("db:cache:get", self.registry)
+
+    def test_register__AllSyntaxesEquivalent__SameResult(self):
+        # Arrange
+        def resolver1() -> str:
+            return "r1"
+
+        def resolver2() -> str:
+            return "r2"
+
+        def resolver3() -> str:
+            return "r3"
+
+        # Act - register with each syntax
+        self.registry.register("ns", "func", func=resolver1)
+        key1 = list(self.registry.known_resolvers.keys())[-1]
+
+        self.registry.clear()
+        self.registry.register("ns:func", func=resolver2)
+        key2 = list(self.registry.known_resolvers.keys())[-1]
+
+        self.registry.clear()
+        self.registry.register("ns.func", func=resolver3)
+        key3 = list(self.registry.known_resolvers.keys())[-1]
+
+        # Assert - all produce the same key
+        self.assertEqual(key1, "ns:func")
+        self.assertEqual(key2, "ns:func")
+        self.assertEqual(key3, "ns:func")
+
     # === Unregistration Tests ===
 
     def test_unregister__ExistingPath__RemovesResolver(self):
@@ -187,6 +261,32 @@ class ResolverRegistryTests(TestCase):
         # Act & Assert
         with self.assertRaises(KeyError):
             self.registry.unregister("nonexistent")
+
+    def test_unregister__ColonDelimitedString__RemovesCorrectly(self):
+        # Arrange
+        def my_resolver() -> str:
+            return "result"
+
+        self.registry.register("db", "lookup", func=my_resolver)
+
+        # Act
+        self.registry.unregister("db:lookup")
+
+        # Assert
+        self.assertNotIn("db:lookup", self.registry)
+
+    def test_unregister__DotDelimitedString__RemovesCorrectly(self):
+        # Arrange
+        def my_resolver() -> str:
+            return "result"
+
+        self.registry.register("db", "lookup", func=my_resolver)
+
+        # Act
+        self.registry.unregister("db.lookup")
+
+        # Assert
+        self.assertNotIn("db:lookup", self.registry)
 
     # === Contains Tests ===
 
