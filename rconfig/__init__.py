@@ -57,9 +57,25 @@ from .export import (
     Exporter,
     DictExporter,
     YamlExporter,
+    JsonExporter,
+    TomlExporter,
     FileExporter,
     SingleFileExporter,
     MultiFileExporter,
+    register_exporter,
+    unregister_exporter,
+    get_exporter,
+    supported_exporter_extensions,
+)
+from .loaders import (
+    ConfigFileLoader,
+    YamlConfigLoader,
+    JsonConfigLoader,
+    TomlConfigLoader,
+    register_loader,
+    unregister_loader,
+    get_loader,
+    supported_loader_extensions,
 )
 from .errors import (
     AmbiguousTargetError,
@@ -650,113 +666,211 @@ def to_yaml(
     return export(path, exporter, overrides=overrides, cli_overrides=cli_overrides)
 
 
-def export_to_file(
+def to_json(
     path: Path,
-    file_exporter: FileExporter,
-    output_path: Path,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
-) -> None:
-    """Export resolved config to file(s) using a custom file exporter.
+    exclude_markers: bool = False,
+    indent: int | None = 2,
+) -> str:
+    """Export resolved config as a JSON string.
 
     :param path: Path to config file.
-    :param file_exporter: FileExporter instance to use.
-    :param output_path: Output file or directory path.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    :param exclude_markers: If True, remove internal markers (_target_, etc.).
+    :param indent: Number of spaces for indentation, None for compact output.
+    :return: Resolved config as a JSON string.
 
     Example::
 
-        class JsonFileExporter(rc.FileExporter):
-            def export_to_file(self, config, output_path, **kwargs):
-                import json
-                output_path.write_text(json.dumps(config, indent=2))
+        json_str = rc.to_json(Path("config.yaml"))
+        print(json_str)
 
-        rc.export_to_file(
+        # Compact output
+        json_str = rc.to_json(Path("config.yaml"), indent=None)
+
+        # With overrides
+        json_str = rc.to_json(
             Path("config.yaml"),
-            file_exporter=JsonFileExporter(),
-            output_path=Path("config.json"),
+            overrides={"model.lr": 0.01},
         )
     """
-    config, composer = _resolved_config(
-        path, overrides=overrides, cli_overrides=cli_overrides
-    )
-    ref_graph = composer.ref_graph()
-    file_exporter.export_to_file(
-        config,
-        output_path,
-        source_path=path,
-        ref_graph=ref_graph,
-    )
+    exporter = JsonExporter(exclude_markers=exclude_markers, indent=indent)
+    return export(path, exporter, overrides=overrides, cli_overrides=cli_overrides)
 
 
-def to_yaml_file(
+def to_toml(
     path: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> str:
+    """Export resolved config as a TOML string.
+
+    :param path: Path to config file.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    :param exclude_markers: If True, remove internal markers (_target_, etc.).
+    :return: Resolved config as a TOML string.
+
+    Example::
+
+        toml_str = rc.to_toml(Path("config.yaml"))
+        print(toml_str)
+
+        # With overrides
+        toml_str = rc.to_toml(
+            Path("config.yaml"),
+            overrides={"model.lr": 0.01},
+        )
+    """
+    exporter = TomlExporter(exclude_markers=exclude_markers)
+    return export(path, exporter, overrides=overrides, cli_overrides=cli_overrides)
+
+
+@overload
+def to_file(
+    source: Path,
+    output_path: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> None: ...
+
+
+@overload
+def to_file(
+    source: dict[str, Any],
+    output_path: Path,
+    *,
+    exclude_markers: bool = False,
+) -> None: ...
+
+
+def to_file(
+    source: Path | dict[str, Any],
     output_path: Path,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
     exclude_markers: bool = False,
 ) -> None:
-    """Export resolved config to a single YAML file.
+    """Export config to a single file with format auto-detection.
 
     All references are flattened into a single standalone file.
+    Format is determined by the output file extension.
 
-    :param path: Path to config file.
-    :param output_path: Output file path.
-    :param overrides: Dictionary of config overrides using dot notation keys.
-    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    :param source: Source config (Path to file, or dict).
+    :param output_path: Output file path (extension determines format).
+    :param overrides: Config overrides (only used with Path input).
+    :param cli_overrides: Parse CLI overrides (only used with Path input).
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
+    :raises ConfigFileError: If the output file extension is not supported.
 
     Example::
 
-        rc.to_yaml_file(Path("trainer.yaml"), output_path=Path("resolved.yaml"))
+        # Export from file to different formats
+        rc.to_file(Path("config.yaml"), Path("output.json"))   # YAML -> JSON
+        rc.to_file(Path("config.yaml"), Path("output.toml"))   # YAML -> TOML
+
+        # Export from dict
+        config = {"model": {"lr": 0.01}, "epochs": 10}
+        rc.to_file(config, Path("output.yaml"))
+
+        # Post-processing workflow
+        config = rc.to_dict(Path("config.yaml"))
+        config["extra"] = "value"
+        rc.to_file(config, Path("output.json"))
     """
+    if isinstance(source, dict):
+        config = source
+    else:
+        config, _ = _resolved_config(
+            source, overrides=overrides, cli_overrides=cli_overrides
+        )
     file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
-    export_to_file(
-        path,
-        file_exporter,
-        output_path,
-        overrides=overrides,
-        cli_overrides=cli_overrides,
-    )
+    file_exporter.export_to_file(config, output_path)
 
 
-def to_yaml_files(
-    path: Path,
-    output_dir: Path,
+@overload
+def to_files(
+    source: Path,
+    config_root_file: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> None: ...
+
+
+@overload
+def to_files(
+    source: dict[str, Any],
+    config_root_file: Path,
+    *,
+    exclude_markers: bool = False,
+) -> None: ...
+
+
+def to_files(
+    source: Path | dict[str, Any],
+    config_root_file: Path,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
     exclude_markers: bool = False,
 ) -> None:
-    """Export resolved config preserving the original file structure.
+    """Export config preserving file structure with format auto-detection.
 
-    Each referenced file is exported separately with interpolations resolved.
-    The _ref_ paths are preserved so the exported config maintains the same
-    structure as the original.
+    When source is a Path, each referenced file is exported separately with
+    interpolations resolved. The _ref_ paths are preserved.
 
-    :param path: Path to config file.
-    :param output_dir: Output directory path.
-    :param overrides: Dictionary of config overrides using dot notation keys.
-    :param cli_overrides: Whether to parse CLI overrides from sys.argv.
+    When source is a dict, only the root file is written (no ref_graph available).
+
+    Format is determined by file extensions:
+    - Root file: format from config_root_file extension
+    - Referenced files: preserve original extension from source files
+
+    :param source: Source config (Path to file, or dict).
+    :param config_root_file: Output root file path (extension determines root format).
+    :param overrides: Config overrides (only used with Path input).
+    :param cli_overrides: Parse CLI overrides (only used with Path input).
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
+    :raises ConfigFileError: If an output file extension is not supported.
 
     Example::
 
-        rc.to_yaml_files(Path("trainer.yaml"), output_dir=Path("output/"))
+        # Export from file with preserved structure
+        rc.to_files(Path("trainer.yaml"), Path("output/trainer.json"))
         # Creates:
-        #   output/trainer.yaml (with _ref_: ./models/resnet.yaml)
-        #   output/models/resnet.yaml
+        #   output/trainer.json (root file in JSON)
+        #   output/models/resnet.yaml (preserves original YAML format)
+
+        # Export from dict (root file only)
+        config = {"model": {"lr": 0.01}, "epochs": 10}
+        rc.to_files(config, Path("output/config.yaml"))
     """
+    if isinstance(source, dict):
+        config = source
+        ref_graph = None
+        source_path = None
+    else:
+        config, composer = _resolved_config(
+            source, overrides=overrides, cli_overrides=cli_overrides
+        )
+        ref_graph = composer.ref_graph()
+        source_path = source
+
     file_exporter = MultiFileExporter(exclude_markers=exclude_markers)
-    export_to_file(
-        path,
-        file_exporter,
-        output_dir,
-        overrides=overrides,
-        cli_overrides=cli_overrides,
+    file_exporter.export_to_file(
+        config,
+        config_root_file,
+        source_path=source_path,
+        ref_graph=ref_graph,
     )
 
 
@@ -783,20 +897,39 @@ __all__ = [
     # Lazy instantiation utilities
     "is_lazy_proxy",
     "force_initialize",
-    # Export API
+    # Export API (string output)
     "export",
     "to_dict",
     "to_yaml",
-    "export_to_file",
-    "to_yaml_file",
-    "to_yaml_files",
+    "to_json",
+    "to_toml",
+    # Export API (file output with format auto-detection)
+    "to_file",
+    "to_files",
     # Export classes (for custom exporters)
     "Exporter",
     "DictExporter",
     "YamlExporter",
+    "JsonExporter",
+    "TomlExporter",
     "FileExporter",
     "SingleFileExporter",
     "MultiFileExporter",
+    # Exporter registry
+    "register_exporter",
+    "unregister_exporter",
+    "get_exporter",
+    "supported_exporter_extensions",
+    # Loader classes (for custom loaders)
+    "ConfigFileLoader",
+    "YamlConfigLoader",
+    "JsonConfigLoader",
+    "TomlConfigLoader",
+    # Loader registry
+    "register_loader",
+    "unregister_loader",
+    "get_loader",
+    "supported_loader_extensions",
     # Exceptions (available at root for convenience)
     "AmbiguousTargetError",
     "CircularInstanceError",

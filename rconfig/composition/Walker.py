@@ -14,8 +14,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from ruamel.yaml.comments import CommentedMap
-
 from .Merger import deep_merge
 from rconfig.errors import (
     CircularRefError,
@@ -26,6 +24,7 @@ from rconfig.errors import (
     RefResolutionError,
 )
 from rconfig.loaders import get_loader
+from rconfig.loaders.position_map import PositionMap
 from rconfig._internal.path_utils import build_child_path
 from .Provenance import Provenance
 
@@ -39,13 +38,13 @@ _TARGET_KEY = "_target_"
 _cache_lock = threading.Lock()
 
 
-def _load_file_impl(path: str) -> CommentedMap:
+def _load_file_impl(path: str) -> PositionMap:
     """Load a config file with position information.
 
     This is the actual implementation, wrapped by the cached version.
 
     :param path: Absolute path to the config file as string.
-    :return: CommentedMap with line number information.
+    :return: PositionMap with line and column information.
     :raises ConfigFileError: If file cannot be loaded.
     """
     path_obj = Path(path)
@@ -556,19 +555,15 @@ class CompositionWalker:
 
     def _get_line_number(
         self,
-        config: CommentedMap | dict[str, Any],
+        config: PositionMap | dict[str, Any],
         key: str,
     ) -> int | None:
-        """Extract line number from CommentedMap.
+        """Extract line number from PositionMap.
 
-        :param config: The config dictionary (may be CommentedMap).
+        :param config: The config dictionary (may be PositionMap).
         :param key: The key to get line number for.
         :return: Line number (1-indexed) or None if not available.
         """
-        if isinstance(config, CommentedMap) and hasattr(config, "lc"):
-            try:
-                line, _ = config.lc.key(key)
-                return line + 1  # Convert from 0-indexed to 1-indexed
-            except (KeyError, TypeError):
-                pass
+        if isinstance(config, PositionMap):
+            return config.get_line(key)
         return None

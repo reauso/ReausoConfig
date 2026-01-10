@@ -12,81 +12,133 @@ from typing import Any
 
 from rconfig.errors import ConfigFileError
 from rconfig.loaders.base import ConfigFileLoader
+from rconfig.loaders.position_map import Position, PositionMap
 from rconfig.loaders.yaml_loader import YamlConfigLoader
+from rconfig.loaders.json_loader import JsonConfigLoader
+from rconfig.loaders.toml_loader import TomlConfigLoader
 
-# Registry of available loaders (protected by _loaders_lock)
-_loaders: list[ConfigFileLoader] = [YamlConfigLoader()]
+# Registry mapping extension -> loader instance (protected by _loaders_lock)
+_extension_to_loader: dict[str, ConfigFileLoader] = {}
 _loaders_lock = threading.RLock()
 
 
-def register_loader(loader: ConfigFileLoader) -> None:
-    """Register a custom config file loader.
+def register_loader(loader: ConfigFileLoader, *extensions: str) -> None:
+    """Register a config file loader for specific extensions.
 
     Thread-safe: protected by internal lock.
-    Registered loaders are checked in order when loading a config file.
-    Later registered loaders take priority over earlier ones.
+    If an extension is already registered, it is silently replaced.
+    Extensions are matched case-insensitively.
 
     :param loader: A ConfigFileLoader instance to register.
+    :param extensions: Extensions to register (e.g., ".yaml", ".yml").
 
     Example::
 
-        class TomlConfigLoader(ConfigFileLoader):
+        class IniConfigLoader(ConfigFileLoader):
             def load(self, path: Path) -> dict[str, Any]:
-                import tomllib
-                with open(path, 'rb') as f:
-                    return tomllib.load(f)
+                import configparser
+                parser = configparser.ConfigParser()
+                parser.read(path)
+                return {s: dict(parser[s]) for s in parser.sections()}
 
-            def supports(self, path: Path) -> bool:
-                return path.suffix == '.toml'
+            def load_with_positions(self, path: Path) -> PositionMap:
+                return PositionMap(self.load(path))
 
-        register_loader(TomlConfigLoader())
+        register_loader(IniConfigLoader(), ".ini")
     """
     with _loaders_lock:
-        _loaders.insert(0, loader)
+        for ext in extensions:
+            _extension_to_loader[ext.lower()] = loader
 
 
-def unregister_loader(loader: ConfigFileLoader) -> None:
-    """Unregister a previously registered config file loader.
+def unregister_loader(extension: str) -> None:
+    """Unregister a config file loader by extension.
 
     Thread-safe: protected by internal lock.
 
-    :param loader: The loader instance to remove.
-    :raises ValueError: If the loader is not registered.
+    :param extension: The extension to unregister (e.g., ".yaml").
+    :raises KeyError: If the extension is not registered.
     """
     with _loaders_lock:
-        _loaders.remove(loader)
+        ext_lower = extension.lower()
+        if ext_lower not in _extension_to_loader:
+            raise KeyError(f"No loader registered for extension '{extension}'")
+        del _extension_to_loader[ext_lower]
 
 
 def get_loader(path: Path) -> ConfigFileLoader:
     """Get the appropriate loader for a config file.
 
-    Thread-safe: takes a snapshot of loaders before iteration.
-    Checks registered loaders in order and returns the first one
-    that supports the given file path.
+    Thread-safe: takes a snapshot of registry before lookup.
+    Extensions are matched case-insensitively.
 
     :param path: Path to the config file.
     :return: A ConfigFileLoader that can handle the file.
     :raises ConfigFileError: If no loader supports the file format.
     """
-    # Take snapshot under lock, then iterate outside lock
+    ext = path.suffix.lower()
+
     with _loaders_lock:
-        loaders_snapshot = list(_loaders)
-
-    for loader in loaders_snapshot:
-        if loader.supports(path):
+        loader = _extension_to_loader.get(ext)
+        if loader is not None:
             return loader
+        # Take snapshot for error message
+        supported = frozenset(_extension_to_loader.keys())
 
-    # Build error message (using snapshot)
-    supported = set()
-    for loader in loaders_snapshot:
-        if hasattr(loader, "_SUPPORTED_EXTENSIONS"):
-            supported.update(loader._SUPPORTED_EXTENSIONS)
-
+    # Build helpful error message
     supported_str = ", ".join(sorted(supported)) if supported else "none"
+
+    # Check for typos (simple Levenshtein-like suggestion)
+    suggestion = _suggest_extension(ext, supported)
+    if suggestion:
+        raise ConfigFileError(
+            path,
+            f"unsupported file format '{path.suffix}'. "
+            f"Did you mean '{suggestion}'? Supported formats: {supported_str}",
+        )
+
     raise ConfigFileError(
         path,
         f"unsupported file format '{path.suffix}'. Supported formats: {supported_str}",
     )
+
+
+def _suggest_extension(ext: str, supported: frozenset[str]) -> str | None:
+    """Suggest a similar extension for typos.
+
+    :param ext: The extension that was not found.
+    :param supported: Set of supported extensions.
+    :return: A suggested extension or None.
+    """
+    if not supported:
+        return None
+
+    # Simple character-based similarity check
+    for candidate in supported:
+        # Check if extensions differ by only 1-2 characters
+        if len(ext) == len(candidate):
+            diff = sum(1 for a, b in zip(ext, candidate) if a != b)
+            if diff <= 2:
+                return candidate
+        # Check for transposition (e.g., .ymal vs .yaml)
+        if len(ext) == len(candidate) and len(ext) >= 3:
+            for i in range(len(ext) - 1):
+                swapped = ext[:i] + ext[i + 1] + ext[i] + ext[i + 2 :]
+                if swapped == candidate:
+                    return candidate
+
+    return None
+
+
+def supported_loader_extensions() -> frozenset[str]:
+    """Return all supported loader extensions.
+
+    Thread-safe: takes a snapshot of registry.
+
+    :return: Frozenset of supported extensions (lowercase).
+    """
+    with _loaders_lock:
+        return frozenset(_extension_to_loader.keys())
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -107,11 +159,22 @@ def load_config(path: Path) -> dict[str, Any]:
     return loader.load(path)
 
 
+# Default registrations at module load
+register_loader(YamlConfigLoader(), ".yaml", ".yml")
+register_loader(JsonConfigLoader(), ".json")
+register_loader(TomlConfigLoader(), ".toml")
+
+
 __all__ = [
     "ConfigFileLoader",
     "YamlConfigLoader",
+    "JsonConfigLoader",
+    "TomlConfigLoader",
+    "Position",
+    "PositionMap",
     "register_loader",
     "unregister_loader",
     "get_loader",
+    "supported_loader_extensions",
     "load_config",
 ]

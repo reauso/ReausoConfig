@@ -169,9 +169,11 @@ with open("experiment_config.yaml", "w") as f:
 
 ---
 
-## 3. Built-in TOML and JSON Loaders
+## 3. ✅ Built-in TOML and JSON Loaders
 
 **Adopted by:** Standard across all configuration libraries
+
+**Status:** Implemented
 
 ### Description
 
@@ -1237,7 +1239,7 @@ This vision document outlines 11 features that would enhance rconfig based on pr
 
 1. ✅ Custom Resolvers
 2. ✅ Config Export / Serialization
-3. Built-in TOML and JSON Loaders
+3. ✅ Built-in TOML and JSON Loaders
 4. Frozen Config Mode
 5. Structured Config Schemas
 6. Deprecation Warnings

@@ -1,12 +1,15 @@
 """Tests for rconfig.export.single_file_exporter module."""
 
+import json
 import tempfile
+import tomllib
+from io import StringIO
 from pathlib import Path
 from unittest import TestCase
 
 from ruamel.yaml import YAML
-from io import StringIO
 
+from rconfig.errors import ConfigFileError
 from rconfig.export.single_file_exporter import SingleFileExporter
 
 
@@ -99,22 +102,6 @@ class SingleFileExporterTests(TestCase):
         parsed = self._parse_yaml(content)
         self.assertEqual(parsed["parent"]["child"]["value"], 42)
 
-    def test_export_to_file__CustomIndent__RespectsIndentation(self):
-        """Export respects custom indentation."""
-        exporter = SingleFileExporter(indent=4)
-        config = {"parent": {"child": "value"}}
-        output_path = self.output_dir / "output.yaml"
-
-        exporter.export_to_file(config, output_path)
-
-        content = output_path.read_text()
-        # Check indentation
-        for line in content.split("\n"):
-            if "child:" in line:
-                indent = len(line) - len(line.lstrip())
-                self.assertEqual(indent, 4)
-                break
-
     def test_export_to_file__IgnoresSourcePath__NotUsed(self):
         """Export ignores source_path parameter (not used for single file)."""
         exporter = SingleFileExporter()
@@ -158,3 +145,108 @@ class SingleFileExporterTests(TestCase):
         parsed = self._parse_yaml(content)
         self.assertEqual(parsed["_target_"], "Keep")
         self.assertNotIn("_custom_", parsed)
+
+
+class SingleFileExporterFormatDetectionTests(TestCase):
+    """Tests for format auto-detection in SingleFileExporter."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.output_dir = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        self.temp_dir.cleanup()
+
+    def test_export_to_file__JsonExtension__ExportsAsJson(self):
+        """Export to .json file produces valid JSON."""
+        exporter = SingleFileExporter()
+        config = {"key": "value", "number": 42}
+        output_path = self.output_dir / "output.json"
+
+        exporter.export_to_file(config, output_path)
+
+        self.assertTrue(output_path.exists())
+        content = output_path.read_text()
+        parsed = json.loads(content)
+        self.assertEqual(parsed["key"], "value")
+        self.assertEqual(parsed["number"], 42)
+
+    def test_export_to_file__TomlExtension__ExportsAsToml(self):
+        """Export to .toml file produces valid TOML."""
+        exporter = SingleFileExporter()
+        config = {"key": "value", "number": 42}
+        output_path = self.output_dir / "output.toml"
+
+        exporter.export_to_file(config, output_path)
+
+        self.assertTrue(output_path.exists())
+        content = output_path.read_text()
+        parsed = tomllib.loads(content)
+        self.assertEqual(parsed["key"], "value")
+        self.assertEqual(parsed["number"], 42)
+
+    def test_export_to_file__YmlExtension__ExportsAsYaml(self):
+        """Export to .yml file produces valid YAML."""
+        exporter = SingleFileExporter()
+        config = {"key": "value", "number": 42}
+        output_path = self.output_dir / "output.yml"
+
+        exporter.export_to_file(config, output_path)
+
+        self.assertTrue(output_path.exists())
+        yaml = YAML()
+        parsed = yaml.load(StringIO(output_path.read_text()))
+        self.assertEqual(parsed["key"], "value")
+        self.assertEqual(parsed["number"], 42)
+
+    def test_export_to_file__UnsupportedExtension__RaisesConfigFileError(self):
+        """Export to unsupported extension raises ConfigFileError."""
+        exporter = SingleFileExporter()
+        config = {"key": "value"}
+        output_path = self.output_dir / "output.unknown"
+
+        with self.assertRaises(ConfigFileError) as context:
+            exporter.export_to_file(config, output_path)
+
+        self.assertIn("unsupported export format", context.exception.reason)
+
+    def test_export_to_file__JsonWithExcludeMarkers__RemovesMarkers(self):
+        """Export to JSON with exclude_markers removes markers."""
+        exporter = SingleFileExporter(exclude_markers=True)
+        config = {"_target_": "Test", "value": 42}
+        output_path = self.output_dir / "output.json"
+
+        exporter.export_to_file(config, output_path)
+
+        content = output_path.read_text()
+        parsed = json.loads(content)
+        self.assertNotIn("_target_", parsed)
+        self.assertEqual(parsed["value"], 42)
+
+    def test_export_to_file__TomlWithExcludeMarkers__RemovesMarkers(self):
+        """Export to TOML with exclude_markers removes markers."""
+        exporter = SingleFileExporter(exclude_markers=True)
+        config = {"_target_": "Test", "value": 42}
+        output_path = self.output_dir / "output.toml"
+
+        exporter.export_to_file(config, output_path)
+
+        content = output_path.read_text()
+        parsed = tomllib.loads(content)
+        self.assertNotIn("_target_", parsed)
+        self.assertEqual(parsed["value"], 42)
+
+    def test_export_to_file__CaseInsensitiveExtension__DetectsFormat(self):
+        """Export with uppercase extension still detects format."""
+        exporter = SingleFileExporter()
+        config = {"key": "value"}
+        output_path = self.output_dir / "output.JSON"
+
+        exporter.export_to_file(config, output_path)
+
+        self.assertTrue(output_path.exists())
+        content = output_path.read_text()
+        parsed = json.loads(content)
+        self.assertEqual(parsed["key"], "value")

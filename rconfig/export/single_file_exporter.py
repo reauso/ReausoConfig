@@ -1,48 +1,43 @@
 """Single file exporter for config data.
 
-Exports resolved config to a single YAML file with all references flattened.
+Exports resolved config to a single file with format auto-detection.
 """
 
 from pathlib import Path
 from typing import Any
 
 from rconfig.export.file_base import FileExporter
-from rconfig.export.yaml_exporter import YamlExporter
+from rconfig.export.registry import get_exporter
 
 
 class SingleFileExporter(FileExporter):
-    """Export resolved config to a single YAML file.
+    """Export resolved config to a single file with format auto-detection.
 
     All _ref_ references are resolved and flattened into one file.
     Interpolations are evaluated. The output is a standalone config.
+    Format is determined by the output file extension.
 
     Example::
 
         exporter = SingleFileExporter(exclude_markers=True)
-        exporter.export_to_file(config, Path("output.yaml"))
+        exporter.export_to_file(config, Path("output.yaml"))  # YAML format
+        exporter.export_to_file(config, Path("output.json"))  # JSON format
+        exporter.export_to_file(config, Path("output.toml"))  # TOML format
     """
 
     def __init__(
         self,
         *,
-        default_flow_style: bool | None = False,
-        indent: int = 2,
         exclude_markers: bool = False,
         markers: tuple[str, ...] = ("_target_", "_ref_", "_instance_", "_lazy_"),
     ) -> None:
         """Initialize the single file exporter.
 
-        :param default_flow_style: None=block style, True=flow style, False=mixed.
-        :param indent: Number of spaces for indentation.
         :param exclude_markers: If True, remove internal config markers.
         :param markers: Tuple of marker keys to exclude.
         """
-        self._yaml_exporter = YamlExporter(
-            default_flow_style=default_flow_style,
-            indent=indent,
-            exclude_markers=exclude_markers,
-            markers=markers,
-        )
+        self._exclude_markers = exclude_markers
+        self._markers = markers
 
     def export_to_file(
         self,
@@ -52,13 +47,23 @@ class SingleFileExporter(FileExporter):
         source_path: Path | None = None,
         ref_graph: dict[str, list[str]] | None = None,
     ) -> None:
-        """Export config to a single YAML file.
+        """Export config to a single file with format auto-detection.
 
         :param config: Fully resolved config dictionary.
-        :param output_path: Output file path.
+        :param output_path: Output file path (extension determines format).
         :param source_path: Original config file path (unused for single file export).
         :param ref_graph: Graph of _ref_ relationships (unused for single file export).
+        :raises ConfigFileError: If the output file extension is not supported.
         """
-        yaml_content = self._yaml_exporter.export(config)
+        # Get the appropriate exporter for this file extension
+        base_exporter = get_exporter(output_path)
+
+        # Create a new exporter instance with our configuration
+        configured_exporter = base_exporter.__class__(
+            exclude_markers=self._exclude_markers,
+            markers=self._markers,
+        )
+
+        content = configured_exporter.export(config)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(yaml_content)
+        output_path.write_text(content, encoding="utf-8")
