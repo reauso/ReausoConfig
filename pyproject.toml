@@ -18,6 +18,15 @@ dependencies = [
     "tomli_w>=1.0.0,<2.0",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=9.0.0,<10.0",
+    "coverage>=7.0.0,<8.0",
+    "parameterized>=0.9.0,<1.0",
+    "pydantic>=2.0.0,<3.0",
+    "attrs>=24.0.0,<25.0",
+]
+
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["linux-64", "win-64", "osx-64"]
@@ -34,12 +43,8 @@ ReausoConfig = { path = ".", editable = true }
 [tool.pixi.environments]
 test = ["test"]
 
-[tool.pixi.feature.test.dependencies]
-pytest = "*"
-coverage = "*"
-parameterized = "*"
-pydantic = ">=2.0"
-attrs = "*"
+[tool.pixi.feature.test.pypi-dependencies]
+ReausoConfig = { path = ".", editable = true, extras = ["test"] }
 
 [tool.pixi.feature.test.tasks]
 test = "coverage run -m pytest"
