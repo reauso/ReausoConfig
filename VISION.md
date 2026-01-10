@@ -289,9 +289,11 @@ See the [Immutable / Frozen Configs](README.md#immutable--frozen-configs) sectio
 
 ---
 
-## 5. Structured Config Schemas
+## 5. ✅ Structured Config Schemas
 
 **Adopted by:** Hydra (via OmegaConf), Pydantic Settings, attrs
+
+**Status:** Implemented
 
 ### Description
 
@@ -1201,8 +1203,8 @@ This vision document outlines 11 features that would enhance rconfig based on pr
 1. ✅ Custom Resolvers
 2. ✅ Config Export / Serialization
 3. ✅ Built-in TOML and JSON Loaders
-4. Frozen Config Mode
-5. Structured Config Schemas
+4. ✅ Frozen Config Mode
+5. ✅ Structured Config Schemas
 6. Deprecation Warnings
 7. Defaults List / Composition Groups
 
