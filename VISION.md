@@ -408,9 +408,11 @@ json_schema = rconfig.to_json_schema(Config)
 
 ---
 
-## 6. Deprecation Warnings
+## 6. ✅ Deprecation Warnings
 
 **Adopted by:** OmegaConf
+
+**Status:** Implemented
 
 ### Description
 
@@ -1205,7 +1207,7 @@ This vision document outlines 11 features that would enhance rconfig based on pr
 3. ✅ Built-in TOML and JSON Loaders
 4. ✅ Frozen Config Mode
 5. ✅ Structured Config Schemas
-6. Deprecation Warnings
+6. ✅ Deprecation Warnings
 7. Defaults List / Composition Groups
 
 ### Medium Priority (Common Patterns)

@@ -47,6 +47,8 @@ class TreeLayout(ProvenanceLayout):
             show_chain=True,
             show_overrides=True,
             show_targets=True,
+            show_deprecations=True,
+            deprecations_only=False,
             indent_size=2,
         )
 
@@ -64,11 +66,25 @@ class TreeLayout(ProvenanceLayout):
             if not self._matches_filters(path, entry, ctx):
                 continue
 
+            # Filter for deprecations_only mode
+            if ctx.deprecations_only and entry.deprecation is None:
+                continue
+
             formatted = self.format_entry(entry, path, ctx)
             if formatted:
                 entries.append(formatted)
 
-        return self.join_entries(entries, ctx)
+        result = self.join_entries(entries, ctx)
+
+        # Add header for deprecations_only mode
+        if ctx.deprecations_only:
+            if entries:
+                header = "Deprecated Keys:\n" + "-" * 16
+                result = header + "\n\n" + result
+            else:
+                result = "No deprecated keys found."
+
+        return result
 
     def format_entry(
         self, entry: ProvenanceEntry, path: str, ctx: FormatContext
@@ -144,6 +160,12 @@ class TreeLayout(ProvenanceLayout):
         if ctx.show_overrides and entry.overrode:
             lines.append(self.indent(self.format_override(entry.overrode, ctx), 1, ctx))
 
+        # Deprecation info
+        if ctx.show_deprecations and entry.deprecation:
+            deprecation_lines = self._format_deprecation(entry.deprecation, ctx)
+            for line in deprecation_lines:
+                lines.append(self.indent(line, 1, ctx))
+
         return "\n".join(lines)
 
     def _format_target(
@@ -172,6 +194,34 @@ class TreeLayout(ProvenanceLayout):
         else:
             # Not registered
             return f"Target: {entry.target_name} (not registered)"
+
+    def _format_deprecation(
+        self,
+        deprecation: Any,  # DeprecationInfo
+        ctx: FormatContext,
+    ) -> list[str]:
+        """Format deprecation information.
+
+        :param deprecation: The deprecation info to format.
+        :param ctx: Format context.
+        :return: List of formatted lines.
+        """
+        lines: list[str] = []
+
+        # Main deprecation line: DEPRECATED -> new_key (remove in X.X.X)
+        main_parts = ["DEPRECATED"]
+        if deprecation.new_key:
+            main_parts.append(f"-> {deprecation.new_key}")
+        if deprecation.remove_in:
+            main_parts.append(f"(remove in {deprecation.remove_in})")
+
+        lines.append(" ".join(main_parts))
+
+        # Message on separate line if present
+        if deprecation.message:
+            lines.append(f"Message: {deprecation.message}")
+
+        return lines
 
     def _format_interpolation_tree(
         self,

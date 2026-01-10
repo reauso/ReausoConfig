@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Iterator, Literal
 from rconfig._internal.path_utils import build_child_path
 
 if TYPE_CHECKING:
+    from rconfig.deprecation.info import DeprecationInfo
     from rconfig.interpolation.evaluator import InterpolationSource
     from .ProvenanceFormat import ProvenanceFormat
     from .ProvenanceLayout import ProvenanceLayout
@@ -147,6 +148,7 @@ class ProvenanceEntry:
     target_class: str | None = None
     target_module: str | None = None
     target_auto_registered: bool = False
+    deprecation: DeprecationInfo | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary representation.
@@ -192,6 +194,8 @@ class ProvenanceEntry:
             result["target_module"] = self.target_module
         if self.target_auto_registered:
             result["target_auto_registered"] = True
+        if self.deprecation is not None:
+            result["deprecation"] = self.deprecation.to_dict()
 
         return result
 
