@@ -11,6 +11,7 @@ from rconfig.composition import (
     set_cache_size,
     Provenance,
 )
+from rconfig.loaders.position_map import PositionMap
 
 
 class InstanceMarkerTests(TestCase):
@@ -117,21 +118,21 @@ class CacheFunctionTests(TestCase):
 class LineNumberExtractionTests(TestCase):
     """Tests for line number extraction from CommentedMap."""
 
-    def test_getLineNumber__CommentedMapWithLineInfo__ReturnsLine(self):
+    def test_getLineNumber__PositionMapWithLineInfo__ReturnsLine(self):
         # Arrange
         from rconfig.composition import CompositionWalker
 
         provenance = Provenance()
         walker = CompositionWalker(None, provenance)
 
-        # Create a CommentedMap with line info
-        config = CommentedMap({"key": "value"})
-        config.lc.add_kv_line_col("key", (5, 0, 5, 4))  # line 5
+        # Create a PositionMap with line info
+        config = PositionMap({"key": "value"})
+        config.set_position("key", 6, 1)  # line 6, column 1 (1-indexed)
 
         # Act
         line = walker._get_line_number(config, "key")
 
-        # Assert - should be 1-indexed (5 + 1 = 6)
+        # Assert - should be 1-indexed
         self.assertEqual(line, 6)
 
     def test_getLineNumber__RegularDict__ReturnsNone(self):
@@ -148,14 +149,14 @@ class LineNumberExtractionTests(TestCase):
         # Assert
         self.assertIsNone(line)
 
-    def test_getLineNumber__KeyNotInLineComments__ReturnsNone(self):
+    def test_getLineNumber__KeyNotInPositionMap__ReturnsNone(self):
         # Arrange
         from rconfig.composition import CompositionWalker
 
         provenance = Provenance()
         walker = CompositionWalker(None, provenance)
-        config = CommentedMap({"key": "value"})
-        # No line info added
+        config = PositionMap({"key": "value"})
+        # No position info added
 
         # Act
         line = walker._get_line_number(config, "key")

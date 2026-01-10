@@ -15,6 +15,7 @@ version = "0.1.0"
 dependencies = [
     "ruamel.yaml>=0.18.7,<0.19",
     "lark>=1.1.0,<2.0",
+    "tomli_w>=1.0.0,<2.0",
 ]
 
 [tool.pixi.workspace]
