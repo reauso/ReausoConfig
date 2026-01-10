@@ -92,20 +92,36 @@ class ResolverRegistry:
         """Register a resolver under a path.
 
         :param path: One or more path components (e.g., "uuid" or "db", "lookup").
+                     Also accepts colon or dot-delimited strings: "db:lookup" or "db.lookup".
         :param func: The resolver function to register.
         :raises ValueError: If path is empty or func is not callable.
 
         Examples::
 
-            register("uuid", func=my_uuid)           # ${app:uuid}
-            register("db", "lookup", func=my_lookup) # ${app:db:lookup}
+            register("uuid", func=my_uuid)              # ${app:uuid}
+            register("db", "lookup", func=my_lookup)    # ${app:db:lookup}
+            register("db:lookup", func=my_lookup)       # ${app:db:lookup} (alternative)
+            register("db.lookup", func=my_lookup)       # ${app:db:lookup} (alternative)
         """
         if not path:
             raise ValueError("Resolver path cannot be empty")
         if not callable(func):
             raise ValueError(f"Resolver must be callable, got {type(func).__name__}")
 
-        key = ":".join(path)
+        # Normalize path: handle single string with delimiters
+        normalized_path: tuple[str, ...]
+        if len(path) == 1:
+            single = path[0]
+            if ":" in single:
+                normalized_path = tuple(single.split(":"))
+            elif "." in single:
+                normalized_path = tuple(single.split("."))
+            else:
+                normalized_path = path
+        else:
+            normalized_path = path
+
+        key = ":".join(normalized_path)
         sig = inspect.signature(func)
         needs_config = "_config_" in sig.parameters
 
@@ -123,9 +139,23 @@ class ResolverRegistry:
         """Unregister a resolver by path.
 
         :param path: One or more path components (e.g., "uuid" or "db", "lookup").
+                     Also accepts colon or dot-delimited strings: "db:lookup" or "db.lookup".
         :raises KeyError: If the resolver is not registered.
         """
-        key = ":".join(path)
+        # Normalize path: handle single string with delimiters
+        normalized_path: tuple[str, ...]
+        if len(path) == 1:
+            single = path[0]
+            if ":" in single:
+                normalized_path = tuple(single.split(":"))
+            elif "." in single:
+                normalized_path = tuple(single.split("."))
+            else:
+                normalized_path = path
+        else:
+            normalized_path = path
+
+        key = ":".join(normalized_path)
         with self._lock:
             if key not in self._known_resolvers:
                 raise KeyError(f"Resolver '{key}' is not registered")
