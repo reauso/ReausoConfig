@@ -10,6 +10,16 @@ After instantiation, you get pure Python objects with no framework dependency.
 
 ## Installation
 
+Install ReausoConfig from GitHub using pip:
+
+```bash
+pip install git+https://github.com/reauso/ReausoConfig.git
+```
+
+### Development Setup
+
+For contributing or running tests, use pixi:
+
 ```bash
 pixi install
 pixi run test
@@ -62,15 +72,15 @@ import rconfig as rc
 from pathlib import Path
 
 # Register your class
-rc.register("model", ModelConfig)
+rc.register(name="model", target=ModelConfig)
 
 # Instantiate the object (validates automatically)
-model = rc.instantiate(Path("config.yaml"), ModelConfig)
+model = rc.instantiate(path=Path("config.yaml"), expected_type=ModelConfig)
 print(model.hidden_size)  # 256
 print(model.dropout)      # 0.2
 
 # Optional: validate without instantiating (dry-run)
-result = rc.validate(Path("config.yaml"))
+result = rc.validate(path=Path("config.yaml"))
 if not result.valid:
     for error in result.errors:
         print(error)
@@ -92,9 +102,9 @@ The loader is selected automatically based on file extension:
 
 ```python
 # All work the same way
-model = rc.instantiate(Path("config.yaml"))
-model = rc.instantiate(Path("config.json"))
-model = rc.instantiate(Path("config.toml"))
+model = rc.instantiate(path=Path("config.yaml"))
+model = rc.instantiate(path=Path("config.json"))
+model = rc.instantiate(path=Path("config.toml"))
 ```
 
 **Cross-format composition:** You can mix formats with `_ref_`:
@@ -110,20 +120,41 @@ settings:
 
 ### The `_target_` Key
 
-Every config must have a `_target_` field that maps to a registered class name:
+The `_target_` key maps a config block to a registered Python class.
+
+**Root config file:** The root configuration file **must** have a `_target_` field:
 
 ```yaml
-_target_: my_model  # Must match a registered name
+_target_: my_model  # Required at root level
 learning_rate: 0.001
 ```
 
+**Nested configs:** For nested configuration blocks, `_target_` is **optional** when the parent class has a type hint pointing to a concrete, registered class. See [Target Resolution](#target-resolution) for details on when `_target_` can be omitted.
+
 ### ConfigStore
 
-The registry that maps string names to Python classes:
+ConfigStore is the central registry that implements **target mappings** - the association between string identifiers and Python classes. When you register a target:
 
 ```python
-rc.register("my_model", MyModel)
-rc.register("my_dataset", MyDataset)
+rc.register(name="my_model", target=MyModel)
+rc.register(name="my_dataset", target=MyDataset)
+```
+
+The registered names (`"my_model"`, `"my_dataset"`) are exactly the values you use for `_target_` in your config files:
+
+```yaml
+_target_: my_model    # Maps to MyModel class
+hidden_size: 256
+```
+
+This decoupling allows config files to reference classes by stable string identifiers, independent of Python module paths or class renaming.
+
+**Viewing registered targets:**
+
+```python
+refs = rc.known_references()
+for name, ref in refs.items():
+    print(f"{name}: {ref.target_class}")
 ```
 
 ### Validation
@@ -134,150 +165,169 @@ Before instantiation, configs are validated for:
 - Type compatibility
 - Target existence in registry
 
-### CLI Overrides
+### Object-Oriented Instantiation
 
-Override config values from the command line:
+ReausoConfig's key feature is **object-oriented configuration**: your config files describe object relationships, and the library instantiates a fully-connected object graph by calling actual class constructors.
 
-```bash
-python main.py model.hidden_size=512 epochs=20
-```
+This enables **full object instantiation** - not just data containers, but factories, service objects, logic components, and complete application wiring. Your entire application can be assembled from configuration.
 
-Or programmatically:
+#### How It Works
 
-```python
-trainer = rc.instantiate(
-    Path("config.yaml"),
-    overrides={"model.hidden_size": 512, "epochs": 20},
-)
-```
+When you call `rc.instantiate()`:
 
-#### Override Syntax
-
-| Syntax        | Example                | Description      |
-| ------------- | ---------------------- | ---------------- |
-| Dot notation  | `model.lr=0.01`      | Set nested value |
-| List indexing | `layers[0].size=128` | Set list element |
-| Add to list   | `+callbacks=logger`  | Append to list   |
-| Remove key    | `~dropout`           | Delete key       |
-
-#### Disabling CLI Overrides
-
-For tests or library usage, disable automatic CLI parsing:
+1. **Config loading**: The config file is loaded and composed (resolving `_ref_` references)
+2. **Validation**: The config structure is validated against registered class constructors
+3. **Recursive instantiation**: Each nested config with a `_target_` becomes an actual object instance
+4. **Constructor mapping**: Config keys become constructor keyword arguments
 
 ```python
-model = rc.instantiate(path, cli_overrides=False)
+@dataclass
+class Database:
+    host: str
+    port: int
+
+@dataclass
+class Service:
+    name: str
+    db: Database  # Nested object
+
+rc.register(name="database", target=Database)
+rc.register(name="service", target=Service)
 ```
-
-#### Override Priority
-
-When both programmatic and CLI overrides are provided, CLI wins:
-
-```python
-# CLI: python main.py model.lr=0.05
-trainer = rc.instantiate(path, overrides={"model.lr": 0.01})
-# Result: model.lr = 0.05 (CLI wins)
-```
-
-### Partial Instantiation
-
-Instantiate only a specific section of the config tree:
-
-```python
-# Load trainer config, but only instantiate the model
-model = rc.instantiate(Path("trainer.yaml"), inner_path="model")
-
-# Works with nested paths
-encoder = rc.instantiate(Path("trainer.yaml"), inner_path="model.encoder")
-
-# And list indices
-first_callback = rc.instantiate(Path("trainer.yaml"), inner_path="callbacks[0]")
-```
-
-**How it works:**
-
-1. The full config is composed (all `_ref_` resolved)
-2. Overrides are applied to the full config
-3. Interpolations (`${...}`) are resolved from the full config
-4. The sub-config at `inner_path` is extracted and instantiated
-
-This means interpolations can reference values outside the partial:
 
 ```yaml
-# trainer.yaml
+# service.yaml
+_target_: service
+name: "api"
+db:
+  _target_: database
+  host: "localhost"
+  port: 5432
+```
+
+```python
+# This creates: Service(name="api", db=Database(host="localhost", port=5432))
+service = rc.instantiate(path=Path("service.yaml"))
+
+# Result is pure Python objects - no framework dependency
+assert isinstance(service, Service)
+assert isinstance(service.db, Database)
+assert service.db.host == "localhost"
+```
+
+#### Beyond Data Classes: Factories and Logic Objects
+
+ReausoConfig works with **any callable** - not just dataclasses. Constructor parameters don't need to be stored as attributes. This makes it perfect for factories, builders, and objects that perform logic during initialization:
+
+```python
+class Rectangle:
+    """Constructor values are used for computation, not stored directly."""
+    def __init__(self, width: float, height: float):
+        self._area = width * height
+        self._perimeter = 2 * (width + height)
+
+    @property
+    def area(self) -> float:
+        return self._area
+
+class ConnectionPool:
+    """Factory that creates internal resources from config values."""
+    def __init__(self, host: str, port: int, pool_size: int):
+        self._connections = [
+            self._create_connection(host, port)
+            for _ in range(pool_size)
+        ]
+
+    def _create_connection(self, host: str, port: int):
+        # Create actual connection...
+        pass
+
+class ApplicationBootstrapper:
+    """Orchestrates application startup from config."""
+    def __init__(self, db: ConnectionPool, cache: ConnectionPool, workers: int):
+        self._db = db
+        self._cache = cache
+        self._start_workers(workers)
+
+    def _start_workers(self, count: int):
+        # Initialize worker threads...
+        pass
+
+rc.register(name="rectangle", target=Rectangle)
+rc.register(name="pool", target=ConnectionPool)
+rc.register(name="app", target=ApplicationBootstrapper)
+```
+
+```yaml
+# app.yaml - Wire your entire application from config
+_target_: app
+workers: 4
+db:
+  _target_: pool
+  host: "db.example.com"
+  port: 5432
+  pool_size: 10
+cache:
+  _target_: pool
+  host: "cache.example.com"
+  port: 6379
+  pool_size: 5
+```
+
+```python
+# One call bootstraps your entire application
+app = rc.instantiate(path=Path("app.yaml"))
+```
+
+#### Type-Driven Polymorphism
+
+Type hints enable runtime substitution of implementations:
+
+```python
+from abc import ABC, abstractmethod
+
+class Optimizer(ABC):
+    @abstractmethod
+    def step(self): pass
+
+class Adam(Optimizer):
+    def __init__(self, lr: float):
+        self.lr = lr
+    def step(self): pass
+
+class SGD(Optimizer):
+    def __init__(self, lr: float, momentum: float):
+        self.lr = lr
+        self.momentum = momentum
+    def step(self): pass
+
+@dataclass
+class Trainer:
+    optimizer: Optimizer  # Accepts any Optimizer subclass
+
+rc.register(name="adam", target=Adam)
+rc.register(name="sgd", target=SGD)
+rc.register(name="trainer", target=Trainer)
+```
+
+```yaml
+# Switch implementations by changing _target_ - no code changes needed
 _target_: trainer
-defaults:
-  learning_rate: 0.01
-model:
-  _target_: model
-  lr: ${/defaults.learning_rate}  # References outside model section
+optimizer:
+  _target_: adam  # or "sgd"
+  lr: 0.001
 ```
 
-```python
-# This works! Interpolation resolved before extraction
-model = rc.instantiate(Path("trainer.yaml"), inner_path="model")
-print(model.lr)  # 0.01
-```
+#### Framework Independence
 
-**Instance sharing with external targets:**
+After instantiation, your objects have **no dependency on ReausoConfig**:
 
-If the partial section has `_instance_` references to targets outside the section, those targets are automatically instantiated and shared:
+- Objects are pure Python instances of your classes
+- No base classes or mixins required
+- No framework imports needed in your application code
+- Works with dataclasses, regular classes, or any callable
 
-```yaml
-_target_: app
-shared_cache:
-  _target_: cache
-  size: 100
-services:
-  api:
-    _target_: service
-    cache:
-      _instance_: /shared_cache  # Outside "services.api" scope
-```
-
-```python
-# Instantiates both the service AND the shared_cache it references
-service = rc.instantiate(Path("app.yaml"), inner_path="services.api")
-print(service.cache.size)  # 100
-```
-
-### Required Values with `_required_`
-
-Mark config values that must be provided externally (via CLI, programmatic overrides, or environment variables):
-
-```yaml
-# config.yaml
-_target_: app
-api_key: _required_           # Must be provided
-database_url: _required_      # Must be provided
-port: 8080                    # Has default, optional
-
-# With optional type hint
-timeout:
-  _required_: int             # Must be int when provided
-```
-
-Required values can be satisfied by:
-
-- CLI overrides: `api_key=secret123`
-- Programmatic overrides: `overrides={"api_key": "secret"}`
-- Environment variable interpolation: `api_key: ${env:API_KEY}`
-
-```python
-# This will raise RequiredValueError - api_key not provided
-model = rc.instantiate(Path("config.yaml"))
-
-# Provide required values via overrides
-model = rc.instantiate(
-    Path("config.yaml"),
-    overrides={"api_key": "secret123", "database_url": "postgres://..."},
-)
-
-# Or validate first to check what's missing
-result = rc.validate(Path("config.yaml"))
-if not result.valid:
-    for error in result.errors:
-        print(error)  # Shows which _required_ values are missing
-```
+This means your application code remains clean and testable - only your startup/configuration code needs to import rconfig.
 
 ### Nested Configs
 
@@ -293,7 +343,11 @@ optimizer:
   lr: 0.001
 ```
 
-#### Implicit Target Inference
+#### Target Resolution
+
+ReausoConfig can automatically determine the target class for nested configs in two ways:
+
+##### 1. Implicit Inference from Type Hints
 
 When a nested config field has a concrete type hint (a class that is registered with no subclasses), the `_target_` can be omitted and will be automatically inferred:
 
@@ -307,8 +361,8 @@ class TrainerConfig:
     model: ModelConfig  # Concrete type - _target_ can be inferred
     epochs: int
 
-rc.register("model", ModelConfig)
-rc.register("trainer", TrainerConfig)
+rc.register(name="model", target=ModelConfig)
+rc.register(name="trainer", target=TrainerConfig)
 ```
 
 ```yaml
@@ -319,10 +373,49 @@ model:
 epochs: 10
 ```
 
-**When `_target_` is required:**
+##### 2. Auto-registration from Explicit Targets
 
-- Abstract classes (cannot be instantiated directly)
-- Base classes with multiple registered subclasses (ambiguous)
+When a nested config has an explicit `_target_` that matches the expected type's class name (case-insensitive), the class is automatically registered if not already:
+
+```python
+@dataclass
+class ResNet:
+    layers: int
+    pretrained: bool
+
+@dataclass
+class TrainerConfig:
+    model: ResNet  # Type hint provides the class
+    epochs: int
+
+rc.register(name="trainer", target=TrainerConfig)
+# Note: ResNet is NOT registered manually
+```
+
+```yaml
+_target_: trainer
+model:
+  _target_: resnet  # Auto-registers ResNet (matches class name)
+  layers: 50
+  pretrained: false
+epochs: 100
+```
+
+This is useful with `_ref_` composition - referenced files can specify their own `_target_` without pre-registration:
+
+```yaml
+# models/resnet.yaml (referenced via _ref_)
+_target_: resnet
+layers: 50
+pretrained: false
+```
+
+##### When `_target_` is Required
+
+- **Root config file** - Always required
+- **Abstract base classes** - Cannot be instantiated directly
+- **Base classes with multiple registered subclasses** - Ambiguous which to use
+- **Union types** - Cannot determine which type to use
 
 ```python
 from abc import ABC, abstractmethod
@@ -345,9 +438,9 @@ class LSTMEncoder(BaseEncoder):
 class Model:
     encoder: BaseEncoder  # Abstract - _target_ required!
 
-rc.register("transformer", TransformerEncoder)
-rc.register("lstm", LSTMEncoder)
-rc.register("model", Model)
+rc.register(name="transformer", target=TransformerEncoder)
+rc.register(name="lstm", target=LSTMEncoder)
+rc.register(name="model", target=Model)
 ```
 
 ```yaml
@@ -357,44 +450,7 @@ encoder:
   layers: 6
 ```
 
-#### Auto-registration of Explicit Targets
-
-When a nested config has an explicit `_target_` that matches the expected type's class name (case-insensitive), the class is automatically registered if not already:
-
-```python
-@dataclass
-class ResNet:
-    layers: int
-    pretrained: bool
-
-@dataclass
-class TrainerConfig:
-    model: ResNet  # Type hint provides the class
-    epochs: int
-
-rc.register("trainer", TrainerConfig)
-# Note: ResNet is NOT registered manually
-```
-
-```yaml
-_target_: trainer
-model:
-  _target_: resnet  # Auto-registers ResNet (matches class name)
-  layers: 50
-  pretrained: false
-epochs: 100
-```
-
-This is useful with `_ref_` composition - referenced files can specify their own `_target_` without pre-registration:
-
-```yaml
-# models/resnet.yaml (referenced via _ref_)
-_target_: resnet
-layers: 50
-pretrained: false
-```
-
-**Auto-registration requirements:**
+##### Auto-registration Requirements
 
 - Parent field must have a type hint
 - `_target_` name must match the type hint's class name (case-insensitive)
@@ -426,10 +482,12 @@ epochs: 10
 
 **Path resolution:**
 
-- `models/resnet.yaml` - Relative to current file
-- `./local.yaml` - Explicit relative
-- `../shared/base.yaml` - Parent directory
-- `/models/resnet.yaml` - Absolute from config root
+| Syntax | Example | Description |
+|--------|---------|-------------|
+| Relative (implicit) | `models/resnet.yaml` | Relative to current file |
+| Relative (explicit) | `./local.yaml` | Explicit relative to current file |
+| Parent directory | `../shared/base.yaml` | Navigate up directories |
+| Absolute | `/models/resnet.yaml` | From config root directory |
 
 **Deep merge:** Sibling keys override values from the referenced file.
 
@@ -456,13 +514,165 @@ service_b:
 
 **Path resolution:**
 
-- `shared_cache` - Relative to config root
-- `/shared.database` - Absolute from composed root
-- `databases[0]` - List indexing supported
+| Syntax | Example | Description |
+|--------|---------|-------------|
+| Absolute | `/shared.database` | From composed config root |
+| Relative (implicit) | `shared_cache` | Relative to config root |
+| Relative (explicit) | `./shared` | Explicit relative syntax |
+| Parent | `../sibling.value` | Parent-relative path |
+| Nested | `data.sources.primary` | Dot notation for nesting |
+| List indexing | `databases[0]` | Access list element |
 
 **Special values:**
 
 - `_instance_: null` - Passes `None` to constructor
+
+### CLI Overrides
+
+Override config values from the command line:
+
+```bash
+python main.py model.hidden_size=512 epochs=20
+```
+
+Or programmatically:
+
+```python
+trainer = rc.instantiate(
+    path=Path("config.yaml"),
+    overrides={"model.hidden_size": 512, "epochs": 20},
+)
+```
+
+#### Override Syntax
+
+| Syntax        | Example                | Description      |
+| ------------- | ---------------------- | ---------------- |
+| Dot notation  | `model.lr=0.01`      | Set nested value |
+| List indexing | `layers[0].size=128` | Set list element |
+| Add to list   | `+callbacks=logger`  | Append to list   |
+| Remove key    | `~dropout`           | Delete key       |
+
+#### Disabling CLI Overrides
+
+For tests or library usage, disable automatic CLI parsing:
+
+```python
+model = rc.instantiate(path=Path("config.yaml"), cli_overrides=False)
+```
+
+#### Override Priority
+
+When both programmatic and CLI overrides are provided, CLI wins:
+
+```python
+# CLI: python main.py model.lr=0.05
+trainer = rc.instantiate(path=Path("config.yaml"), overrides={"model.lr": 0.01})
+# Result: model.lr = 0.05 (CLI wins)
+```
+
+## Advanced Features
+
+### Required Values with `_required_`
+
+Mark config values that must be provided externally (via CLI, programmatic overrides, or environment variables):
+
+```yaml
+# config.yaml
+_target_: app
+api_key: _required_           # Must be provided
+database_url: _required_      # Must be provided
+port: 8080                    # Has default, optional
+
+# With optional type hint
+timeout:
+  _required_: int             # Must be int when provided
+```
+
+Required values can be satisfied by:
+
+- CLI overrides: `api_key=secret123`
+- Programmatic overrides: `overrides={"api_key": "secret"}`
+- Environment variable interpolation: `api_key: ${env:API_KEY}`
+
+```python
+# This will raise RequiredValueError - api_key not provided
+model = rc.instantiate(path=Path("config.yaml"))
+
+# Provide required values via overrides
+model = rc.instantiate(
+    path=Path("config.yaml"),
+    overrides={"api_key": "secret123", "database_url": "postgres://..."},
+)
+
+# Or validate first to check what's missing
+result = rc.validate(path=Path("config.yaml"))
+if not result.valid:
+    for error in result.errors:
+        print(error)  # Shows which _required_ values are missing
+```
+
+### Partial Instantiation
+
+Instantiate only a specific section of the config tree:
+
+```python
+# Load trainer config, but only instantiate the model
+model = rc.instantiate(path=Path("trainer.yaml"), inner_path="model")
+
+# Works with nested paths
+encoder = rc.instantiate(path=Path("trainer.yaml"), inner_path="model.encoder")
+
+# And list indices
+first_callback = rc.instantiate(path=Path("trainer.yaml"), inner_path="callbacks[0]")
+```
+
+**How it works:**
+
+1. The full config is composed (all `_ref_` resolved)
+2. Overrides are applied to the full config
+3. Interpolations (`${...}`) are resolved from the full config
+4. The sub-config at `inner_path` is extracted and instantiated
+
+This means interpolations can reference values outside the partial:
+
+```yaml
+# trainer.yaml
+_target_: trainer
+defaults:
+  learning_rate: 0.01
+model:
+  _target_: model
+  lr: ${/defaults.learning_rate}  # References outside model section
+```
+
+```python
+# This works! Interpolation resolved before extraction
+model = rc.instantiate(path=Path("trainer.yaml"), inner_path="model")
+print(model.lr)  # 0.01
+```
+
+**Instance sharing with external targets:**
+
+If the partial section has `_instance_` references to targets outside the section, those targets are automatically instantiated and shared:
+
+```yaml
+_target_: app
+shared_cache:
+  _target_: cache
+  size: 100
+services:
+  api:
+    _target_: service
+    cache:
+      _instance_: /shared_cache  # Outside "services.api" scope
+```
+
+```python
+# Instantiates both the service AND the shared_cache it references
+service = rc.instantiate(path=Path("app.yaml"), inner_path="services.api")
+print(service.cache.size)  # 100
+```
 
 ### Lazy Instantiation
 
@@ -474,14 +684,14 @@ Make all nested configs lazy:
 
 ```python
 # All nested objects delay __init__ until first access
-trainer = rc.instantiate(Path("trainer.yaml"), lazy=True)
+trainer = rc.instantiate(path=Path("trainer.yaml"), lazy=True)
 
 # trainer.model is lazy - __init__ not called yet
-print(rc.is_lazy_proxy(trainer.model))  # True
+print(rc.is_lazy_proxy(obj=trainer.model))  # True
 
 # Accessing any attribute triggers initialization
 print(trainer.model.hidden_size)  # NOW model.__init__ is called
-print(rc.is_lazy_proxy(trainer.model))  # False
+print(rc.is_lazy_proxy(obj=trainer.model))  # False
 ```
 
 #### Per-Field Lazy Mode
@@ -500,9 +710,9 @@ optimizer:
 ```
 
 ```python
-trainer = rc.instantiate(Path("trainer.yaml"))
-print(rc.is_lazy_proxy(trainer.model))      # True - lazy
-print(rc.is_lazy_proxy(trainer.optimizer))  # False - eager
+trainer = rc.instantiate(path=Path("trainer.yaml"))
+print(rc.is_lazy_proxy(obj=trainer.model))      # True - lazy
+print(rc.is_lazy_proxy(obj=trainer.optimizer))  # False - eager
 ```
 
 **Note:** `_lazy_: true` only affects that specific field, not its children (non-cascading).
@@ -512,7 +722,7 @@ print(rc.is_lazy_proxy(trainer.optimizer))  # False - eager
 ```python
 from rconfig import is_lazy_proxy, force_initialize
 
-trainer = rc.instantiate(Path("trainer.yaml"), lazy=True)
+trainer = rc.instantiate(path=Path("trainer.yaml"), lazy=True)
 
 # Check if object is uninitialized
 if is_lazy_proxy(trainer.model):
@@ -537,16 +747,16 @@ Lazy proxies are designed to be completely transparent to user code:
 
 | Operation                    | Works? | Notes                                  |
 | ---------------------------- | ------ | -------------------------------------- |
-| `isinstance(obj, MyClass)` | ✅ Yes | Proxy is a subclass of your class      |
-| `obj.attribute`            | ✅ Yes | Triggers init, then returns value      |
-| `obj.method()`             | ✅ Yes | Triggers init, then calls method       |
-| `hasattr(obj, 'attr')`     | ✅ Yes | Triggers init, then checks             |
-| `len(obj)`                 | ✅ Yes | Triggers init, then calls `__len__`  |
-| `for x in obj`             | ✅ Yes | Triggers init, then iterates           |
-| `obj[key]`                 | ✅ Yes | Triggers init, then indexes            |
-| `obj()`                    | ✅ Yes | Triggers init, then calls `__call__` |
-| `dataclasses.asdict(obj)`  | ✅ Yes | Triggers init, then converts           |
-| `str(obj)` / `repr(obj)` | ✅ Yes | Triggers init, then formats            |
+| `isinstance(obj, MyClass)` | Yes | Proxy is a subclass of your class      |
+| `obj.attribute`            | Yes | Triggers init, then returns value      |
+| `obj.method()`             | Yes | Triggers init, then calls method       |
+| `hasattr(obj, 'attr')`     | Yes | Triggers init, then checks             |
+| `len(obj)`                 | Yes | Triggers init, then calls `__len__`  |
+| `for x in obj`             | Yes | Triggers init, then iterates           |
+| `obj[key]`                 | Yes | Triggers init, then indexes            |
+| `obj()`                    | Yes | Triggers init, then calls `__call__` |
+| `dataclasses.asdict(obj)`  | Yes | Triggers init, then converts           |
+| `str(obj)` / `repr(obj)` | Yes | Triggers init, then formats            |
 
 #### Known Limitations
 
@@ -672,6 +882,63 @@ count: ${len(/items)}  # 5
 has_gpu: ${"gpu" in /devices}
 ```
 
+#### Conditional Expressions
+
+##### Ternary Operator
+
+Conditional expressions using `condition ? if_true : if_false` syntax:
+
+```yaml
+# Basic ternary with boolean
+mode: '${/debug ? "verbose" : "quiet"}'
+
+# With comparison
+level: '${/count > 10 ? "high" : "low"}'
+
+# With resolver as condition
+status: '${app:is_ready() ? "go" : "wait"}'
+
+# Nested ternary (right-associative)
+result: '${/a ? "first" : /b ? "second" : "third"}'
+```
+
+##### Coalesce Operators
+
+Two coalesce operators for handling null values and errors:
+
+| Operator | Name | Catches |
+|----------|------|---------|
+| `?:` | Elvis (soft) | `None`, missing resolver/env |
+| `??` | Error (hard) | `None`, missing resolver/env, **all exceptions** |
+
+```yaml
+# Elvis coalesce - catches null and missing
+safe_id: '${app:uuid ?: "fallback-id"}'
+env_val: '${env:API_KEY ?: "dev-key"}'
+
+# Error coalesce - also catches exceptions
+risky_value: '${app:might_fail() ?? "safe-default"}'
+
+# Chained coalesce (right-associative)
+value: '${app:primary() ?? app:backup() ?? "ultimate-fallback"}'
+
+# Combined with ternary
+result: '${(app:get_value() ?? 0) > 5 ? "high" : "low"}'
+```
+
+**Elvis (`?:`) vs Error (`??`) Coalesce:**
+
+- Use `?:` when you want resolver exceptions to propagate (fail fast)
+- Use `??` when you want to catch all errors and use a fallback
+
+```yaml
+# ?: propagates errors from app:risky
+critical: '${app:risky() ?: "fallback"}'  # Raises if risky() throws
+
+# ?? catches all errors
+safe: '${app:risky() ?? "fallback"}'  # Returns "fallback" if risky() throws
+```
+
 #### Type Behavior
 
 - **Standalone** `${expr}`: Preserves type (number stays number)
@@ -694,7 +961,7 @@ Circular references are detected and raise `CircularInterpolationError`:
 ```yaml
 # This will raise an error
 a: ${/b}
-b: ${/a}  # Circular: a → b → a
+b: ${/a}  # Circular: a -> b -> a
 ```
 
 ### Custom Resolvers
@@ -716,13 +983,15 @@ def gen_uuid() -> str:
 def now(fmt: str = "%Y-%m-%d") -> str:
     return datetime.now().strftime(fmt)
 
-# Namespaced resolver
-@rc.resolver("db", "lookup")
+# Namespaced resolver - all three syntaxes are equivalent:
+@rc.resolver("db", "lookup")      # Multiple arguments
+@rc.resolver("db:lookup")         # Colon-delimited string
+@rc.resolver("db.lookup")         # Dot-delimited string
 def db_lookup(table: str, id: int) -> dict:
     return database.get(table, id)
 
 # Deeply nested namespace
-@rc.resolver("db", "cache", "get")
+@rc.resolver("db", "cache", "get")  # or "db:cache:get" or "db.cache.get"
 def cache_get(key: str, ttl: int = 60) -> Any:
     return cache.get(key, ttl=ttl)
 
@@ -774,60 +1043,7 @@ def derive(key: str, *, _config_: dict) -> Any:
 
 The `_config_` parameter receives a read-only view of the raw config dictionary (before instantiation).
 
-#### Ternary Operator
-
-Conditional expressions using `condition ? if_true : if_false` syntax:
-
-```yaml
-# Basic ternary with boolean
-mode: '${/debug ? "verbose" : "quiet"}'
-
-# With comparison
-level: '${/count > 10 ? "high" : "low"}'
-
-# With resolver as condition
-status: '${app:is_ready() ? "go" : "wait"}'
-
-# Nested ternary (right-associative)
-result: '${/a ? "first" : /b ? "second" : "third"}'
-```
-
-#### Coalesce Operators
-
-Two coalesce operators for handling null values and errors:
-
-| Operator | Name | Catches |
-|----------|------|---------|
-| `?:` | Elvis (soft) | `None`, missing resolver/env |
-| `??` | Error (hard) | `None`, missing resolver/env, **all exceptions** |
-
-```yaml
-# Elvis coalesce - catches null and missing
-safe_id: '${app:uuid ?: "fallback-id"}'
-env_val: '${env:API_KEY ?: "dev-key"}'
-
-# Error coalesce - also catches exceptions
-risky_value: '${app:might_fail() ?? "safe-default"}'
-
-# Chained coalesce (right-associative)
-value: '${app:primary() ?? app:backup() ?? "ultimate-fallback"}'
-
-# Combined with ternary
-result: '${(app:get_value() ?? 0) > 5 ? "high" : "low"}'
-```
-
-**Elvis (`?:`) vs Error (`??`) Coalesce:**
-
-- Use `?:` when you want resolver exceptions to propagate (fail fast)
-- Use `??` when you want to catch all errors and use a fallback
-
-```yaml
-# ?: propagates errors from app:risky
-critical: '${app:risky() ?: "fallback"}'  # Raises if risky() throws
-
-# ?? catches all errors
-safe: '${app:risky() ?? "fallback"}'  # Returns "fallback" if risky() throws
-```
+**Note:** Resolvers can be used with conditional expressions (ternary `?:`, coalesce `?:` and `??`). See [Conditional Expressions](#conditional-expressions) for details.
 
 #### Unregistering Resolvers
 
@@ -846,26 +1062,26 @@ import rconfig as rc
 from pathlib import Path
 
 # Export to Python dict (fully resolved)
-config_dict = rc.to_dict(Path("config.yaml"))
+config_dict = rc.to_dict(path=Path("config.yaml"))
 print(config_dict["model"]["hidden_size"])  # 256
 
 # Export to YAML string
-yaml_str = rc.to_yaml(Path("config.yaml"))
+yaml_str = rc.to_yaml(path=Path("config.yaml"))
 
 # Export to JSON string
-json_str = rc.to_json(Path("config.yaml"))
+json_str = rc.to_json(path=Path("config.yaml"))
 
 # Export to TOML string
-toml_str = rc.to_toml(Path("config.yaml"))
+toml_str = rc.to_toml(path=Path("config.yaml"))
 
 # With overrides
 config = rc.to_dict(
-    Path("config.yaml"),
+    path=Path("config.yaml"),
     overrides={"model.lr": 0.01}
 )
 
 # Remove internal markers (_target_, _ref_, _instance_, _lazy_)
-clean_dict = rc.to_dict(Path("config.yaml"), exclude_markers=True)
+clean_dict = rc.to_dict(path=Path("config.yaml"), exclude_markers=True)
 ```
 
 #### File Export
@@ -874,21 +1090,21 @@ Export to files with automatic format detection based on output file extension:
 
 ```python
 # Single file export - format auto-detected from extension
-rc.to_file(Path("trainer.yaml"), Path("output.json"))   # YAML -> JSON
-rc.to_file(Path("trainer.yaml"), Path("output.toml"))   # YAML -> TOML
-rc.to_file(Path("trainer.yaml"), Path("output.yaml"))   # YAML -> YAML
+rc.to_file(source=Path("trainer.yaml"), output_path=Path("output.json"))   # YAML -> JSON
+rc.to_file(source=Path("trainer.yaml"), output_path=Path("output.toml"))   # YAML -> TOML
+rc.to_file(source=Path("trainer.yaml"), output_path=Path("output.yaml"))   # YAML -> YAML
 
 # Export from dict (useful for post-processing)
 config = {"model": {"lr": 0.01}, "epochs": 10}
-rc.to_file(config, Path("output.yaml"))
+rc.to_file(source=config, output_path=Path("output.yaml"))
 
 # Post-processing workflow
-config = rc.to_dict(Path("config.yaml"), cli_overrides=False)
+config = rc.to_dict(path=Path("config.yaml"), cli_overrides=False)
 config["extra_key"] = "added_value"
-rc.to_file(config, Path("output.json"))
+rc.to_file(source=config, output_path=Path("output.json"))
 
 # Multi-file export preserving _ref_ structure
-rc.to_files(Path("trainer.yaml"), Path("output/trainer.json"))
+rc.to_files(source=Path("trainer.yaml"), config_root_file=Path("output/trainer.json"))
 # Creates:
 #   output/trainer.json (root file in JSON format)
 #   output/models/resnet.yaml (preserves original YAML format)
@@ -901,13 +1117,13 @@ Load configs from any format and export to another:
 
 ```python
 # Load YAML, export as JSON string
-json_str = rc.to_json(Path("config.yaml"))
+json_str = rc.to_json(path=Path("config.yaml"))
 
 # Load TOML, export as YAML string
-yaml_str = rc.to_yaml(Path("config.toml"))
+yaml_str = rc.to_yaml(path=Path("config.toml"))
 
 # Load JSON, export to TOML file
-rc.to_file(Path("config.json"), Path("output.toml"))
+rc.to_file(source=Path("config.json"), output_path=Path("output.toml"))
 ```
 
 #### Custom Exporters
@@ -926,13 +1142,13 @@ class XmlExporter(Exporter):
 register_exporter(XmlExporter(), ".xml")
 
 # Now works with to_file
-rc.to_file(Path("config.yaml"), Path("output.xml"))
+rc.to_file(source=Path("config.yaml"), output_path=Path("output.xml"))
 ```
 
 For more control, use the `export()` function with a custom exporter instance:
 
 ```python
-result = rc.export(Path("config.yaml"), exporter=MyCustomExporter())
+result = rc.export(path=Path("config.yaml"), exporter=MyCustomExporter())
 ```
 
 ### Provenance Tracking
@@ -942,7 +1158,7 @@ Track the origin of every config value - essential for debugging complex configs
 #### Basic Usage
 
 ```python
-prov = rc.get_provenance(Path("trainer.yaml"))
+prov = rc.get_provenance(path=Path("trainer.yaml"))
 print(prov)  # Shows config with file:line annotations
 
 # Example output:
@@ -1126,26 +1342,80 @@ print(prov.format().layout(TableLayout()))
 
 ### `rc.register(name, target)`
 
-Register a target class under a unique name.
+Register a target class under a unique name for use in config files.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | required | Unique identifier for the target class. This is the value used in `_target_` fields. |
+| `target` | `type` | required | The Python class to register. |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception | Condition |
+|-----------|-----------|
+| `ValueError` | If `name` is already registered |
+
+**Examples:**
 
 ```python
-rc.register("model", ModelConfig)
+rc.register(name="model", target=ModelConfig)
+rc.register(name="my_dataset", target=MyDataset)
 ```
 
 ### `rc.unregister(name)`
 
-Remove a previously registered reference.
+Remove a previously registered configuration reference.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | required | Identifier of the reference to unregister. |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception | Condition |
+|-----------|-----------|
+| `KeyError` | If no reference with that name exists |
+
+**Examples:**
 
 ```python
-rc.unregister("model")  # Raises KeyError if not found
+rc.unregister(name="model")
 ```
 
 ### `rc.validate(path, *, overrides=None, cli_overrides=True)`
 
-Validate a config file without instantiating (dry-run). Also checks that all `_required_` values have been satisfied.
+Validate a config file without instantiating (dry-run). Checks all `_required_` values have been satisfied.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `Path` | required | Path to the configuration file. |
+| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides using dot notation keys. |
+| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides from `sys.argv`. |
+
+**Returns:** `ValidationResult` with fields:
+- `valid` (`bool`): `True` if validation passed with no errors
+- `errors` (`list[ValidationError]`): List of validation errors found
+
+**Raises:**
+
+| Exception | Condition |
+|-----------|-----------|
+| `ConfigFileError` | If file cannot be loaded or parsed |
+
+**Examples:**
 
 ```python
-result = rc.validate(Path("config.yaml"))
+result = rc.validate(path=Path("config.yaml"))
 if result.valid:
     print("Config is valid!")
 else:
@@ -1154,100 +1424,150 @@ else:
 
 # With overrides to satisfy _required_ values
 result = rc.validate(
-    Path("config.yaml"),
+    path=Path("config.yaml"),
     overrides={"api_key": "secret123"},
 )
 ```
 
 ### `rc.instantiate(path, expected_type=None, *, inner_path=None, overrides=None, cli_overrides=True, lazy=False)`
 
-Load, validate, and instantiate a config file.
-
-```python
-# Basic usage (CLI overrides enabled by default)
-model = rc.instantiate(Path("config.yaml"))
-
-# Type-safe version (for IDE autocompletion)
-model = rc.instantiate(Path("config.yaml"), ModelConfig)
-
-# Partial instantiation - only instantiate a section
-model = rc.instantiate(Path("trainer.yaml"), inner_path="model")
-encoder = rc.instantiate(Path("trainer.yaml"), inner_path="model.encoder")
-
-# With programmatic overrides
-model = rc.instantiate(Path("config.yaml"), overrides={"model.lr": 0.01})
-
-# Combine partial with overrides
-model = rc.instantiate(
-    Path("trainer.yaml"),
-    inner_path="model",
-    overrides={"model.hidden_size": 512},
-)
-
-# Disable CLI overrides (for tests)
-model = rc.instantiate(Path("config.yaml"), cli_overrides=False)
-
-# With lazy instantiation (all nested configs are lazy)
-model = rc.instantiate(Path("config.yaml"), lazy=True)
-```
+Load, compose, validate, and instantiate a configuration file into Python objects.
 
 **Parameters:**
 
-- `lazy`: If `True`, all nested configs are lazily instantiated. Objects delay `__init__` until first attribute access. Default: `False`.
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `Path` | required | Path to the configuration file. Supports `.yaml`, `.yml`, `.json`, `.toml`. |
+| `expected_type` | `type[T] \| None` | `None` | Optional type for type-safe returns. Enables IDE autocompletion and type checking. |
+| `inner_path` | `str \| None` | `None` | Dot-notation path to instantiate only a section (e.g., `"model.encoder"`). Interpolations are resolved from the full config before extraction. |
+| `overrides` | `dict[str, Any] \| None` | `None` | Config overrides using dot notation keys. Applied before CLI overrides. |
+| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides from `sys.argv`. Set to `False` for tests or library usage. |
+| `lazy` | `bool` | `False` | If `True`, all nested configs delay `__init__` until first attribute access. |
+
+**Returns:** `T` if `expected_type` provided, otherwise `Any`
+
+**Raises:**
+
+| Exception | Condition |
+|-----------|-----------|
+| `ConfigFileError` | File cannot be loaded or parsed |
+| `TargetNotFoundError` | `_target_` value not registered |
+| `ValidationError` | Config structure is invalid |
+| `RequiredValueError` | `_required_` value not provided |
+| `CircularRefError` | Circular `_ref_` references detected |
+| `CircularInstanceError` | Circular `_instance_` references detected |
+| `RefResolutionError` | A `_ref_` cannot be resolved |
+| `InstanceResolutionError` | An `_instance_` path cannot be resolved |
+| `InvalidInnerPathError` | `inner_path` doesn't exist in config |
+| `InvalidOverridePathError` | An override path doesn't exist |
+| `InvalidOverrideSyntaxError` | An override string is malformed |
+| `InstantiationError` | Object creation fails |
+
+**Examples:**
+
+```python
+# Basic usage
+model = rc.instantiate(path=Path("config.yaml"))
+
+# Type-safe with IDE autocompletion
+model = rc.instantiate(path=Path("config.yaml"), expected_type=ModelConfig)
+
+# Partial instantiation
+encoder = rc.instantiate(path=Path("trainer.yaml"), inner_path="model.encoder")
+
+# With overrides, no CLI parsing (for tests)
+model = rc.instantiate(
+    path=Path("config.yaml"),
+    overrides={"learning_rate": 0.001},
+    cli_overrides=False,
+)
+
+# Lazy instantiation
+app = rc.instantiate(path=Path("app.yaml"), lazy=True)
+```
 
 ### `rc.known_references()`
 
-Get a read-only view of all registered references.
+Get a read-only view of all registered configuration references.
+
+**Parameters:** None
+
+**Returns:** `MappingProxyType[str, ConfigReference]` - Immutable mapping of name to `ConfigReference`
+
+`ConfigReference` has attributes:
+- `name` (`str`): Identifier for the target class
+- `target_class` (`type[Any]`): The registered class
+- `decisive_init_parameters` (`MappingProxyType[str, Parameter]`): Constructor parameters
+
+**Examples:**
 
 ```python
 refs = rc.known_references()
 for name, ref in refs.items():
     print(f"{name}: {ref.target_class}")
+    for param_name, param in ref.decisive_init_parameters.items():
+        print(f"  {param_name}: {param.annotation}")
 ```
 
 ### `rc.get_provenance(path)`
 
-Get provenance tracking for a config file, showing where each value originated.
+Compose a config file and track the origin of each value.
 
-Returns a `Provenance` object with methods:
+**Parameters:**
 
-- `get(path)` - Get `ProvenanceEntry` for a specific config path
-- `items()` - Iterate all (path, entry) tuples
-- `format()` - Get fluent builder for customized output
-- `trace(path)` - Get full `ProvenanceNode` tree for a path
-- `to_dict()` - Export as dictionary
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `Path` | required | Path to the entry-point config file. |
 
-See [Provenance Tracking](#provenance-tracking) for full documentation.
+**Returns:** `Provenance` object with methods:
+- `get(path: str) -> ProvenanceEntry | None`: Get entry for a specific config path
+- `items() -> Iterator[tuple[str, ProvenanceEntry]]`: Iterate all (path, entry) tuples
+- `format() -> ProvenanceLayout`: Get fluent builder for customized output
+- `trace(path: str) -> ProvenanceNode | None`: Get full tree for a path
+- `to_dict() -> dict`: Export as dictionary
+
+**Examples:**
 
 ```python
-prov = rc.get_provenance(Path("trainer.yaml"))
+prov = rc.get_provenance(path=Path("trainer.yaml"))
+print(prov)  # Default formatting
 
-# Print with default formatting
-print(prov)
+entry = prov.get("model.layers")
+print(f"Defined at: {entry.file}:{entry.line}")
 
-# Use presets
+# Custom formatting
 print(prov.format().minimal())
-
-# Filter output
 print(prov.format().for_path("/model.*"))
-
-# Access specific entry
-entry = prov.get("model.lr")
-print(f"{entry.file}:{entry.line}")
 ```
 
 ### `rc.set_cache_size(size)`
 
-Configure the LRU cache for loaded config files:
+Configure the LRU cache for loaded config files.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `size` | `int` | required | Cache size. Use `0` for unlimited (default behavior). |
+
+**Returns:** `None`
+
+**Examples:**
 
 ```python
-rc.set_cache_size(100)  # Cache up to 100 files
-rc.set_cache_size(0)    # Unlimited (default)
+rc.set_cache_size(size=100)  # Cache up to 100 files
+rc.set_cache_size(size=0)    # Unlimited (default)
 ```
 
 ### `rc.clear_cache()`
 
-Clear the config file cache:
+Clear the config file cache.
+
+**Parameters:** None
+
+**Returns:** `None`
+
+**Examples:**
 
 ```python
 rc.clear_cache()
@@ -1257,124 +1577,274 @@ rc.clear_cache()
 
 Check if an object is an uninitialized lazy proxy.
 
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `obj` | `Any` | required | Object to check. |
+
+**Returns:** `bool` - `True` if object is a lazy proxy that hasn't been initialized yet
+
+**Examples:**
+
 ```python
-model = rc.instantiate(Path("config.yaml"), lazy=True)
-print(rc.is_lazy_proxy(model))  # True
-_ = model.some_attr  # triggers init
-print(rc.is_lazy_proxy(model))  # False
+model = rc.instantiate(path=Path("config.yaml"), lazy=True)
+print(rc.is_lazy_proxy(obj=model))  # True
+_ = model.hidden_size  # Triggers initialization
+print(rc.is_lazy_proxy(obj=model))  # False
 ```
 
 ### `rc.force_initialize(obj)`
 
 Force initialization of a lazy proxy without accessing attributes. No-op for regular objects.
 
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `obj` | `Any` | required | Lazy proxy or regular object. |
+
+**Returns:** `None`
+
+**Examples:**
+
 ```python
-model = rc.instantiate(Path("config.yaml"), lazy=True)
-rc.force_initialize(model)  # model.__init__ called now
+model = rc.instantiate(path=Path("config.yaml"), lazy=True)
+rc.force_initialize(obj=model)  # model.__init__ called now
+print(rc.is_lazy_proxy(obj=model))  # False
 ```
 
 ### `rc.to_dict(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
 Export resolved config as a Python dictionary.
 
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `Path` | required | Path to config file. |
+| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
+| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides. |
+| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers (`_target_`, `_ref_`, `_instance_`, `_lazy_`). |
+
+**Returns:** `dict[str, Any]` - Resolved config as a dictionary
+
+**Examples:**
+
 ```python
-config = rc.to_dict(Path("config.yaml"))
-clean = rc.to_dict(Path("config.yaml"), exclude_markers=True)
+config = rc.to_dict(path=Path("config.yaml"))
+clean = rc.to_dict(path=Path("config.yaml"), exclude_markers=True)
 ```
 
 ### `rc.to_yaml(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
 Export resolved config as a YAML string.
 
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `Path` | required | Path to config file. |
+| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
+| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides. |
+| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
+
+**Returns:** `str` - Resolved config as a YAML string
+
+**Examples:**
+
 ```python
-yaml_str = rc.to_yaml(Path("config.yaml"))
+yaml_str = rc.to_yaml(path=Path("config.yaml"))
 ```
 
 ### `rc.to_json(path, *, overrides=None, cli_overrides=True, exclude_markers=False, indent=2)`
 
 Export resolved config as a JSON string.
 
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `Path` | required | Path to config file. |
+| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
+| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides. |
+| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
+| `indent` | `int \| None` | `2` | Number of spaces for indentation. `None` for compact output. |
+
+**Returns:** `str` - Resolved config as a JSON string
+
+**Examples:**
+
 ```python
-json_str = rc.to_json(Path("config.yaml"))
+json_str = rc.to_json(path=Path("config.yaml"))
+compact = rc.to_json(path=Path("config.yaml"), indent=None)
 ```
 
 ### `rc.to_toml(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
 Export resolved config as a TOML string.
 
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `Path` | required | Path to config file. |
+| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
+| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides. |
+| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
+
+**Returns:** `str` - Resolved config as a TOML string
+
+**Examples:**
+
 ```python
-toml_str = rc.to_toml(Path("config.yaml"))
+toml_str = rc.to_toml(path=Path("config.yaml"))
 ```
 
 ### `rc.to_file(source, output_path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
 Export config to a single file with format auto-detected from output path extension.
 
-- `source`: Path to config file, or dict
-- When source is a dict, `overrides` and `cli_overrides` are ignored
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source` | `Path \| dict[str, Any]` | required | Path to config file, or dict. |
+| `output_path` | `Path` | required | Output file path. Extension determines format (`.yaml`, `.json`, `.toml`). |
+| `overrides` | `dict[str, Any] \| None` | `None` | Config overrides. Ignored if source is dict. |
+| `cli_overrides` | `bool` | `True` | Parse CLI overrides. Ignored if source is dict. |
+| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception | Condition |
+|-----------|-----------|
+| `ConfigFileError` | Output file extension not supported |
+
+**Examples:**
 
 ```python
 # From file path
-rc.to_file(Path("config.yaml"), Path("output.json"))   # YAML -> JSON
-rc.to_file(Path("config.yaml"), Path("output.toml"))   # YAML -> TOML
+rc.to_file(source=Path("config.yaml"), output_path=Path("output.json"))
 
 # From dict
 config = {"model": {"lr": 0.01}, "epochs": 10}
-rc.to_file(config, Path("output.yaml"))
+rc.to_file(source=config, output_path=Path("output.yaml"))
 ```
 
 ### `rc.to_files(source, config_root_file, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
-Export config preserving the `_ref_` file structure. The root file format is determined by the output path extension, while referenced files preserve their original formats.
+Export config preserving file structure (with `_ref_` relationships).
 
-- `source`: Path to config file, or dict
-- When source is a dict, `overrides` and `cli_overrides` are ignored, and only the root file is written (no ref_graph available)
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source` | `Path \| dict[str, Any]` | required | Path to config file, or dict. |
+| `config_root_file` | `Path` | required | Output root file path. Extension determines root format. |
+| `overrides` | `dict[str, Any] \| None` | `None` | Config overrides. Ignored if source is dict. |
+| `cli_overrides` | `bool` | `True` | Parse CLI overrides. Ignored if source is dict. |
+| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
+
+**Returns:** `None`
+
+**Behavior:**
+- Root file format determined by `config_root_file` extension
+- Referenced files preserve their original formats
+- When source is dict, only root file is written
+
+**Examples:**
 
 ```python
-# From file path
-rc.to_files(Path("trainer.yaml"), Path("output/trainer.json"))
+rc.to_files(source=Path("trainer.yaml"), config_root_file=Path("output/trainer.json"))
 # Creates:
-#   output/trainer.json (root file in JSON)
-#   output/models/resnet.yaml (preserves original YAML)
-
-# From dict (writes root file only)
-config = {"key": "value"}
-rc.to_files(config, Path("output/app.yaml"))
+#   output/trainer.json (root in JSON)
+#   output/models/resnet.yaml (preserves YAML)
 ```
 
 ### `rc.export(path, exporter, *, overrides=None, cli_overrides=True)`
 
-Export resolved config using a custom `Exporter` subclass.
+Export resolved config using a custom exporter.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `Path` | required | Path to config file. |
+| `exporter` | `Exporter` | required | Exporter instance to use. |
+| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
+| `cli_overrides` | `bool` | `True` | Parse CLI overrides. |
+
+**Returns:** The exported data in the exporter's target format
+
+**Examples:**
 
 ```python
-result = rc.export(Path("config.yaml"), exporter=MyCustomExporter())
+class MyExporter(Exporter):
+    def export(self, config: dict) -> str:
+        return json.dumps(config)
+
+result = rc.export(path=Path("config.yaml"), exporter=MyExporter())
 ```
 
 ### `rc.register_exporter(exporter, *extensions)`
 
 Register an exporter for specific file extensions.
 
-```python
-from rconfig import Exporter, register_exporter
+**Parameters:**
 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `exporter` | `Exporter` | required | Exporter instance to register. |
+| `*extensions` | `str` | required | Extensions to register (e.g., `".xml"`, `".protobuf"`). |
+
+**Returns:** `None`
+
+**Examples:**
+
+```python
 class XmlExporter(Exporter):
     def export(self, config: dict) -> str:
         return dict_to_xml(config)
 
-register_exporter(XmlExporter(), ".xml")
+rc.register_exporter(XmlExporter(), ".xml")
 ```
 
 ### `rc.unregister_exporter(extension)`
 
 Unregister an exporter by extension.
 
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `extension` | `str` | required | The extension to unregister. |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception | Condition |
+|-----------|-----------|
+| `KeyError` | Extension not registered |
+
+**Examples:**
+
 ```python
-rc.unregister_exporter(".xml")  # Raises KeyError if not found
+rc.unregister_exporter(extension=".xml")
 ```
 
 ### `rc.supported_exporter_extensions()`
 
 Get all supported export file extensions.
+
+**Parameters:** None
+
+**Returns:** `frozenset[str]` - Supported extensions (lowercase, e.g., `{'.yaml', '.json', '.toml'}`)
+
+**Examples:**
 
 ```python
 extensions = rc.supported_exporter_extensions()
@@ -1383,33 +1853,174 @@ extensions = rc.supported_exporter_extensions()
 
 ### `rc.register_loader(loader, *extensions)`
 
-Register a loader for specific file extensions.
+Register a config file loader for specific extensions.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `loader` | `ConfigFileLoader` | required | A `ConfigFileLoader` instance to register. |
+| `*extensions` | `str` | required | Extensions to register (e.g., `".ini"`, `".conf"`). |
+
+**Returns:** `None`
+
+**Examples:**
 
 ```python
-from rconfig import ConfigFileLoader, register_loader
-
 class IniConfigLoader(ConfigFileLoader):
     def load(self, path: Path) -> dict[str, Any]:
-        ...
+        import configparser
+        parser = configparser.ConfigParser()
+        parser.read(path)
+        return {s: dict(parser[s]) for s in parser.sections()}
 
-register_loader(IniConfigLoader(), ".ini")
+    def load_with_positions(self, path: Path) -> PositionMap:
+        return PositionMap(self.load(path))
+
+rc.register_loader(IniConfigLoader(), ".ini")
 ```
 
 ### `rc.unregister_loader(extension)`
 
-Unregister a loader by extension.
+Unregister a config file loader by extension.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `extension` | `str` | required | The extension to unregister. |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception | Condition |
+|-----------|-----------|
+| `KeyError` | Extension not registered |
+
+**Examples:**
 
 ```python
-rc.unregister_loader(".ini")  # Raises KeyError if not found
+rc.unregister_loader(extension=".ini")
 ```
 
 ### `rc.supported_loader_extensions()`
 
 Get all supported loader file extensions.
 
+**Parameters:** None
+
+**Returns:** `frozenset[str]` - Supported extensions (lowercase, e.g., `{'.yaml', '.yml', '.json', '.toml'}`)
+
+**Examples:**
+
 ```python
 extensions = rc.supported_loader_extensions()
-# frozenset({'.yaml', '.yml', '.json', '.toml'})
+```
+
+### `@rc.resolver(*path)`
+
+Decorator to register a resolver function for use in interpolation expressions.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `*path` | `str` | required | Path components. Accepts multiple arguments (`"db", "lookup"`) or a single delimited string (`"db:lookup"` or `"db.lookup"`). |
+
+**Returns:** Decorator function
+
+**Special Parameters (in decorated function):**
+- `_config_` (`dict`): Keyword-only parameter that receives read-only view of current config
+
+**Examples:**
+
+```python
+# All equivalent ways to register "db:lookup":
+@rc.resolver("db", "lookup")
+def lookup1(table: str, id: int) -> dict:
+    return database.get(table, id)
+
+@rc.resolver("db:lookup")
+def lookup2(table: str, id: int) -> dict:
+    return database.get(table, id)
+
+@rc.resolver("db.lookup")
+def lookup3(table: str, id: int) -> dict:
+    return database.get(table, id)
+
+# Simple resolver
+@rc.resolver("uuid")
+def gen_uuid() -> str:
+    import uuid
+    return str(uuid.uuid4())
+
+# Resolver with config access
+@rc.resolver("derive")
+def derive(path: str, *, _config_: dict) -> Any:
+    return _config_.get(path)
+```
+
+### `rc.register_resolver(*path, func)`
+
+Register a custom resolver function for use in interpolation expressions.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `*path` | `str` | required | Path components. Accepts multiple arguments (`"db", "lookup"`) or a single delimited string (`"db:lookup"` or `"db.lookup"`). |
+| `func` | `Callable[..., Any]` | required | The resolver function to register. |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception | Condition |
+|-----------|-----------|
+| `ValueError` | If path is empty or func is not callable |
+
+**Examples:**
+
+```python
+def gen_uuid() -> str:
+    import uuid
+    return str(uuid.uuid4())
+
+# All equivalent:
+rc.register_resolver("uuid", func=gen_uuid)
+rc.register_resolver("db", "lookup", func=my_lookup)
+rc.register_resolver("db:lookup", func=my_lookup)
+rc.register_resolver("db.lookup", func=my_lookup)
+```
+
+### `rc.unregister_resolver(*path)`
+
+Unregister a previously registered resolver.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `*path` | `str` | required | Path components. Accepts multiple arguments (`"db", "lookup"`) or a single delimited string (`"db:lookup"` or `"db.lookup"`). |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception | Condition |
+|-----------|-----------|
+| `KeyError` | No resolver with that path exists |
+
+**Examples:**
+
+```python
+rc.unregister_resolver("uuid")
+
+# All equivalent ways to unregister "db:lookup":
+rc.unregister_resolver("db", "lookup")
+rc.unregister_resolver("db:lookup")
+rc.unregister_resolver("db.lookup")
 ```
 
 ## Advanced Usage
@@ -1422,7 +2033,7 @@ For more control, use the underlying classes:
 from rconfig import ConfigStore, ConfigValidator, ConfigInstantiator
 
 store = ConfigStore()
-store.register("model", ModelConfig)
+store.register(name="model", target=ModelConfig)
 
 validator = ConfigValidator(store)
 instantiator = ConfigInstantiator(store, validator)
@@ -1460,7 +2071,7 @@ class IniConfigLoader(ConfigFileLoader):
 register_loader(IniConfigLoader(), ".ini")
 
 # Now works with instantiate
-model = rc.instantiate(Path("config.ini"))
+model = rc.instantiate(path=Path("config.ini"))
 ```
 
 ## Thread Safety
@@ -1524,7 +2135,7 @@ from rconfig import (
 )
 
 try:
-    model = rc.instantiate(Path("config.yaml"))
+    model = rc.instantiate(path=Path("config.yaml"))
 except AmbiguousTargetError as e:
     print(f"Cannot infer type: {e}")
     print(f"Available targets: {e.available_targets}")
