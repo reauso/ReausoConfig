@@ -12,6 +12,8 @@ __all__ = [
     "PathNavigationError",
     "navigate_path",
     "get_value_at_path",
+    "path_exists",
+    "set_value_at_path",
     "build_child_path",
 ]
 
@@ -152,3 +154,67 @@ def get_value_at_path(config: dict[str, Any], path: str) -> Any:
         elif "out of range" in e.message:
             raise IndexError(e.message) from e
         raise
+
+
+def path_exists(config: dict[str, Any], path: str) -> bool:
+    """Check if a path exists in the config.
+
+    :param config: The config dictionary.
+    :param path: The path to check.
+    :return: True if the path exists, False otherwise.
+    """
+    if not path:
+        return True
+
+    segments = parse_path_segments(path)
+    try:
+        navigate_path(config, segments)
+        return True
+    except PathNavigationError:
+        return False
+
+
+def set_value_at_path(
+    config: dict[str, Any],
+    path: str,
+    value: Any,
+    create_parents: bool = False,
+) -> None:
+    """Set a value in the config at the given path.
+
+    :param config: The config dictionary to modify.
+    :param path: The path where to set the value.
+    :param value: The value to set.
+    :param create_parents: If True, create intermediate dicts as needed.
+    :raises KeyError: If a parent path doesn't exist and create_parents is False.
+    :raises TypeError: If trying to navigate through a non-dict.
+    """
+    if not path:
+        raise ValueError("Cannot set value at empty path")
+
+    segments = parse_path_segments(path)
+    if not segments:
+        raise ValueError("Cannot set value at empty path")
+
+    # Navigate to parent, creating dicts if needed
+    current = config
+    for i, segment in enumerate(segments[:-1]):
+        if isinstance(segment, int):
+            raise TypeError(f"Cannot create list indices in path at segment {i}")
+
+        if segment not in current:
+            if create_parents:
+                current[segment] = {}
+            else:
+                raise KeyError(f"Key '{segment}' not found in path")
+
+        next_val = current[segment]
+        if not isinstance(next_val, dict):
+            raise TypeError(f"Cannot navigate through non-dict at '{segment}'")
+        current = next_val
+
+    # Set the final value
+    final_segment = segments[-1]
+    if isinstance(final_segment, int):
+        raise TypeError("Cannot set value at list index")
+    current[final_segment] = value

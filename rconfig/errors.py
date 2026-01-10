@@ -594,3 +594,52 @@ class RequiredValueError(ValidationError):
         super().__init__(
             f"The following required values were not provided:\n" + "\n".join(lines)
         )
+
+
+# =============================================================================
+# Deprecation Errors
+# =============================================================================
+
+
+class DeprecationError(ConfigError):
+    """Base exception for deprecation-related errors."""
+
+
+class DeprecatedKeyError(DeprecationError):
+    """Raised when a deprecated key is used and policy is 'error'.
+
+    :param key: The deprecated key path.
+    :param pattern: The deprecation pattern that matched.
+    :param new_key: The new key to use instead (if provided).
+    :param message: Custom deprecation message (if provided).
+    :param remove_in: Version when the key will be removed (if provided).
+    :param config_path: Path in config where error occurred.
+    """
+
+    def __init__(
+        self,
+        key: str,
+        pattern: str,
+        new_key: str | None = None,
+        message: str | None = None,
+        remove_in: str | None = None,
+        config_path: str = "",
+    ) -> None:
+        self.key = key
+        self.pattern = pattern
+        self.new_key = new_key
+        self.message = message
+        self.remove_in = remove_in
+        self.config_path = config_path
+
+        location = _format_location(config_path)
+        parts = [f"Deprecated key '{key}' used{location}"]
+
+        if new_key:
+            parts.append(f"Use '{new_key}' instead")
+        if message:
+            parts.append(message)
+        if remove_in:
+            parts.append(f"Will be removed in version {remove_in}")
+
+        super().__init__(". ".join(parts))

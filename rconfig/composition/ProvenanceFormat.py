@@ -86,6 +86,8 @@ class ProvenanceFormat:
             "show_chain": None,
             "show_overrides": None,
             "show_targets": None,
+            "show_deprecations": None,
+            "deprecations_only": None,
         }
 
     # --- Show/Hide Toggles ---
@@ -218,6 +220,22 @@ class ProvenanceFormat:
         self._overrides["show_targets"] = False
         return self
 
+    def show_deprecations(self) -> Self:
+        """Show deprecation information in the output.
+
+        :return: Self for method chaining.
+        """
+        self._overrides["show_deprecations"] = True
+        return self
+
+    def hide_deprecations(self) -> Self:
+        """Hide deprecation information from the output.
+
+        :return: Self for method chaining.
+        """
+        self._overrides["show_deprecations"] = False
+        return self
+
     # --- Presets ---
 
     def minimal(self) -> Self:
@@ -279,6 +297,37 @@ class ProvenanceFormat:
             return self.full()
         else:
             return self
+
+    def deprecations(self) -> Self:
+        """Apply deprecations preset: show only deprecated keys.
+
+        This filters the output to only show entries that have deprecation
+        information, displaying the deprecation details prominently.
+
+        :return: Self for method chaining.
+
+        Example::
+
+            # Show only deprecated keys
+            print(prov.format().deprecations())
+            # Deprecated Keys:
+            # ----------------
+            # /learning_rate
+            #   config.yaml:1
+            #   DEPRECATED -> model.optimizer.lr (remove in 2.0.0)
+            #   Message: Use 'model.optimizer.lr' instead
+        """
+        self._overrides["show_paths"] = True
+        self._overrides["show_values"] = True
+        self._overrides["show_files"] = True
+        self._overrides["show_lines"] = True
+        self._overrides["show_source_type"] = False
+        self._overrides["show_chain"] = False
+        self._overrides["show_overrides"] = False
+        self._overrides["show_targets"] = False
+        self._overrides["show_deprecations"] = True
+        self._overrides["deprecations_only"] = True
+        return self
 
     # --- Layout ---
 
@@ -346,6 +395,8 @@ class ProvenanceFormat:
             show_chain=self._ctx.show_chain,
             show_overrides=self._ctx.show_overrides,
             show_targets=self._ctx.show_targets,
+            show_deprecations=self._ctx.show_deprecations,
+            deprecations_only=self._ctx.deprecations_only,
             indent_size=self._ctx.indent_size,
             path_filters=list(self._ctx.path_filters),
             file_filters=list(self._ctx.file_filters),

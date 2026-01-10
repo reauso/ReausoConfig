@@ -1338,6 +1338,147 @@ class TableLayout(ProvenanceLayout):
 print(prov.format().layout(TableLayout()))
 ```
 
+### Deprecation Warnings
+
+Mark configuration keys as deprecated while maintaining backwards compatibility. Deprecated keys are tracked in the provenance system, providing a single source of truth.
+
+#### Registering Deprecations
+
+```python
+import rconfig as rc
+
+# Register a deprecated key with migration path
+rc.deprecate(
+    old_key="learning_rate",
+    new_key="model.optimizer.lr",
+    message="Use 'model.optimizer.lr' instead",
+    remove_in="2.0.0"
+)
+
+# Register multiple deprecations
+rc.deprecate(old_key="n_epochs", new_key="training.epochs", remove_in="2.0.0")
+rc.deprecate(old_key="old_param", message="This parameter is no longer used")
+```
+
+#### Pattern Matching
+
+Use glob-style patterns to deprecate multiple keys:
+
+```python
+# Exact path (default)
+rc.deprecate("model.learning_rate", new_key="model.optimizer.lr")
+
+# Single wildcard (*) - matches one level
+rc.deprecate("*.lr", message="Use full path 'optimizer.learning_rate'")
+# Matches: model.lr, encoder.lr
+# Does NOT match: model.encoder.lr
+
+# Double wildcard (**) - matches any depth
+rc.deprecate("**.dropout", message="Dropout is configured in training section")
+# Matches: model.dropout, model.encoder.dropout, a.b.c.dropout
+```
+
+#### Auto-Mapping Values
+
+When a deprecated key has a `new_key`, values are automatically mapped (creating intermediate structures as needed):
+
+```yaml
+# old_config.yaml (deprecated style)
+learning_rate: 0.001
+n_epochs: 100
+model:
+  name: resnet
+```
+
+```python
+from rconfig.deprecation import auto_map_deprecated_values
+
+# Values automatically available at new locations (intermediate structures created)
+# After auto-mapping: config.model.optimizer.lr = 0.001
+#                     config.training.epochs = 100
+```
+
+#### Deprecation Reports via Provenance
+
+Use the `.deprecations()` preset to view only deprecated keys:
+
+```python
+prov = rc.get_provenance(path=Path("config.yaml"))
+
+# Show only deprecated keys
+print(prov.format().deprecations())
+# Deprecated Keys:
+# ----------------
+# /learning_rate
+#   config.yaml:1
+#   DEPRECATED -> model.optimizer.lr (remove in 2.0.0)
+#   Message: Use 'model.optimizer.lr' instead
+#
+# /n_epochs
+#   config.yaml:2
+#   DEPRECATED -> training.epochs (remove in 2.0.0)
+
+# Check programmatically
+deprecated_entries = [
+    (path, entry) for path, entry in prov.items()
+    if entry.deprecation is not None
+]
+if deprecated_entries:
+    print(f"Found {len(deprecated_entries)} deprecated keys")
+```
+
+#### Deprecation Policies
+
+Control how deprecated keys are handled:
+
+```python
+# Global policy (default: "warn")
+rc.set_deprecation_policy("warn")   # Emit warnings (default)
+rc.set_deprecation_policy("error")  # Raise DeprecatedKeyError
+rc.set_deprecation_policy("ignore") # Silent
+
+# Per-deprecation policy override
+rc.deprecate(
+    old_key="critical_old_key",
+    new_key="new_key",
+    policy="error"  # Always error, regardless of global policy
+)
+```
+
+#### Custom Warning Handlers
+
+Customize how deprecation warnings are emitted:
+
+```python
+from rconfig.deprecation import DeprecationHandler, DeprecationInfo
+
+# Using a class
+class LoggingHandler(DeprecationHandler):
+    def handle(self, info: DeprecationInfo, path: str, file: str, line: int) -> None:
+        import logging
+        logging.warning(f"Deprecated key '{path}' at {file}:{line}")
+
+rc.set_deprecation_handler(LoggingHandler())
+
+# Using a decorator
+@rc.deprecation_handler
+def my_handler(info: DeprecationInfo, path: str, file: str, line: int) -> None:
+    print(f"DEPRECATED: {path} -> {info.new_key}")
+```
+
+The default handler uses Python's `warnings.warn()` with `RconfigDeprecationWarning`, which integrates with Python's warnings filter system.
+
+#### API Reference
+
+| Function | Description |
+|----------|-------------|
+| `rc.deprecate(old_key, *, new_key, message, remove_in, policy)` | Register a deprecated key (supports glob patterns) |
+| `rc.undeprecate(old_key)` | Remove a deprecation registration |
+| `rc.set_deprecation_policy(policy)` | Set global policy (warn/error/ignore) |
+| `rc.set_deprecation_handler(handler)` | Set custom warning handler |
+| `@rc.deprecation_handler` | Decorator to register a function as handler |
+| `prov.format().deprecations()` | Show only deprecated keys in provenance |
+
 ### Immutable / Frozen Configs
 
 ReausoConfig supports immutable configurations through Python's native immutability features. Since the library instantiates your classes directly by calling their constructors, immutability is controlled through your class design - not a library parameter.
