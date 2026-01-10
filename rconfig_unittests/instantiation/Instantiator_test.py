@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, FrozenInstanceError
 from typing import Optional, Union
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -339,6 +339,80 @@ class ConfigInstantiatorTests(TestCase):
         self.assertIsInstance(result.mapping["second"], Inner)
         self.assertEqual(result.mapping["first"].value, 1)
         self.assertEqual(result.mapping["second"].value, 2)
+
+    def test_instantiate__FrozenDataclass__ReturnsImmutableInstance(self):
+        """Test that frozen dataclasses are instantiated correctly and remain immutable."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass(frozen=True)
+        class FrozenModel:
+            hidden_size: int
+            dropout: float = 0.1
+
+        store.register("frozen_model", FrozenModel)
+        instantiator = self._create_instantiator(store)
+        config = {"_target_": "frozen_model", "hidden_size": 256}
+
+        # Act
+        result = instantiator.instantiate(config)
+
+        # Assert
+        self.assertIsInstance(result, FrozenModel)
+        self.assertEqual(result.hidden_size, 256)
+        self.assertEqual(result.dropout, 0.1)
+
+    def test_instantiate__FrozenDataclass__ModificationRaisesError(self):
+        """Test that attempting to modify a frozen dataclass raises FrozenInstanceError."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass(frozen=True)
+        class FrozenModel:
+            value: int
+
+        store.register("frozen_model", FrozenModel)
+        instantiator = self._create_instantiator(store)
+        config = {"_target_": "frozen_model", "value": 42}
+        result = instantiator.instantiate(config)
+
+        # Act & Assert
+        with self.assertRaises(FrozenInstanceError):
+            result.value = 100
+
+    def test_instantiate__NestedFrozenDataclass__BothAreImmutable(self):
+        """Test that nested frozen dataclasses maintain immutability."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass(frozen=True)
+        class InnerFrozen:
+            value: int
+
+        @dataclass(frozen=True)
+        class OuterFrozen:
+            inner: InnerFrozen
+            name: str
+
+        store.register("inner_frozen", InnerFrozen)
+        store.register("outer_frozen", OuterFrozen)
+        instantiator = self._create_instantiator(store)
+        config = {
+            "_target_": "outer_frozen",
+            "inner": {"_target_": "inner_frozen", "value": 42},
+            "name": "test",
+        }
+
+        # Act
+        result = instantiator.instantiate(config)
+
+        # Assert
+        self.assertIsInstance(result, OuterFrozen)
+        self.assertIsInstance(result.inner, InnerFrozen)
+        with self.assertRaises(FrozenInstanceError):
+            result.name = "modified"
+        with self.assertRaises(FrozenInstanceError):
+            result.inner.value = 100
 
 
 class ConfigInstantiatorImplicitTargetTests(TestCase):
