@@ -111,6 +111,13 @@ from .errors import (
     ValidationError,
 )
 from .interpolation.registry import ResolverRegistry
+from .deprecation import (
+    DeprecationInfo,
+    DeprecationHandler,
+    RconfigDeprecationWarning,
+    get_deprecation_registry,
+)
+from .errors import DeprecatedKeyError
 
 T = TypeVar("T")
 
@@ -520,6 +527,141 @@ def get_provenance(path: Path) -> Provenance:
     return provenance
 
 
+# === Deprecation API ===
+
+
+def deprecate(
+    old_key: str,
+    *,
+    new_key: str | None = None,
+    message: str | None = None,
+    remove_in: str | None = None,
+    policy: str | None = None,
+) -> None:
+    """Register a deprecated configuration key.
+
+    Supports exact paths and glob-style patterns:
+    - Exact: "model.lr" matches only "model.lr"
+    - Single wildcard (*): "*.lr" matches "model.lr", "encoder.lr" (one level)
+    - Double wildcard (**): "**.lr" matches "a.b.c.lr" (any depth)
+
+    :param old_key: The deprecated key pattern (exact path or glob).
+    :param new_key: Optional new key location for auto-mapping.
+    :param message: Optional custom deprecation message.
+    :param remove_in: Optional version when the key will be removed.
+    :param policy: Per-deprecation policy override ("warn", "error", "ignore").
+
+    Example::
+
+        # Register a simple deprecation
+        rc.deprecate("learning_rate", new_key="model.optimizer.lr")
+
+        # With version and message
+        rc.deprecate(
+            "n_epochs",
+            new_key="training.epochs",
+            message="Use 'training.epochs' instead",
+            remove_in="2.0.0",
+        )
+
+        # Glob patterns
+        rc.deprecate("**.dropout", message="Dropout configured elsewhere")
+        rc.deprecate("*.lr", message="Use full path 'optimizer.learning_rate'")
+
+        # Per-deprecation policy (always error for this key)
+        rc.deprecate("critical_key", policy="error")
+    """
+    registry = get_deprecation_registry()
+    registry.register(
+        old_key,
+        new_key=new_key,
+        message=message,
+        remove_in=remove_in,
+        policy=policy,
+    )
+
+
+def undeprecate(old_key: str) -> None:
+    """Remove a deprecation registration.
+
+    :param old_key: The deprecated key pattern to remove.
+    :raises KeyError: If no deprecation with that pattern exists.
+
+    Example::
+
+        rc.undeprecate("learning_rate")
+    """
+    registry = get_deprecation_registry()
+    registry.unregister(old_key)
+
+
+def set_deprecation_policy(policy: str) -> None:
+    """Set the global deprecation policy.
+
+    Controls how deprecated keys are handled by default:
+    - "warn": Emit a warning (default)
+    - "error": Raise DeprecatedKeyError
+    - "ignore": Silently ignore
+
+    Per-deprecation policies override this global setting.
+
+    :param policy: One of "warn", "error", "ignore".
+
+    Example::
+
+        rc.set_deprecation_policy("warn")   # Emit warnings (default)
+        rc.set_deprecation_policy("error")  # Raise errors
+        rc.set_deprecation_policy("ignore") # Silent
+    """
+    registry = get_deprecation_registry()
+    registry.set_policy(policy)  # type: ignore
+
+
+def set_deprecation_handler(handler: DeprecationHandler) -> None:
+    """Set a custom deprecation warning handler.
+
+    The handler is called when a deprecated key is accessed and policy is "warn".
+
+    :param handler: A DeprecationHandler instance.
+
+    Example::
+
+        from rconfig.deprecation import DeprecationHandler, DeprecationInfo
+
+        class LoggingHandler(DeprecationHandler):
+            def handle(self, info: DeprecationInfo, path: str, file: str, line: int) -> None:
+                import logging
+                logging.warning(f"Deprecated key '{path}' at {file}:{line}")
+
+        rc.set_deprecation_handler(LoggingHandler())
+    """
+    registry = get_deprecation_registry()
+    registry.set_handler(handler)
+
+
+# Type for deprecation handler decorator
+H = TypeVar("H", bound=Callable[..., Any])
+
+
+def deprecation_handler(func: H) -> H:
+    """Decorator to register a function as the deprecation handler.
+
+    The function should accept: (info: DeprecationInfo, path: str, file: str, line: int)
+
+    :param func: Handler function.
+    :return: The same function (for use as decorator).
+
+    Example::
+
+        @rc.deprecation_handler
+        def my_handler(info, path, file, line):
+            print(f"DEPRECATED: {path} -> {info.new_key}")
+    """
+    registry = get_deprecation_registry()
+    registry.set_handler_func(func)
+    return func
+
+
 # === Config Export / Serialization API ===
 
 
@@ -897,6 +1039,16 @@ __all__ = [
     # Lazy instantiation utilities
     "is_lazy_proxy",
     "force_initialize",
+    # Deprecation API
+    "deprecate",
+    "undeprecate",
+    "set_deprecation_policy",
+    "set_deprecation_handler",
+    "deprecation_handler",
+    "DeprecationInfo",
+    "DeprecationHandler",
+    "DeprecatedKeyError",
+    "RconfigDeprecationWarning",
     # Export API (string output)
     "export",
     "to_dict",

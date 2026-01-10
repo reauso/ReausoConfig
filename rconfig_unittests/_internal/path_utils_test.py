@@ -224,6 +224,81 @@ class GetValueAtPathErrorTests(unittest.TestCase):
         self.assertIn("non-dict", str(ctx.exception))
 
 
+class PathExistsTests(unittest.TestCase):
+    """Tests for path_exists function."""
+
+    def test_pathExists__ExistingPath__ReturnsTrue(self):
+        from rconfig._internal.path_utils import path_exists
+
+        config = {"model": {"lr": 0.01}}
+        self.assertTrue(path_exists(config, "model.lr"))
+
+    def test_pathExists__NonExistingPath__ReturnsFalse(self):
+        from rconfig._internal.path_utils import path_exists
+
+        config = {"model": {"lr": 0.01}}
+        self.assertFalse(path_exists(config, "model.epochs"))
+
+    def test_pathExists__EmptyPath__ReturnsTrue(self):
+        from rconfig._internal.path_utils import path_exists
+
+        config = {"key": "value"}
+        self.assertTrue(path_exists(config, ""))
+
+    def test_pathExists__NestedPath__WorksCorrectly(self):
+        from rconfig._internal.path_utils import path_exists
+
+        config = {"a": {"b": {"c": "value"}}}
+        self.assertTrue(path_exists(config, "a.b.c"))
+        self.assertFalse(path_exists(config, "a.b.d"))
+
+
+class SetValueAtPathTests(unittest.TestCase):
+    """Tests for set_value_at_path function."""
+
+    def test_setValue__SimplePath__SetsValue(self):
+        from rconfig._internal.path_utils import set_value_at_path
+
+        config = {"existing": "value"}
+        set_value_at_path(config, "new_key", 42)
+        self.assertEqual(config["new_key"], 42)
+
+    def test_setValue__NestedPath__SetsValueWithCreateParents(self):
+        from rconfig._internal.path_utils import set_value_at_path
+
+        config = {}
+        set_value_at_path(config, "a.b.c", "value", create_parents=True)
+        self.assertEqual(config["a"]["b"]["c"], "value")
+
+    def test_setValue__NestedPathNoCreateParents__RaisesKeyError(self):
+        from rconfig._internal.path_utils import set_value_at_path
+
+        config = {}
+        with self.assertRaises(KeyError):
+            set_value_at_path(config, "a.b.c", "value", create_parents=False)
+
+    def test_setValue__ExistingNestedPath__OverwritesValue(self):
+        from rconfig._internal.path_utils import set_value_at_path
+
+        config = {"model": {"lr": 0.001}}
+        set_value_at_path(config, "model.lr", 0.01)
+        self.assertEqual(config["model"]["lr"], 0.01)
+
+    def test_setValue__EmptyPath__RaisesValueError(self):
+        from rconfig._internal.path_utils import set_value_at_path
+
+        config = {}
+        with self.assertRaises(ValueError):
+            set_value_at_path(config, "", "value")
+
+    def test_setValue__ListIndex__RaisesTypeError(self):
+        from rconfig._internal.path_utils import set_value_at_path
+
+        config = {}
+        with self.assertRaises(TypeError):
+            set_value_at_path(config, "items[0]", "value", create_parents=True)
+
+
 class BuildChildPathTests(unittest.TestCase):
     """Tests for build_child_path function."""
 
