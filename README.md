@@ -1338,6 +1338,99 @@ class TableLayout(ProvenanceLayout):
 print(prov.format().layout(TableLayout()))
 ```
 
+### Immutable / Frozen Configs
+
+ReausoConfig supports immutable configurations through Python's native immutability features. Since the library instantiates your classes directly by calling their constructors, immutability is controlled through your class design - not a library parameter.
+
+#### Why No `freeze=True` Parameter?
+
+Unlike some configuration libraries that wrap config objects to enforce immutability, ReausoConfig:
+
+- Instantiates your classes directly - no wrapping or proxying
+- Returns pure Python objects with no framework dependency
+- Lets Python enforce immutability at the language level
+
+This design means you get IDE autocompletion, static type checking, and zero runtime overhead for immutability.
+
+#### Using Frozen Dataclasses
+
+The recommended approach for immutable configs:
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class ModelConfig:
+    hidden_size: int
+    dropout: float = 0.1
+
+@dataclass(frozen=True)
+class TrainerConfig:
+    model: ModelConfig
+    epochs: int
+```
+
+```yaml
+# config.yaml
+_target_: trainer
+model:
+  _target_: model
+  hidden_size: 256
+epochs: 100
+```
+
+```python
+import rconfig as rc
+
+rc.register(name="model", target=ModelConfig)
+rc.register(name="trainer", target=TrainerConfig)
+
+trainer = rc.instantiate(path=Path("config.yaml"))
+
+# Attempting to modify raises FrozenInstanceError
+trainer.epochs = 200  # FrozenInstanceError!
+trainer.model.hidden_size = 512  # FrozenInstanceError!
+```
+
+#### Using Pydantic Frozen Models
+
+Pydantic models can also be frozen:
+
+```python
+from pydantic import BaseModel, ConfigDict
+
+class ModelConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    hidden_size: int
+    dropout: float = 0.1
+
+class TrainerConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    model: ModelConfig
+    epochs: int
+```
+
+#### Other Immutability Options
+
+Python provides several built-in options for immutable objects:
+
+| Approach | Example | Notes |
+|----------|---------|-------|
+| Frozen dataclass | `@dataclass(frozen=True)` | Recommended for most cases |
+| Pydantic frozen | `ConfigDict(frozen=True)` | With Pydantic validation |
+| attrs frozen | `@attrs.frozen` | attrs library |
+| NamedTuple | `class Config(NamedTuple)` | Inherently immutable |
+
+#### Benefits of User-Controlled Immutability
+
+- **IDE Support**: Full autocompletion and type checking
+- **Static Analysis**: mypy/pyright catch mutation attempts before runtime
+- **No Runtime Overhead**: Python enforces immutability, not the library
+- **Flexibility**: Mix mutable and immutable classes as needed
+- **Framework Independence**: Works with any immutability pattern you prefer
+
 ## API Reference
 
 ### `rc.register(name, target)`

@@ -254,13 +254,26 @@ data:
 
 ---
 
-## 4. Frozen Config Mode
+## 4. ✅ Frozen Config Mode
 
 **Adopted by:** OmegaConf, Pydantic (frozen models)
 
+**Status:** Implemented
+
 ### Description
 
-Frozen config mode makes configuration objects immutable after instantiation. Any attempt to modify a frozen config raises an error. This prevents accidental mutations that could lead to subtle bugs, especially in long-running applications or when configs are passed between components.
+Frozen config mode ensures configuration objects are immutable after instantiation. This prevents accidental mutations that could lead to subtle bugs, especially in long-running applications or when configs are passed between components.
+
+### Implementation Approach
+
+ReausoConfig achieves frozen configs through Python's native immutability features rather than a library-level `freeze=True` parameter. Since rconfig instantiates user-defined Python classes by calling their constructors, immutability is naturally the responsibility of the user's class design.
+
+**Why no `freeze=True` parameter?**
+
+- ReausoConfig instantiates user classes directly - it doesn't wrap or proxy objects
+- After instantiation, you get pure Python objects with no framework dependency
+- Adding library-level freezing would duplicate Python's built-in capabilities
+- User class design already provides superior immutability (IDE support, type checking)
 
 ### Why It Adds Value
 
@@ -268,63 +281,11 @@ Frozen config mode makes configuration objects immutable after instantiation. An
 - **Reproducibility**: Guarantees config stays constant throughout execution
 - **Thread Safety**: Immutable objects are inherently thread-safe
 - **Intent Clarity**: Makes it explicit that configs should not change
-- **Debugging**: Mutations are caught immediately, not discovered later
+- **Zero Overhead**: Python enforces immutability, no library runtime cost
 
-### Usage Example
+### Usage
 
-```python
-import rconfig
-
-# Freeze at instantiation time
-config = rconfig.instantiate("config.yaml", freeze=True)
-
-# Attempting to modify raises an error
-config.model.lr = 0.01  # Raises FrozenConfigError!
-
-# Attempting to add new keys raises an error
-config.model.new_param = 42  # Raises FrozenConfigError!
-
-# Attempting to delete raises an error
-del config.model.dropout  # Raises FrozenConfigError!
-```
-
-### Selective Freezing
-
-```python
-# Freeze only specific sections
-config = rconfig.instantiate("config.yaml")
-rconfig.freeze(config.model)  # Only model section is frozen
-rconfig.freeze(config.data)   # Now data is also frozen
-
-config.model.lr = 0.01     # Raises FrozenConfigError
-config.training.epochs = 10 # OK - training section not frozen
-```
-
-### Thaw for Controlled Modifications
-
-```python
-# Temporarily unfreeze for controlled modifications
-config = rconfig.instantiate("config.yaml", freeze=True)
-
-with rconfig.thaw(config) as mutable_config:
-    mutable_config.model.lr = 0.01  # OK within context
-
-# Config is frozen again after context exits
-config.model.lr = 0.02  # Raises FrozenConfigError
-```
-
-### Check Frozen Status
-
-```python
-config = rconfig.instantiate("config.yaml", freeze=True)
-
-rconfig.is_frozen(config)        # True
-rconfig.is_frozen(config.model)  # True
-
-# Create unfrozen copy for experimentation
-config_copy = rconfig.unfreeze(config)  # Returns mutable deep copy
-config_copy.model.lr = 0.01  # OK
-```
+See the [Immutable / Frozen Configs](README.md#immutable--frozen-configs) section in the README for usage examples with frozen dataclasses and Pydantic frozen models.
 
 ---
 
