@@ -38,6 +38,8 @@ test = ["test"]
 pytest = "*"
 coverage = "*"
 parameterized = "*"
+pydantic = ">=2.0"
+attrs = "*"
 
 [tool.pixi.feature.test.tasks]
 test = "coverage run -m pytest"
