@@ -31,6 +31,7 @@ Example::
 """
 
 import sys
+from functools import singledispatch
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, TypeVar, overload
@@ -873,26 +874,7 @@ def to_toml(
     return export(path, exporter, overrides=overrides, cli_overrides=cli_overrides)
 
 
-@overload
-def to_file(
-    source: Path,
-    output_path: Path,
-    *,
-    overrides: dict[str, Any] | None = None,
-    cli_overrides: bool = True,
-    exclude_markers: bool = False,
-) -> None: ...
-
-
-@overload
-def to_file(
-    source: dict[str, Any],
-    output_path: Path,
-    *,
-    exclude_markers: bool = False,
-) -> None: ...
-
-
+@singledispatch
 def to_file(
     source: Path | dict[str, Any],
     output_path: Path,
@@ -928,36 +910,37 @@ def to_file(
         config["extra"] = "value"
         rc.to_file(config, Path("output.json"))
     """
-    if isinstance(source, dict):
-        config = source
-    else:
-        config, _ = _resolved_config(
-            source, overrides=overrides, cli_overrides=cli_overrides
-        )
-    file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
-    file_exporter.export_to_file(config, output_path)
+    raise TypeError(f"Unsupported source type: {type(source)}")
 
 
-@overload
-def to_files(
+@to_file.register
+def _to_file_from_path(
     source: Path,
-    config_root_file: Path,
+    output_path: Path,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
     exclude_markers: bool = False,
-) -> None: ...
+) -> None:
+    config, _ = _resolved_config(
+        source, overrides=overrides, cli_overrides=cli_overrides
+    )
+    file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
+    file_exporter.export_to_file(config, output_path)
 
 
-@overload
-def to_files(
-    source: dict[str, Any],
-    config_root_file: Path,
+@to_file.register
+def _to_file_from_dict(
+    source: dict,
+    output_path: Path,
     *,
     exclude_markers: bool = False,
-) -> None: ...
+) -> None:
+    file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
+    file_exporter.export_to_file(source, output_path)
 
 
+@singledispatch
 def to_files(
     source: Path | dict[str, Any],
     config_root_file: Path,
@@ -996,23 +979,44 @@ def to_files(
         config = {"model": {"lr": 0.01}, "epochs": 10}
         rc.to_files(config, Path("output/config.yaml"))
     """
-    if isinstance(source, dict):
-        config = source
-        ref_graph = None
-        source_path = None
-    else:
-        config, composer = _resolved_config(
-            source, overrides=overrides, cli_overrides=cli_overrides
-        )
-        ref_graph = composer.ref_graph()
-        source_path = source
+    raise TypeError(f"Unsupported source type: {type(source)}")
 
+
+@to_files.register
+def _to_files_from_path(
+    source: Path,
+    config_root_file: Path,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> None:
+    config, composer = _resolved_config(
+        source, overrides=overrides, cli_overrides=cli_overrides
+    )
+    ref_graph = composer.ref_graph()
     file_exporter = MultiFileExporter(exclude_markers=exclude_markers)
     file_exporter.export_to_file(
         config,
         config_root_file,
-        source_path=source_path,
+        source_path=source,
         ref_graph=ref_graph,
+    )
+
+
+@to_files.register
+def _to_files_from_dict(
+    source: dict,
+    config_root_file: Path,
+    *,
+    exclude_markers: bool = False,
+) -> None:
+    file_exporter = MultiFileExporter(exclude_markers=exclude_markers)
+    file_exporter.export_to_file(
+        source,
+        config_root_file,
+        source_path=None,
+        ref_graph=None,
     )
 
 
