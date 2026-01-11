@@ -8,6 +8,7 @@ from .argparse_integration import ArgparseHelpIntegration
 from .flat_integration import FlatHelpIntegration
 from .grouped_integration import GroupedHelpIntegration
 from .integration import FunctionHelpIntegration, HelpIntegration
+from .multirun_help import MULTIRUN_HELP
 
 __all__ = [
     "HelpIntegration",
@@ -15,4 +16,5 @@ __all__ = [
     "FlatHelpIntegration",
     "GroupedHelpIntegration",
     "ArgparseHelpIntegration",
+    "MULTIRUN_HELP",
 ]

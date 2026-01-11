@@ -44,6 +44,18 @@ from .help import (
     FlatHelpIntegration,
     GroupedHelpIntegration,
     ArgparseHelpIntegration,
+    MULTIRUN_HELP,
+)
+from .multirun import (
+    MultirunResult,
+    MultirunIterator,
+    MultirunError,
+    InvalidSweepValueError,
+    NoRunConfigurationError,
+    generate_run_configs,
+    validate_sweep_values,
+    apply_ref_shorthand_to_sweep,
+    extract_cli_multirun_overrides,
 )
 
 if TYPE_CHECKING:
@@ -526,6 +538,301 @@ def instantiate(
         )
 
     return _instantiator.instantiate(config, instance_targets=instance_targets, lazy=lazy)
+
+
+# === Multirun API ===
+
+
+@overload
+def instantiate_multirun(
+    path: Path,
+    *,
+    sweep: dict[str, list[Any]],
+    cli_overrides: bool = ...,
+    lazy: bool = ...,
+) -> MultirunIterator[Any]: ...
+@overload
+def instantiate_multirun(
+    path: Path,
+    expected_type: type[T],
+    *,
+    sweep: dict[str, list[Any]],
+    cli_overrides: bool = ...,
+    lazy: bool = ...,
+) -> MultirunIterator[T]: ...
+@overload
+def instantiate_multirun(
+    path: Path,
+    *,
+    experiments: list[dict[str, Any]],
+    cli_overrides: bool = ...,
+    lazy: bool = ...,
+) -> MultirunIterator[Any]: ...
+@overload
+def instantiate_multirun(
+    path: Path,
+    expected_type: type[T],
+    *,
+    experiments: list[dict[str, Any]],
+    cli_overrides: bool = ...,
+    lazy: bool = ...,
+) -> MultirunIterator[T]: ...
+@overload
+def instantiate_multirun(
+    path: Path,
+    *,
+    sweep: dict[str, list[Any]],
+    experiments: list[dict[str, Any]],
+    cli_overrides: bool = ...,
+    lazy: bool = ...,
+) -> MultirunIterator[Any]: ...
+@overload
+def instantiate_multirun(
+    path: Path,
+    expected_type: type[T],
+    *,
+    sweep: dict[str, list[Any]],
+    experiments: list[dict[str, Any]],
+    cli_overrides: bool = ...,
+    lazy: bool = ...,
+) -> MultirunIterator[T]: ...
+@overload
+def instantiate_multirun(
+    path: Path,
+    *,
+    sweep: dict[str, list[Any]] | None = ...,
+    experiments: list[dict[str, Any]] | None = ...,
+    overrides: dict[str, Any] | None = ...,
+    cli_overrides: bool = ...,
+    lazy: bool = ...,
+) -> MultirunIterator[Any]: ...
+@overload
+def instantiate_multirun(
+    path: Path,
+    expected_type: type[T],
+    *,
+    sweep: dict[str, list[Any]] | None = ...,
+    experiments: list[dict[str, Any]] | None = ...,
+    overrides: dict[str, Any] | None = ...,
+    cli_overrides: bool = ...,
+    lazy: bool = ...,
+) -> MultirunIterator[T]: ...
+
+
+def instantiate_multirun(
+    path: Path,
+    expected_type: type[T] | None = None,
+    *,
+    sweep: dict[str, list[Any]] | None = None,
+    experiments: list[dict[str, Any]] | None = None,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    lazy: bool = False,
+) -> MultirunIterator[T] | MultirunIterator[Any]:
+    """Generate and instantiate multiple config combinations from sweeps and experiments.
+
+    Creates a lazy iterator that generates configs from sweep parameters (cartesian
+    product) and/or explicit experiments. Each iteration yields a MultirunResult
+    containing the resolved config, applied overrides, and instantiated object.
+
+    :param path: Path to the base config file.
+    :param expected_type: Optional type for type-safe returns.
+    :param sweep: Dict of parameter paths to lists of values (cartesian product).
+    :param experiments: List of explicit experiment override dicts.
+    :param overrides: Constant overrides applied to all runs (lowest priority).
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv (default True).
+    :param lazy: If True, nested configs delay __init__ until first access.
+    :return: MultirunIterator with length, slicing, and reversal support.
+    :raises NoRunConfigurationError: If neither sweep nor experiments provided.
+    :raises ValueError: If sweep values are not lists.
+
+    **Override Priority:** CLI > experiment/sweep > constant overrides
+
+    Example::
+
+        import rconfig as rc
+        from pathlib import Path
+
+        # Sweep only (cartesian product)
+        for result in rc.instantiate_multirun(
+            path=Path("config.yaml"),
+            sweep={"model.lr": [0.01, 0.001], "model.layers": [4, 8]},
+        ):
+            train(result.instance)  # 4 runs total
+
+        # Experiments only
+        for result in rc.instantiate_multirun(
+            path=Path("config.yaml"),
+            experiments=[
+                {"model": "models/resnet"},
+                {"model": "models/vit"},
+            ],
+        ):
+            train(result.instance)  # 2 runs total
+
+        # Both sweep and experiments (cartesian product)
+        for result in rc.instantiate_multirun(
+            path=Path("config.yaml"),
+            experiments=[{"model": "models/resnet"}, {"model": "models/vit"}],
+            sweep={"optimizer.lr": [0.01, 0.001]},
+        ):
+            train(result.instance)  # 4 runs total
+
+        # Iterator features
+        results = rc.instantiate_multirun(...)
+        len(results)           # Total run count
+        results[50:]           # Resume from index 50
+        reversed(results)      # Reverse order
+        results[3]             # Single run at index 3
+
+        # Error handling
+        for result in rc.instantiate_multirun(...):
+            try:
+                train(result.instance)
+            except Exception as e:
+                log_failure(result.overrides, e)
+                continue
+    """
+    import copy
+
+    from rconfig.interpolation import resolve_interpolations
+    from rconfig.validation.required import find_required_markers
+    from rconfig.override import apply_cli_overrides_with_ref_shorthand
+
+    # Validate inputs
+    sweep = sweep or {}
+    experiments = experiments or []
+    overrides = overrides or {}
+
+    # Validate sweep values are lists
+    if sweep:
+        validate_sweep_values(sweep)
+
+    # Handle --help/-h when cli_overrides is enabled
+    if cli_overrides and ("--help" in sys.argv or "-h" in sys.argv):
+        integration = current_help_integration()
+
+        # Consume --help/-h from sys.argv if integration requests it
+        if integration.consume_help_flag:
+            sys.argv = [arg for arg in sys.argv if arg not in ("--help", "-h")]
+
+        # Get provenance with type hints and descriptions
+        provenance = get_provenance(path)
+
+        # Call the integration (it's responsible for sys.exit() if needed)
+        integration.integrate(provenance, str(path))
+
+    # Parse CLI multirun arguments
+    cli_regular_overrides: list[Override] = []
+    cli_sweep: dict[str, list[Any]] = {}
+    cli_experiments: list[dict[str, Any]] = []
+
+    if cli_overrides:
+        cli_regular_overrides, cli_sweep, cli_experiments = extract_cli_multirun_overrides(
+            sys.argv[1:]
+        )
+
+    # Merge CLI sweep into programmatic sweep (CLI wins on conflict)
+    merged_sweep = {**sweep, **cli_sweep}
+
+    # Merge CLI experiments into programmatic experiments
+    merged_experiments = experiments + cli_experiments
+
+    # Check that at least one of sweep or experiments is provided
+    has_sweep = bool(merged_sweep)
+    has_experiments = bool(merged_experiments)
+
+    if not has_sweep and not has_experiments:
+        raise NoRunConfigurationError(has_overrides=bool(overrides))
+
+    # Generate run configurations (just override dicts, fast)
+    run_configs = generate_run_configs(
+        sweep=merged_sweep,
+        experiments=merged_experiments,
+        overrides=overrides,
+    )
+
+    # Compose base config once (will be deep-copied for each run)
+    composer = ConfigComposer()
+    base_config = composer.compose(path)
+    instance_targets = composer.instance_targets
+
+    def instantiate_single_run(run_overrides: dict[str, Any]) -> MultirunResult[T]:
+        """Instantiate a single run configuration.
+
+        This function is called lazily during iteration.
+        """
+        try:
+            # Deep copy the base config
+            config = copy.deepcopy(base_config)
+
+            # Apply _ref_ shorthand to sweep values targeting dict fields
+            transformed_overrides = apply_ref_shorthand_to_sweep(run_overrides, config)
+
+            # Convert to Override objects
+            run_override_list = parse_dict_overrides(transformed_overrides)
+
+            # Collect all overrides in priority order
+            all_overrides: list[Override] = []
+
+            # Run-specific overrides (from sweep/experiments)
+            all_overrides.extend(run_override_list)
+
+            # CLI regular overrides (highest priority)
+            all_overrides.extend(cli_regular_overrides)
+
+            # Validate paths and coerce values
+            for override in all_overrides:
+                expected_type_hint = _validator.validate_override_path(override.path, config)
+                if override.operation == "set" and isinstance(override.value, str):
+                    override.value = parse_override_value(override.value, expected_type_hint)
+
+            # Apply overrides with _ref_ shorthand for CLI overrides
+            if cli_regular_overrides:
+                config = apply_cli_overrides_with_ref_shorthand(
+                    config, cli_regular_overrides
+                )
+            if run_override_list:
+                config = apply_overrides(config, run_override_list)
+
+            # Check for unsatisfied _required_ values
+            required_markers = find_required_markers(config)
+            if required_markers:
+                missing = [(m.path, m.expected_type) for m in required_markers]
+                raise RequiredValueError(missing)
+
+            # Resolve interpolations
+            config = resolve_interpolations(config)
+
+            # Instantiate
+            instance = _instantiator.instantiate(
+                config, instance_targets=instance_targets, lazy=lazy
+            )
+
+            # Wrap config in MappingProxyType for immutability
+            immutable_config = MappingProxyType(config)
+            immutable_overrides = MappingProxyType(run_overrides)
+
+            return MultirunResult(
+                config=immutable_config,
+                overrides=immutable_overrides,
+                _instance=instance,
+                _error=None,
+            )
+
+        except Exception as e:
+            # Store the error in the result
+            immutable_config = MappingProxyType({})
+            immutable_overrides = MappingProxyType(run_overrides)
+
+            return MultirunResult(
+                config=immutable_config,
+                overrides=immutable_overrides,
+                _instance=None,
+                _error=e,
+            )
+
+    return MultirunIterator(run_configs, instantiate_single_run)
 
 
 def known_references() -> MappingProxyType[str, ConfigReference]:
@@ -1167,6 +1474,49 @@ def _to_files_from_dict(
     )
 
 
+@to_file.register(MultirunResult)
+def _to_file_from_multirun_result(
+    source: MultirunResult[Any],
+    output_path: Path,
+    *,
+    exclude_markers: bool = False,
+) -> None:
+    """Export a MultirunResult config to a single file.
+
+    :param source: MultirunResult from instantiate_multirun iteration.
+    :param output_path: Output file path (extension determines format).
+    :param exclude_markers: If True, remove internal markers (_target_, etc.).
+    """
+    config = dict(source.config)  # Convert from MappingProxyType
+    file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
+    file_exporter.export_to_file(config, output_path)
+
+
+@to_files.register(MultirunResult)
+def _to_files_from_multirun_result(
+    source: MultirunResult[Any],
+    config_root_file: Path,
+    *,
+    exclude_markers: bool = False,
+) -> None:
+    """Export a MultirunResult config preserving structure.
+
+    Note: Since MultirunResult doesn't have ref_graph, this exports as single file.
+
+    :param source: MultirunResult from instantiate_multirun iteration.
+    :param config_root_file: Output root file path.
+    :param exclude_markers: If True, remove internal markers (_target_, etc.).
+    """
+    config = dict(source.config)  # Convert from MappingProxyType
+    file_exporter = MultiFileExporter(exclude_markers=exclude_markers)
+    file_exporter.export_to_file(
+        config,
+        config_root_file,
+        source_path=None,
+        ref_graph=None,
+    )
+
+
 # Public API - Minimal root exports
 # For classes like ConfigStore, ConfigValidator, etc., import from submodules:
 #   from rconfig.store import ConfigStore
@@ -1183,6 +1533,14 @@ __all__ = [
     "get_provenance",
     "set_cache_size",
     "clear_cache",
+    # Multirun API
+    "instantiate_multirun",
+    "MultirunResult",
+    "MultirunIterator",
+    "MultirunError",
+    "InvalidSweepValueError",
+    "NoRunConfigurationError",
+    "MULTIRUN_HELP",
     # Resolver API
     "register_resolver",
     "unregister_resolver",

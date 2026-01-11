@@ -41,6 +41,7 @@ class ModelConfig:
 ### 2. Create a config file
 
 **YAML** (config.yaml):
+
 ```yaml
 _target_: model
 hidden_size: 256
@@ -48,6 +49,7 @@ dropout: 0.2
 ```
 
 **JSON** (config.json):
+
 ```json
 {
     "_target_": "model",
@@ -57,6 +59,7 @@ dropout: 0.2
 ```
 
 **TOML** (config.toml):
+
 ```toml
 _target_ = "model"
 hidden_size = 256
@@ -92,11 +95,11 @@ if not result.valid:
 
 ReausoConfig has built-in support for three configuration formats:
 
-| Format | Extensions | Notes |
-|--------|------------|-------|
-| YAML | `.yaml`, `.yml` | Primary format, preserves comments with ruamel.yaml |
-| JSON | `.json` | Standard JSON, good for programmatic generation |
-| TOML | `.toml` | Python 3.11+ (uses stdlib tomllib) |
+| Format | Extensions          | Notes                                               |
+| ------ | ------------------- | --------------------------------------------------- |
+| YAML   | `.yaml`, `.yml` | Primary format, preserves comments with ruamel.yaml |
+| JSON   | `.json`           | Standard JSON, good for programmatic generation     |
+| TOML   | `.toml`           | Python 3.11+ (uses stdlib tomllib)                  |
 
 The loader is selected automatically based on file extension:
 
@@ -482,12 +485,12 @@ epochs: 10
 
 **Path resolution:**
 
-| Syntax | Example | Description |
-|--------|---------|-------------|
-| Relative (implicit) | `models/resnet` | Relative to current file |
-| Relative (explicit) | `./local` | Explicit relative to current file |
-| Parent directory | `../shared/base` | Navigate up directories |
-| Absolute | `/models/resnet` | From config root directory |
+| Syntax              | Example            | Description                       |
+| ------------------- | ------------------ | --------------------------------- |
+| Relative (implicit) | `models/resnet`  | Relative to current file          |
+| Relative (explicit) | `./local`        | Explicit relative to current file |
+| Parent directory    | `../shared/base` | Navigate up directories           |
+| Absolute            | `/models/resnet` | From config root directory        |
 
 File extensions are auto-detected. If you have multiple files with the same stem (e.g., `model.yaml` and `model.json`), specify the extension explicitly to disambiguate.
 
@@ -516,14 +519,14 @@ service_b:
 
 **Path resolution:**
 
-| Syntax | Example | Description |
-|--------|---------|-------------|
-| Absolute | `/shared.database` | From composed config root |
-| Relative (implicit) | `shared_cache` | Relative to config root |
-| Relative (explicit) | `./shared` | Explicit relative syntax |
-| Parent | `../sibling.value` | Parent-relative path |
-| Nested | `data.sources.primary` | Dot notation for nesting |
-| List indexing | `databases[0]` | Access list element |
+| Syntax              | Example                  | Description               |
+| ------------------- | ------------------------ | ------------------------- |
+| Absolute            | `/shared.database`     | From composed config root |
+| Relative (implicit) | `shared_cache`         | Relative to config root   |
+| Relative (explicit) | `./shared`             | Explicit relative syntax  |
+| Parent              | `../sibling.value`     | Parent-relative path      |
+| Nested              | `data.sources.primary` | Dot notation for nesting  |
+| List indexing       | `databases[0]`         | Access list element       |
 
 **Special values:**
 
@@ -570,6 +573,7 @@ python train.py model=models/vit.yaml
 **How it works:** If the target field is a dict in your config, the override is automatically converted to a `_ref_` assignment. This loads and merges the referenced config file.
 
 **When shorthand applies:**
+
 - Target field exists AND is a dict
 - Value is not quoted
 
@@ -609,6 +613,7 @@ Override with: python script.py key=value
 ```
 
 **Functions that support CLI help:**
+
 - `rc.instantiate()`
 - `rc.validate()`
 - `rc.to_dict()`
@@ -815,16 +820,16 @@ Lazy proxies are designed to be completely transparent to user code:
 
 | Operation                    | Works? | Notes                                  |
 | ---------------------------- | ------ | -------------------------------------- |
-| `isinstance(obj, MyClass)` | Yes | Proxy is a subclass of your class      |
-| `obj.attribute`            | Yes | Triggers init, then returns value      |
-| `obj.method()`             | Yes | Triggers init, then calls method       |
-| `hasattr(obj, 'attr')`     | Yes | Triggers init, then checks             |
-| `len(obj)`                 | Yes | Triggers init, then calls `__len__`  |
-| `for x in obj`             | Yes | Triggers init, then iterates           |
-| `obj[key]`                 | Yes | Triggers init, then indexes            |
-| `obj()`                    | Yes | Triggers init, then calls `__call__` |
-| `dataclasses.asdict(obj)`  | Yes | Triggers init, then converts           |
-| `str(obj)` / `repr(obj)` | Yes | Triggers init, then formats            |
+| `isinstance(obj, MyClass)` | Yes    | Proxy is a subclass of your class      |
+| `obj.attribute`            | Yes    | Triggers init, then returns value      |
+| `obj.method()`             | Yes    | Triggers init, then calls method       |
+| `hasattr(obj, 'attr')`     | Yes    | Triggers init, then checks             |
+| `len(obj)`                 | Yes    | Triggers init, then calls `__len__`  |
+| `for x in obj`             | Yes    | Triggers init, then iterates           |
+| `obj[key]`                 | Yes    | Triggers init, then indexes            |
+| `obj()`                    | Yes    | Triggers init, then calls `__call__` |
+| `dataclasses.asdict(obj)`  | Yes    | Triggers init, then converts           |
+| `str(obj)` / `repr(obj)` | Yes    | Triggers init, then formats            |
 
 #### Known Limitations
 
@@ -974,10 +979,10 @@ result: '${/a ? "first" : /b ? "second" : "third"}'
 
 Two coalesce operators for handling null values and errors:
 
-| Operator | Name | Catches |
-|----------|------|---------|
-| `?:` | Elvis (soft) | `None`, missing resolver/env |
-| `??` | Error (hard) | `None`, missing resolver/env, **all exceptions** |
+| Operator | Name         | Catches                                                  |
+| -------- | ------------ | -------------------------------------------------------- |
+| `?:`   | Elvis (soft) | `None`, missing resolver/env                           |
+| `??`   | Error (hard) | `None`, missing resolver/env, **all exceptions** |
 
 ```yaml
 # Elvis coalesce - catches null and missing
@@ -1255,15 +1260,15 @@ for path, entry in prov.items():
 
 Each `ProvenanceEntry` contains:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `file` | `str` | Source file path |
-| `line` | `int` | Line number in source file |
-| `value` | `Any` | Resolved value |
-| `source_type` | `SourceType` | Origin type (file, cli, env, etc.) |
-| `overrode` | `ProvenanceEntry \| None` | Entry that was overridden |
-| `type_hint` | `type \| None` | Type hint (e.g., `float`, `list[int]`) |
-| `description` | `str \| None` | Field description from structured config |
+| Field           | Type                       | Description                               |
+| --------------- | -------------------------- | ----------------------------------------- |
+| `file`        | `str`                    | Source file path                          |
+| `line`        | `int`                    | Line number in source file                |
+| `value`       | `Any`                    | Resolved value                            |
+| `source_type` | `SourceType`             | Origin type (file, cli, env, etc.)        |
+| `overrode`    | `ProvenanceEntry \| None` | Entry that was overridden                 |
+| `type_hint`   | `type \| None`            | Type hint (e.g.,`float`, `list[int]`) |
+| `description` | `str \| None`             | Field description from structured config  |
 
 ```python
 entry = prov.get("model.lr")
@@ -1273,12 +1278,12 @@ print(f"Description: {entry.description}")  # "Learning rate for optimizer"
 
 #### Formatting Presets
 
-| Preset        | Shows                          | Use Case         |
-| ------------- | ------------------------------ | ---------------- |
-| `minimal()` | paths, files, lines            | Quick overview   |
+| Preset        | Shows                                 | Use Case         |
+| ------------- | ------------------------------------- | ---------------- |
+| `minimal()` | paths, files, lines                   | Quick overview   |
 | `compact()` | + values, source type, targets, types | Debugging values |
-| `full()`    | everything (default)           | Complete tracing |
-| `help()`    | paths, types, values, descriptions | CLI help display |
+| `full()`    | everything (default)                  | Complete tracing |
+| `help()`    | paths, types, values, descriptions    | CLI help display |
 
 ```python
 # Use presets
@@ -1561,14 +1566,14 @@ The default handler uses Python's `warnings.warn()` with `RconfigDeprecationWarn
 
 #### API Reference
 
-| Function | Description |
-|----------|-------------|
+| Function                                                          | Description                                        |
+| ----------------------------------------------------------------- | -------------------------------------------------- |
 | `rc.deprecate(old_key, *, new_key, message, remove_in, policy)` | Register a deprecated key (supports glob patterns) |
-| `rc.undeprecate(old_key)` | Remove a deprecation registration |
-| `rc.set_deprecation_policy(policy)` | Set global policy (warn/error/ignore) |
-| `rc.set_deprecation_handler(handler)` | Set custom warning handler |
-| `@rc.deprecation_handler` | Decorator to register a function as handler |
-| `prov.format().deprecations()` | Show only deprecated keys in provenance |
+| `rc.undeprecate(old_key)`                                       | Remove a deprecation registration                  |
+| `rc.set_deprecation_policy(policy)`                             | Set global policy (warn/error/ignore)              |
+| `rc.set_deprecation_handler(handler)`                           | Set custom warning handler                         |
+| `@rc.deprecation_handler`                                       | Decorator to register a function as handler        |
+| `prov.format().deprecations()`                                  | Show only deprecated keys in provenance            |
 
 ### Immutable / Frozen Configs
 
@@ -1648,12 +1653,12 @@ class TrainerConfig(BaseModel):
 
 Python provides several built-in options for immutable objects:
 
-| Approach | Example | Notes |
-|----------|---------|-------|
-| Frozen dataclass | `@dataclass(frozen=True)` | Recommended for most cases |
-| Pydantic frozen | `ConfigDict(frozen=True)` | With Pydantic validation |
-| attrs frozen | `@attrs.frozen` | attrs library |
-| NamedTuple | `class Config(NamedTuple)` | Inherently immutable |
+| Approach         | Example                      | Notes                      |
+| ---------------- | ---------------------------- | -------------------------- |
+| Frozen dataclass | `@dataclass(frozen=True)`  | Recommended for most cases |
+| Pydantic frozen  | `ConfigDict(frozen=True)`  | With Pydantic validation   |
+| attrs frozen     | `@attrs.frozen`            | attrs library              |
+| NamedTuple       | `class Config(NamedTuple)` | Inherently immutable       |
 
 #### Benefits of User-Controlled Immutability
 
@@ -1663,6 +1668,171 @@ Python provides several built-in options for immutable objects:
 - **Flexibility**: Mix mutable and immutable classes as needed
 - **Framework Independence**: Works with any immutability pattern you prefer
 
+### Multirun Support
+
+Generate and instantiate multiple config combinations from sweep parameters and explicit experiments. Enables hyperparameter sweeps and ablation studies without external orchestration.
+
+```python
+import rconfig as rc
+from pathlib import Path
+
+for result in rc.instantiate_multirun(
+    path=Path("config.yaml"),
+    sweep={
+        "model": ["models/resnet", "models/vit"],  # Extension-less refs
+        "optimizer.lr": [0.01, 0.001],
+    },
+    overrides={"epochs": 100},
+):
+    # result.config: immutable dict (MappingProxyType)
+    # result.instance: instantiated object
+    # result.overrides: the specific overrides for this run
+
+    # Save config for reproducibility
+    rc.to_file(source=result, output_path=Path(f"runs/{run_id}/config.yaml"))
+
+    # Run experiment
+    train(result.instance)
+```
+
+#### CLI Syntax
+
+Sweep parameters and experiments can be specified via command line:
+
+```bash
+# Comma-separated sweep values (cartesian product)
+python train.py model=models/resnet,models/vit optimizer.lr=0.01,0.001
+
+# Bracket syntax (clearer, handles values with commas)
+python train.py "model=[models/resnet, models/vit]" "optimizer.lr=[0.01, 0.001]"
+
+# Explicit experiments with -e/--experiment
+python train.py -e model=models/resnet,lr=0.01 -e model=models/vit,lr=0.001
+
+# Combine experiments with sweep
+python train.py -e model=models/resnet -e model=models/vit optimizer.lr=0.01,0.001
+
+# Generates 4 runs:
+# - resnet + lr=0.01
+# - resnet + lr=0.001
+# - vit + lr=0.01
+# - vit + lr=0.001
+```
+
+#### Experiments + Sweep Combination
+
+Define explicit experiment configurations and optionally sweep additional parameters:
+
+```python
+for result in rc.instantiate_multirun(
+    path=Path("config.yaml"),
+    experiments=[
+        {"model": "models/resnet", "optimizer.lr": 0.01},
+        {"model": "models/vit", "optimizer.lr": 0.001},
+        {"model": "models/mlp", "optimizer.lr": 0.1, "epochs": 50},
+    ],
+    sweep={
+        "data.augmentation": ["flip", "rotate", "crop"],
+    },
+    overrides={"epochs": 100},  # Default (can be overridden by experiment)
+):
+    # 3 experiments x 3 augmentations = 9 runs
+    train(result.instance)
+```
+
+**Behavior:**
+
+- If only `sweep` -> cartesian product of all sweep values
+- If only `experiments` -> run each experiment as defined
+- If both -> each experiment is expanded with sweep cartesian product
+- `overrides` applied to all runs (experiments can override these)
+
+**Override Priority:** CLI > experiment/sweep > constant overrides
+
+#### List-Type Parameter Sweeps
+
+When sweeping a parameter that expects a list type, wrap each value in a list:
+
+```python
+# Parameter "callbacks" expects List[str]
+
+# WRONG - looks like sweep over 3 string values
+sweep={"callbacks": ["logger", "checkpoint", "early_stop"]}
+
+# CORRECT - sweep over 2 list values
+sweep={"callbacks": [
+    ["logger", "checkpoint"],           # Run 1
+    ["logger", "early_stop"],           # Run 2
+]}
+```
+
+#### Lazy Instantiation
+
+Combine with lazy mode for memory-efficient sweeps:
+
+```python
+for result in rc.instantiate_multirun(
+    path=Path("config.yaml"),
+    sweep={"model": ["models/small.yaml", "models/large.yaml"]},
+    lazy=True,  # Delay __init__ until first access
+):
+    if should_skip(result.config):
+        continue  # Model not instantiated yet
+    train(result.instance)  # Triggers instantiation
+```
+
+#### Saving Multirun Configs
+
+Use `to_file` directly with `MultirunResult`:
+
+```python
+for i, result in enumerate(rc.instantiate_multirun(...)):
+    # Export config for reproducibility
+    rc.to_file(source=result, output_path=Path(f"runs/run_{i}/config.yaml"))
+    rc.to_file(source=result, output_path=Path(f"runs/run_{i}/config.json"))
+```
+
+#### Error Handling
+
+Errors are raised when accessing the `instance` property. Use try/except for graceful handling:
+
+```python
+# Pattern 1: Fail fast (let it raise)
+for result in rc.instantiate_multirun(...):
+    train(result.instance)  # Raises if this run failed
+
+# Pattern 2: Handle errors individually with try/except
+for result in rc.instantiate_multirun(...):
+    try:
+        train(result.instance)
+    except (ValidationError, InstantiationError) as e:
+        log_failure(result.overrides, e)
+        continue
+```
+
+#### Iterator Features
+
+The returned `MultirunIterator` supports length, slicing, and reversal:
+
+```python
+results = rc.instantiate_multirun(...)
+
+# Progress tracking with tqdm (auto-detects __len__)
+for result in tqdm(results):
+    train(result.instance)
+
+# Resume from crash point
+for result in results[50:]:
+    train(result.instance)
+
+# Distribute across workers
+worker1_results = results[0:25]
+worker2_results = results[25:50]
+
+# Debug specific run
+single_result = results[3]
+```
+
 ## API Reference
 
 ### `rc.register(name, target)`
@@ -1671,17 +1841,17 @@ Register a target class under a unique name for use in config files.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `name` | `str` | required | Unique identifier for the target class. This is the value used in `_target_` fields. |
-| `target` | `type` | required | The Python class to register. |
+| Parameter  | Type     | Default  | Description                                                                            |
+| ---------- | -------- | -------- | -------------------------------------------------------------------------------------- |
+| `name`   | `str`  | required | Unique identifier for the target class. This is the value used in `_target_` fields. |
+| `target` | `type` | required | The Python class to register.                                                          |
 
 **Returns:** `None`
 
 **Raises:**
 
-| Exception | Condition |
-|-----------|-----------|
+| Exception      | Condition                         |
+| -------------- | --------------------------------- |
 | `ValueError` | If `name` is already registered |
 
 **Examples:**
@@ -1697,16 +1867,16 @@ Remove a previously registered configuration reference.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `name` | `str` | required | Identifier of the reference to unregister. |
+| Parameter | Type    | Default  | Description                                |
+| --------- | ------- | -------- | ------------------------------------------ |
+| `name`  | `str` | required | Identifier of the reference to unregister. |
 
 **Returns:** `None`
 
 **Raises:**
 
-| Exception | Condition |
-|-----------|-----------|
+| Exception    | Condition                             |
+| ------------ | ------------------------------------- |
 | `KeyError` | If no reference with that name exists |
 
 **Examples:**
@@ -1721,20 +1891,21 @@ Validate a config file without instantiating (dry-run). Checks all `_required_` 
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `Path` | required | Path to the configuration file. |
-| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides using dot notation keys. |
-| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides from `sys.argv`. |
+| Parameter         | Type                      | Default  | Description                                             |
+| ----------------- | ------------------------- | -------- | ------------------------------------------------------- |
+| `path`          | `Path`                  | required | Path to the configuration file.                         |
+| `overrides`     | `dict[str, Any] \| None` | `None` | Dictionary of config overrides using dot notation keys. |
+| `cli_overrides` | `bool`                  | `True` | Whether to parse CLI overrides from `sys.argv`.       |
 
 **Returns:** `ValidationResult` with fields:
+
 - `valid` (`bool`): `True` if validation passed with no errors
 - `errors` (`list[ValidationError]`): List of validation errors found
 
 **Raises:**
 
-| Exception | Condition |
-|-----------|-----------|
+| Exception           | Condition                          |
+| ------------------- | ---------------------------------- |
 | `ConfigFileError` | If file cannot be loaded or parsed |
 
 **Examples:**
@@ -1760,33 +1931,33 @@ Load, compose, validate, and instantiate a configuration file into Python object
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `Path` | required | Path to the configuration file. Supports `.yaml`, `.yml`, `.json`, `.toml`. |
-| `expected_type` | `type[T] \| None` | `None` | Optional type for type-safe returns. Enables IDE autocompletion and type checking. |
-| `inner_path` | `str \| None` | `None` | Dot-notation path to instantiate only a section (e.g., `"model.encoder"`). Interpolations are resolved from the full config before extraction. |
-| `overrides` | `dict[str, Any] \| None` | `None` | Config overrides using dot notation keys. Applied before CLI overrides. |
-| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides from `sys.argv`. Set to `False` for tests or library usage. |
-| `lazy` | `bool` | `False` | If `True`, all nested configs delay `__init__` until first attribute access. |
+| Parameter         | Type                      | Default   | Description                                                                                                                                     |
+| ----------------- | ------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `path`          | `Path`                  | required  | Path to the configuration file. Supports `.yaml`, `.yml`, `.json`, `.toml`.                                                             |
+| `expected_type` | `type[T] \| None`        | `None`  | Optional type for type-safe returns. Enables IDE autocompletion and type checking.                                                              |
+| `inner_path`    | `str \| None`            | `None`  | Dot-notation path to instantiate only a section (e.g.,`"model.encoder"`). Interpolations are resolved from the full config before extraction. |
+| `overrides`     | `dict[str, Any] \| None` | `None`  | Config overrides using dot notation keys. Applied before CLI overrides.                                                                         |
+| `cli_overrides` | `bool`                  | `True`  | Whether to parse CLI overrides from `sys.argv`. Set to `False` for tests or library usage.                                                  |
+| `lazy`          | `bool`                  | `False` | If `True`, all nested configs delay `__init__` until first attribute access.                                                                |
 
 **Returns:** `T` if `expected_type` provided, otherwise `Any`
 
 **Raises:**
 
-| Exception | Condition |
-|-----------|-----------|
-| `ConfigFileError` | File cannot be loaded or parsed |
-| `TargetNotFoundError` | `_target_` value not registered |
-| `ValidationError` | Config structure is invalid |
-| `RequiredValueError` | `_required_` value not provided |
-| `CircularRefError` | Circular `_ref_` references detected |
-| `CircularInstanceError` | Circular `_instance_` references detected |
-| `RefResolutionError` | A `_ref_` cannot be resolved |
-| `InstanceResolutionError` | An `_instance_` path cannot be resolved |
-| `InvalidInnerPathError` | `inner_path` doesn't exist in config |
-| `InvalidOverridePathError` | An override path doesn't exist |
-| `InvalidOverrideSyntaxError` | An override string is malformed |
-| `InstantiationError` | Object creation fails |
+| Exception                      | Condition                                   |
+| ------------------------------ | ------------------------------------------- |
+| `ConfigFileError`            | File cannot be loaded or parsed             |
+| `TargetNotFoundError`        | `_target_` value not registered           |
+| `ValidationError`            | Config structure is invalid                 |
+| `RequiredValueError`         | `_required_` value not provided           |
+| `CircularRefError`           | Circular `_ref_` references detected      |
+| `CircularInstanceError`      | Circular `_instance_` references detected |
+| `RefResolutionError`         | A `_ref_` cannot be resolved              |
+| `InstanceResolutionError`    | An `_instance_` path cannot be resolved   |
+| `InvalidInnerPathError`      | `inner_path` doesn't exist in config      |
+| `InvalidOverridePathError`   | An override path doesn't exist              |
+| `InvalidOverrideSyntaxError` | An override string is malformed             |
+| `InstantiationError`         | Object creation fails                       |
 
 **Examples:**
 
@@ -1820,6 +1991,7 @@ Get a read-only view of all registered configuration references.
 **Returns:** `MappingProxyType[str, ConfigReference]` - Immutable mapping of name to `ConfigReference`
 
 `ConfigReference` has attributes:
+
 - `name` (`str`): Identifier for the target class
 - `target_class` (`type[Any]`): The registered class
 - `decisive_init_parameters` (`MappingProxyType[str, Parameter]`): Constructor parameters
@@ -1840,11 +2012,12 @@ Compose a config file and track the origin of each value.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `Path` | required | Path to the entry-point config file. |
+| Parameter | Type     | Default  | Description                          |
+| --------- | -------- | -------- | ------------------------------------ |
+| `path`  | `Path` | required | Path to the entry-point config file. |
 
 **Returns:** `Provenance` object with methods:
+
 - `get(path: str) -> ProvenanceEntry | None`: Get entry for a specific config path
 - `items() -> Iterator[tuple[str, ProvenanceEntry]]`: Iterate all (path, entry) tuples
 - `format() -> ProvenanceLayout`: Get fluent builder for customized output
@@ -1871,9 +2044,9 @@ Configure the LRU cache for loaded config files.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `size` | `int` | required | Cache size. Use `0` for unlimited (default behavior). |
+| Parameter | Type    | Default  | Description                                             |
+| --------- | ------- | -------- | ------------------------------------------------------- |
+| `size`  | `int` | required | Cache size. Use `0` for unlimited (default behavior). |
 
 **Returns:** `None`
 
@@ -1904,9 +2077,9 @@ Check if an object is an uninitialized lazy proxy.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `obj` | `Any` | required | Object to check. |
+| Parameter | Type    | Default  | Description      |
+| --------- | ------- | -------- | ---------------- |
+| `obj`   | `Any` | required | Object to check. |
 
 **Returns:** `bool` - `True` if object is a lazy proxy that hasn't been initialized yet
 
@@ -1925,9 +2098,9 @@ Force initialization of a lazy proxy without accessing attributes. No-op for reg
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `obj` | `Any` | required | Lazy proxy or regular object. |
+| Parameter | Type    | Default  | Description                   |
+| --------- | ------- | -------- | ----------------------------- |
+| `obj`   | `Any` | required | Lazy proxy or regular object. |
 
 **Returns:** `None`
 
@@ -1945,12 +2118,12 @@ Export resolved config as a Python dictionary.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `Path` | required | Path to config file. |
-| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
-| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides. |
-| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers (`_target_`, `_ref_`, `_instance_`, `_lazy_`). |
+| Parameter           | Type                      | Default   | Description                                                                                 |
+| ------------------- | ------------------------- | --------- | ------------------------------------------------------------------------------------------- |
+| `path`            | `Path`                  | required  | Path to config file.                                                                        |
+| `overrides`       | `dict[str, Any] \| None` | `None`  | Dictionary of config overrides.                                                             |
+| `cli_overrides`   | `bool`                  | `True`  | Whether to parse CLI overrides.                                                             |
+| `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers (`_target_`, `_ref_`, `_instance_`, `_lazy_`). |
 
 **Returns:** `dict[str, Any]` - Resolved config as a dictionary
 
@@ -1967,12 +2140,12 @@ Export resolved config as a YAML string.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `Path` | required | Path to config file. |
-| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
-| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides. |
-| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
+| Parameter           | Type                      | Default   | Description                           |
+| ------------------- | ------------------------- | --------- | ------------------------------------- |
+| `path`            | `Path`                  | required  | Path to config file.                  |
+| `overrides`       | `dict[str, Any] \| None` | `None`  | Dictionary of config overrides.       |
+| `cli_overrides`   | `bool`                  | `True`  | Whether to parse CLI overrides.       |
+| `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers. |
 
 **Returns:** `str` - Resolved config as a YAML string
 
@@ -1988,13 +2161,13 @@ Export resolved config as a JSON string.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `Path` | required | Path to config file. |
-| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
-| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides. |
-| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
-| `indent` | `int \| None` | `2` | Number of spaces for indentation. `None` for compact output. |
+| Parameter           | Type                      | Default   | Description                                                   |
+| ------------------- | ------------------------- | --------- | ------------------------------------------------------------- |
+| `path`            | `Path`                  | required  | Path to config file.                                          |
+| `overrides`       | `dict[str, Any] \| None` | `None`  | Dictionary of config overrides.                               |
+| `cli_overrides`   | `bool`                  | `True`  | Whether to parse CLI overrides.                               |
+| `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers.                         |
+| `indent`          | `int \| None`            | `2`     | Number of spaces for indentation.`None` for compact output. |
 
 **Returns:** `str` - Resolved config as a JSON string
 
@@ -2011,12 +2184,12 @@ Export resolved config as a TOML string.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `Path` | required | Path to config file. |
-| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
-| `cli_overrides` | `bool` | `True` | Whether to parse CLI overrides. |
-| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
+| Parameter           | Type                      | Default   | Description                           |
+| ------------------- | ------------------------- | --------- | ------------------------------------- |
+| `path`            | `Path`                  | required  | Path to config file.                  |
+| `overrides`       | `dict[str, Any] \| None` | `None`  | Dictionary of config overrides.       |
+| `cli_overrides`   | `bool`                  | `True`  | Whether to parse CLI overrides.       |
+| `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers. |
 
 **Returns:** `str` - Resolved config as a TOML string
 
@@ -2032,20 +2205,20 @@ Export config to a single file with format auto-detected from output path extens
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `source` | `Path \| dict[str, Any]` | required | Path to config file, or dict. |
-| `output_path` | `Path` | required | Output file path. Extension determines format (`.yaml`, `.json`, `.toml`). |
-| `overrides` | `dict[str, Any] \| None` | `None` | Config overrides. Ignored if source is dict. |
-| `cli_overrides` | `bool` | `True` | Parse CLI overrides. Ignored if source is dict. |
-| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
+| Parameter           | Type                      | Default   | Description                                                                      |
+| ------------------- | ------------------------- | --------- | -------------------------------------------------------------------------------- |
+| `source`          | `Path \| dict[str, Any]` | required  | Path to config file, or dict.                                                    |
+| `output_path`     | `Path`                  | required  | Output file path. Extension determines format (`.yaml`, `.json`, `.toml`). |
+| `overrides`       | `dict[str, Any] \| None` | `None`  | Config overrides. Ignored if source is dict.                                     |
+| `cli_overrides`   | `bool`                  | `True`  | Parse CLI overrides. Ignored if source is dict.                                  |
+| `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers.                                            |
 
 **Returns:** `None`
 
 **Raises:**
 
-| Exception | Condition |
-|-----------|-----------|
+| Exception           | Condition                           |
+| ------------------- | ----------------------------------- |
 | `ConfigFileError` | Output file extension not supported |
 
 **Examples:**
@@ -2065,17 +2238,18 @@ Export config preserving file structure (with `_ref_` relationships).
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `source` | `Path \| dict[str, Any]` | required | Path to config file, or dict. |
-| `config_root_file` | `Path` | required | Output root file path. Extension determines root format. |
-| `overrides` | `dict[str, Any] \| None` | `None` | Config overrides. Ignored if source is dict. |
-| `cli_overrides` | `bool` | `True` | Parse CLI overrides. Ignored if source is dict. |
-| `exclude_markers` | `bool` | `False` | If `True`, remove internal markers. |
+| Parameter            | Type                      | Default   | Description                                              |
+| -------------------- | ------------------------- | --------- | -------------------------------------------------------- |
+| `source`           | `Path \| dict[str, Any]` | required  | Path to config file, or dict.                            |
+| `config_root_file` | `Path`                  | required  | Output root file path. Extension determines root format. |
+| `overrides`        | `dict[str, Any] \| None` | `None`  | Config overrides. Ignored if source is dict.             |
+| `cli_overrides`    | `bool`                  | `True`  | Parse CLI overrides. Ignored if source is dict.          |
+| `exclude_markers`  | `bool`                  | `False` | If `True`, remove internal markers.                    |
 
 **Returns:** `None`
 
 **Behavior:**
+
 - Root file format determined by `config_root_file` extension
 - Referenced files preserve their original formats
 - When source is dict, only root file is written
@@ -2095,12 +2269,12 @@ Export resolved config using a custom exporter.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `Path` | required | Path to config file. |
-| `exporter` | `Exporter` | required | Exporter instance to use. |
-| `overrides` | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
-| `cli_overrides` | `bool` | `True` | Parse CLI overrides. |
+| Parameter         | Type                      | Default  | Description                     |
+| ----------------- | ------------------------- | -------- | ------------------------------- |
+| `path`          | `Path`                  | required | Path to config file.            |
+| `exporter`      | `Exporter`              | required | Exporter instance to use.       |
+| `overrides`     | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
+| `cli_overrides` | `bool`                  | `True` | Parse CLI overrides.            |
 
 **Returns:** The exported data in the exporter's target format
 
@@ -2120,10 +2294,10 @@ Register an exporter for specific file extensions.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `exporter` | `Exporter` | required | Exporter instance to register. |
-| `*extensions` | `str` | required | Extensions to register (e.g., `".xml"`, `".protobuf"`). |
+| Parameter       | Type         | Default  | Description                                                |
+| --------------- | ------------ | -------- | ---------------------------------------------------------- |
+| `exporter`    | `Exporter` | required | Exporter instance to register.                             |
+| `*extensions` | `str`      | required | Extensions to register (e.g.,`".xml"`, `".protobuf"`). |
 
 **Returns:** `None`
 
@@ -2143,16 +2317,16 @@ Unregister an exporter by extension.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
+| Parameter     | Type    | Default  | Description                  |
+| ------------- | ------- | -------- | ---------------------------- |
 | `extension` | `str` | required | The extension to unregister. |
 
 **Returns:** `None`
 
 **Raises:**
 
-| Exception | Condition |
-|-----------|-----------|
+| Exception    | Condition                |
+| ------------ | ------------------------ |
 | `KeyError` | Extension not registered |
 
 **Examples:**
@@ -2182,10 +2356,10 @@ Register a config file loader for specific extensions.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `loader` | `ConfigFileLoader` | required | A `ConfigFileLoader` instance to register. |
-| `*extensions` | `str` | required | Extensions to register (e.g., `".ini"`, `".conf"`). |
+| Parameter       | Type                 | Default  | Description                                            |
+| --------------- | -------------------- | -------- | ------------------------------------------------------ |
+| `loader`      | `ConfigFileLoader` | required | A `ConfigFileLoader` instance to register.           |
+| `*extensions` | `str`              | required | Extensions to register (e.g.,`".ini"`, `".conf"`). |
 
 **Returns:** `None`
 
@@ -2211,16 +2385,16 @@ Unregister a config file loader by extension.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
+| Parameter     | Type    | Default  | Description                  |
+| ------------- | ------- | -------- | ---------------------------- |
 | `extension` | `str` | required | The extension to unregister. |
 
 **Returns:** `None`
 
 **Raises:**
 
-| Exception | Condition |
-|-----------|-----------|
+| Exception    | Condition                |
+| ------------ | ------------------------ |
 | `KeyError` | Extension not registered |
 
 **Examples:**
@@ -2249,13 +2423,14 @@ Decorator to register a resolver function for use in interpolation expressions.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
+| Parameter | Type    | Default  | Description                                                                                                                         |
+| --------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `*path` | `str` | required | Path components. Accepts multiple arguments (`"db", "lookup"`) or a single delimited string (`"db:lookup"` or `"db.lookup"`). |
 
 **Returns:** Decorator function
 
 **Special Parameters (in decorated function):**
+
 - `_config_` (`dict`): Keyword-only parameter that receives read-only view of current config
 
 **Examples:**
@@ -2292,17 +2467,17 @@ Register a custom resolver function for use in interpolation expressions.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `*path` | `str` | required | Path components. Accepts multiple arguments (`"db", "lookup"`) or a single delimited string (`"db:lookup"` or `"db.lookup"`). |
-| `func` | `Callable[..., Any]` | required | The resolver function to register. |
+| Parameter | Type                   | Default  | Description                                                                                                                         |
+| --------- | ---------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `*path` | `str`                | required | Path components. Accepts multiple arguments (`"db", "lookup"`) or a single delimited string (`"db:lookup"` or `"db.lookup"`). |
+| `func`  | `Callable[..., Any]` | required | The resolver function to register.                                                                                                  |
 
 **Returns:** `None`
 
 **Raises:**
 
-| Exception | Condition |
-|-----------|-----------|
+| Exception      | Condition                                |
+| -------------- | ---------------------------------------- |
 | `ValueError` | If path is empty or func is not callable |
 
 **Examples:**
@@ -2325,16 +2500,16 @@ Unregister a previously registered resolver.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
+| Parameter | Type    | Default  | Description                                                                                                                         |
+| --------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `*path` | `str` | required | Path components. Accepts multiple arguments (`"db", "lookup"`) or a single delimited string (`"db:lookup"` or `"db.lookup"`). |
 
 **Returns:** `None`
 
 **Raises:**
 
-| Exception | Condition |
-|-----------|-----------|
+| Exception    | Condition                         |
+| ------------ | --------------------------------- |
 | `KeyError` | No resolver with that path exists |
 
 **Examples:**
