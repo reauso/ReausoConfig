@@ -585,6 +585,7 @@ class ExpressionEvaluator(Transformer):
             raise InterpolationResolutionError(
                 f"{target.source.expression} | filter(...)",
                 f"filter requires a list, got {type(target_list).__name__}",
+                hint="Apply filter to a list value, not a scalar or dict.",
             )
 
         # Apply the filter directly using the parsed condition
@@ -681,7 +682,9 @@ class ExpressionEvaluator(Transformer):
             value = get_value_at_path(self._config, path)
         except (KeyError, IndexError, TypeError) as e:
             raise InterpolationResolutionError(
-                path, f"path not found in config: {e}"
+                path,
+                f"path not found in config: {e}",
+                hint="Verify the path exists in the config. Use dot notation (e.g., 'model.lr').",
             ) from e
 
         # Get provenance info if available

@@ -103,7 +103,9 @@ class InterpolationResolver:
             raw_value = get_value_at_path(self._original_config, path)
         except (KeyError, IndexError, TypeError) as e:
             raise InterpolationResolutionError(
-                path, f"path not found in config: {e}"
+                path,
+                f"path not found in config: {e}",
+                hint="Verify the path exists in the config. Use dot notation (e.g., 'model.lr').",
             ) from e
 
         # If value contains interpolations, resolve it
@@ -246,15 +248,21 @@ class InterpolationResolver:
             # Wrap common Python errors as InterpolationResolutionError
             if isinstance(e.orig_exc, ZeroDivisionError):
                 raise InterpolationResolutionError(
-                    expr, f"division by zero: {e.orig_exc}"
+                    expr,
+                    f"division by zero: {e.orig_exc}",
+                    hint="Check that divisors are not zero.",
                 ) from e.orig_exc
             if isinstance(e.orig_exc, IndexError):
                 raise InterpolationResolutionError(
-                    expr, f"index out of bounds: {e.orig_exc}"
+                    expr,
+                    f"index out of bounds: {e.orig_exc}",
+                    hint="Check that list indices are within bounds.",
                 ) from e.orig_exc
             if isinstance(e.orig_exc, TypeError):
                 raise InterpolationResolutionError(
-                    expr, f"type error: {e.orig_exc}"
+                    expr,
+                    f"type error: {e.orig_exc}",
+                    hint="Check that the operation is valid for the value types.",
                 ) from e.orig_exc
             raise
 
