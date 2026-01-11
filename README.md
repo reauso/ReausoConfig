@@ -585,6 +585,48 @@ For tests or library usage, disable automatic CLI parsing:
 model = rc.instantiate(path=Path("config.yaml"), cli_overrides=False)
 ```
 
+#### CLI Help
+
+When `cli_overrides=True` (default), all CLI-enabled functions support `--help` or `-h`:
+
+```bash
+python main.py --help
+```
+
+This displays all configurable entries from your config file:
+
+```
+Configuration options for config.yaml
+=====================================
+
+model.lr              float       0.001      Learning rate
+model.hidden_size     int         256        Hidden layer size
+data.path             str         (required) Path to data
+
+Override with: python script.py key=value
+```
+
+**Functions that support CLI help:**
+- `rc.instantiate()`
+- `rc.validate()`
+- `rc.to_dict()`
+- `rc.to_yaml()`
+- `rc.to_json()`
+- `rc.to_toml()`
+- `rc.to_file()`
+- `rc.to_files()`
+- `rc.export()`
+
+**Custom help formatting:**
+
+```python
+from rconfig.help import GroupedHelpIntegration
+
+rc.set_help_integration(GroupedHelpIntegration())
+```
+
+See [CLI Help Integration](VISION.md#15-cli-help-integration) for advanced usage.
+
 #### Override Priority
 
 When both programmatic and CLI overrides are provided, CLI wins:
@@ -1207,13 +1249,34 @@ for path, entry in prov.items():
     print(f"{path}: {entry.file}:{entry.line}")
 ```
 
+##### ProvenanceEntry Fields
+
+Each `ProvenanceEntry` contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `file` | `str` | Source file path |
+| `line` | `int` | Line number in source file |
+| `value` | `Any` | Resolved value |
+| `source_type` | `SourceType` | Origin type (file, cli, env, etc.) |
+| `overrode` | `ProvenanceEntry \| None` | Entry that was overridden |
+| `type_hint` | `type \| None` | Type hint (e.g., `float`, `list[int]`) |
+| `description` | `str \| None` | Field description from structured config |
+
+```python
+entry = prov.get("model.lr")
+print(f"Type: {entry.type_hint}")  # <class 'float'>
+print(f"Description: {entry.description}")  # "Learning rate for optimizer"
+```
+
 #### Formatting Presets
 
 | Preset        | Shows                          | Use Case         |
 | ------------- | ------------------------------ | ---------------- |
 | `minimal()` | paths, files, lines            | Quick overview   |
-| `compact()` | + values, source type, targets | Debugging values |
+| `compact()` | + values, source type, targets, types | Debugging values |
 | `full()`    | everything (default)           | Complete tracing |
+| `help()`    | paths, types, values, descriptions | CLI help display |
 
 ```python
 # Use presets
@@ -1239,6 +1302,8 @@ prov.format()
     .show_chain()      .hide_chain()      # Interpolation/instance chains
     .show_overrides()  .hide_overrides()  # Override information
     .show_targets()    .hide_targets()    # Target class information
+    .show_types()      .hide_types()      # Type hints (float, list[int])
+    .show_descriptions().hide_descriptions() # Field descriptions
 
 # Combine with presets
 print(prov.format().minimal().show_values())

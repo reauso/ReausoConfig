@@ -133,6 +133,9 @@ class ProvenanceEntry:
     :param target_class: The resolved class name (e.g., "ResNet").
     :param target_module: The module path (e.g., "myapp.models").
     :param target_auto_registered: Whether the target was auto-registered.
+    :param deprecation: Deprecation info if this key is deprecated.
+    :param type_hint: Type hint for this config value (e.g., float, list[int]).
+    :param description: Description from structured config (Pydantic Field, etc.).
     """
 
     file: str
@@ -149,6 +152,8 @@ class ProvenanceEntry:
     target_module: str | None = None
     target_auto_registered: bool = False
     deprecation: DeprecationInfo | None = None
+    type_hint: type | None = None
+    description: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary representation.
@@ -196,6 +201,14 @@ class ProvenanceEntry:
             result["target_auto_registered"] = True
         if self.deprecation is not None:
             result["deprecation"] = self.deprecation.to_dict()
+        if self.type_hint is not None:
+            result["type_hint"] = (
+                self.type_hint.__name__
+                if hasattr(self.type_hint, "__name__")
+                else str(self.type_hint)
+            )
+        if self.description is not None:
+            result["description"] = self.description
 
         return result
 

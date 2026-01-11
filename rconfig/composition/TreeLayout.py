@@ -48,6 +48,8 @@ class TreeLayout(ProvenanceLayout):
             show_overrides=True,
             show_targets=True,
             show_deprecations=True,
+            show_types=False,
+            show_descriptions=False,
             deprecations_only=False,
             indent_size=2,
         )
@@ -165,6 +167,18 @@ class TreeLayout(ProvenanceLayout):
             deprecation_lines = self._format_deprecation(entry.deprecation, ctx)
             for line in deprecation_lines:
                 lines.append(self.indent(line, 1, ctx))
+
+        # Type hint
+        if ctx.show_types and entry.type_hint is not None:
+            type_str = self.format_type_hint(entry.type_hint, ctx)
+            if type_str:
+                lines.append(self.indent(f"Type: {type_str}", 1, ctx))
+
+        # Description
+        if ctx.show_descriptions and entry.description is not None:
+            desc_str = self.format_description(entry.description, ctx)
+            if desc_str:
+                lines.append(self.indent(f"Description: {desc_str}", 1, ctx))
 
         return "\n".join(lines)
 
