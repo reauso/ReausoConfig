@@ -722,25 +722,25 @@ class ResolveInterpolationsTests(unittest.TestCase):
     # === Provenance tracking (resolver lines 117-119, 206-213, 279-282) ===
 
     def test_resolve__WithProvenance__TracksInterpolationSource(self):
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         config = {"a": 5, "b": "${/a}"}
-        provenance = Provenance()
-        provenance.add("a", "test.yaml", 1)
-        provenance.add("b", "test.yaml", 2)
-        result = resolve_interpolations(config, provenance)
-        entry = provenance.get("b")
+        builder = ProvenanceBuilder()
+        builder.add("a", "test.yaml", 1)
+        builder.add("b", "test.yaml", 2)
+        result = resolve_interpolations(config, builder)
+        entry = builder.get("b")
         self.assertIsNotNone(entry.interpolation)
         self.assertEqual(entry.interpolation.path, "a")
 
     def test_resolve__EmbeddedWithProvenance__TracksCompoundSource(self):
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         config = {"a": 1, "b": 2, "result": "${/a} + ${/b}"}
-        provenance = Provenance()
-        provenance.add("a", "test.yaml", 1)
-        provenance.add("b", "test.yaml", 2)
-        provenance.add("result", "test.yaml", 3)
-        result = resolve_interpolations(config, provenance)
-        entry = provenance.get("result")
+        builder = ProvenanceBuilder()
+        builder.add("a", "test.yaml", 1)
+        builder.add("b", "test.yaml", 2)
+        builder.add("result", "test.yaml", 3)
+        result = resolve_interpolations(config, builder)
+        entry = builder.get("result")
         self.assertIsNotNone(entry.interpolation)
         self.assertEqual(entry.interpolation.operator, "concat")
 
@@ -771,36 +771,36 @@ class ResolverProvenanceTrackingTests(unittest.TestCase):
     def test_resolve__StandaloneInterpolation__UpdatesProvenanceValue(self):
         """Test that standalone interpolation updates provenance entry value."""
         # Arrange
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         config = {"a": 42, "b": "${/a}"}
-        provenance = Provenance()
-        provenance.add("a", "test.yaml", 1)
-        provenance.add("b", "test.yaml", 2)
+        builder = ProvenanceBuilder()
+        builder.add("a", "test.yaml", 1)
+        builder.add("b", "test.yaml", 2)
 
         # Act
-        resolve_interpolations(config, provenance)
+        resolve_interpolations(config, builder)
 
         # Assert
-        entry = provenance.get("b")
+        entry = builder.get("b")
         self.assertEqual(42, entry.value)
 
     def test_resolve__EmbeddedInterpolation__UpdatesProvenanceWithCompound(self):
         """Test that embedded interpolation updates provenance with compound source."""
         # Arrange
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         config = {"a": "foo", "b": "bar", "result": "${/a}_${/b}"}
-        provenance = Provenance()
-        provenance.add("a", "test.yaml", 1)
-        provenance.add("b", "test.yaml", 2)
-        provenance.add("result", "test.yaml", 3)
+        builder = ProvenanceBuilder()
+        builder.add("a", "test.yaml", 1)
+        builder.add("b", "test.yaml", 2)
+        builder.add("result", "test.yaml", 3)
 
         # Act
-        resolve_interpolations(config, provenance)
+        resolve_interpolations(config, builder)
 
         # Assert
-        entry = provenance.get("result")
+        entry = builder.get("result")
         self.assertEqual("foo_bar", entry.value)
         self.assertIsNotNone(entry.interpolation)
         self.assertEqual(2, len(entry.interpolation.sources))
@@ -808,14 +808,14 @@ class ResolverProvenanceTrackingTests(unittest.TestCase):
     def test_resolve__NoProvenanceEntry__NoUpdate(self):
         """Test that missing provenance entry doesn't cause error."""
         # Arrange
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         config = {"a": 42, "b": "${/a}"}
-        provenance = Provenance()
+        builder = ProvenanceBuilder()
         # Note: Not adding entries for a or b
 
         # Act - should not raise
-        result = resolve_interpolations(config, provenance)
+        result = resolve_interpolations(config, builder)
 
         # Assert
         self.assertEqual(42, result["b"])
@@ -834,18 +834,18 @@ class ResolverProvenanceTrackingTests(unittest.TestCase):
     def test_resolve__WithProvenance__SetsInterpolationSource(self):
         """Test that provenance entry gets interpolation source info."""
         # Arrange
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         config = {"defaults": {"lr": 0.01}, "model": {"lr": "${/defaults.lr}"}}
-        provenance = Provenance()
-        provenance.add("defaults.lr", "defaults.yaml", 1)
-        provenance.add("model.lr", "model.yaml", 5)
+        builder = ProvenanceBuilder()
+        builder.add("defaults.lr", "defaults.yaml", 1)
+        builder.add("model.lr", "model.yaml", 5)
 
         # Act
-        resolve_interpolations(config, provenance)
+        resolve_interpolations(config, builder)
 
         # Assert
-        entry = provenance.get("model.lr")
+        entry = builder.get("model.lr")
         self.assertIsNotNone(entry.interpolation)
         self.assertEqual("config", entry.interpolation.kind)
         self.assertEqual("defaults.lr", entry.interpolation.path)
@@ -853,56 +853,56 @@ class ResolverProvenanceTrackingTests(unittest.TestCase):
     def test_resolve__WithProvenance__SetsResolvedValue(self):
         """Test that provenance entry gets the resolved value."""
         # Arrange
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         config = {"a": 10, "b": 5, "result": "${/a + /b}"}
-        provenance = Provenance()
-        provenance.add("a", "test.yaml", 1)
-        provenance.add("b", "test.yaml", 2)
-        provenance.add("result", "test.yaml", 3)
+        builder = ProvenanceBuilder()
+        builder.add("a", "test.yaml", 1)
+        builder.add("b", "test.yaml", 2)
+        builder.add("result", "test.yaml", 3)
 
         # Act
-        resolve_interpolations(config, provenance)
+        resolve_interpolations(config, builder)
 
         # Assert
-        entry = provenance.get("result")
+        entry = builder.get("result")
         self.assertEqual(15, entry.value)
 
     def test_resolve__WithExpression__TracksOperator(self):
         """Test that expression operator is tracked in provenance."""
         # Arrange
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         config = {"a": 10, "result": "${/a * 2}"}
-        provenance = Provenance()
-        provenance.add("a", "test.yaml", 1)
-        provenance.add("result", "test.yaml", 2)
+        builder = ProvenanceBuilder()
+        builder.add("a", "test.yaml", 1)
+        builder.add("result", "test.yaml", 2)
 
         # Act
-        resolve_interpolations(config, provenance)
+        resolve_interpolations(config, builder)
 
         # Assert
-        entry = provenance.get("result")
+        entry = builder.get("result")
         self.assertEqual("*", entry.interpolation.operator)
         self.assertEqual(20, entry.value)
 
     def test_resolve__ChainedReferences__TracksAllSources(self):
         """Test that chained references track all sources."""
         # Arrange
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         config = {"a": 1, "b": "${/a + 1}", "c": "${/b + 1}"}
-        provenance = Provenance()
-        provenance.add("a", "test.yaml", 1)
-        provenance.add("b", "test.yaml", 2)
-        provenance.add("c", "test.yaml", 3)
+        builder = ProvenanceBuilder()
+        builder.add("a", "test.yaml", 1)
+        builder.add("b", "test.yaml", 2)
+        builder.add("c", "test.yaml", 3)
 
         # Act
-        resolve_interpolations(config, provenance)
+        resolve_interpolations(config, builder)
 
         # Assert
-        b_entry = provenance.get("b")
-        c_entry = provenance.get("c")
+        b_entry = builder.get("b")
+        c_entry = builder.get("c")
         self.assertEqual(2, b_entry.value)
         self.assertEqual(3, c_entry.value)
 
@@ -910,19 +910,19 @@ class ResolverProvenanceTrackingTests(unittest.TestCase):
         """Test that env var interpolation tracks env source."""
         # Arrange
         import os
-        from rconfig.composition.Provenance import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         os.environ["RCONFIG_TEST_VAL"] = "test_value"
         try:
             config = {"result": "${env:RCONFIG_TEST_VAL}"}
-            provenance = Provenance()
-            provenance.add("result", "test.yaml", 1)
+            builder = ProvenanceBuilder()
+            builder.add("result", "test.yaml", 1)
 
             # Act
-            resolve_interpolations(config, provenance)
+            resolve_interpolations(config, builder)
 
             # Assert
-            entry = provenance.get("result")
+            entry = builder.get("result")
             self.assertIsNotNone(entry.interpolation)
             self.assertEqual("env", entry.interpolation.kind)
             self.assertEqual("RCONFIG_TEST_VAL", entry.interpolation.env_var)

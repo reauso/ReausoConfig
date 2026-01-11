@@ -6,7 +6,22 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from rconfig.help import FlatHelpIntegration
-from rconfig.composition import Provenance, ProvenanceEntry
+from rconfig.composition import Provenance
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+
+
+def _build_prov(*entries):
+    """Helper to quickly build a Provenance from entry specs.
+
+    Each entry is a tuple: (path, file, line, value, type_hint?, description?)
+    """
+    builder = ProvenanceBuilder()
+    for entry in entries:
+        path, file, line, value = entry[0], entry[1], entry[2], entry[3]
+        type_hint = entry[4] if len(entry) > 4 else None
+        description = entry[5] if len(entry) > 5 else None
+        builder.add(path, file=file, line=line, value=value, type_hint=type_hint, description=description)
+    return builder.build()
 
 
 class FlatHelpIntegrationTests(TestCase):
@@ -14,29 +29,32 @@ class FlatHelpIntegrationTests(TestCase):
 
     def _create_test_provenance(self) -> Provenance:
         """Create a test provenance object with type hints and descriptions."""
-        prov = Provenance()
-        prov._entries["model.lr"] = ProvenanceEntry(
+        builder = ProvenanceBuilder()
+        builder.add(
+            "model.lr",
             file="config.yaml",
             line=1,
             value=0.001,
             type_hint=float,
             description="Learning rate",
         )
-        prov._entries["model.hidden_size"] = ProvenanceEntry(
+        builder.add(
+            "model.hidden_size",
             file="config.yaml",
             line=2,
             value=256,
             type_hint=int,
             description="Hidden layer size",
         )
-        prov._entries["data.path"] = ProvenanceEntry(
+        builder.add(
+            "data.path",
             file="config.yaml",
             line=3,
             value=None,
             type_hint=str,
             description="Path to data",
         )
-        return prov
+        return builder.build()
 
     # === Output Format Tests ===
 
@@ -172,13 +190,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["debug"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=True,
-            type_hint=bool,
-        )
+        prov = _build_prov(("debug", "config.yaml", 1, True, bool))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -193,13 +205,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["name"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value="test",
-            type_hint=str,
-        )
+        prov = _build_prov(("name", "config.yaml", 1, "test", str))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -214,13 +220,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["long_value"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value="a" * 50,
-            type_hint=str,
-        )
+        prov = _build_prov(("long_value", "config.yaml", 1, "a" * 50, str))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -237,13 +237,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["numbers"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=[1, 2, 3],
-            type_hint=list[int],
-        )
+        prov = _build_prov(("numbers", "config.yaml", 1, [1, 2, 3], list[int]))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -258,13 +252,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["mapping"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value={"key": "value"},
-            type_hint=dict[str, Any],
-        )
+        prov = _build_prov(("mapping", "config.yaml", 1, {"key": "value"}, dict[str, Any]))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -280,13 +268,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["optional_value"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=None,
-            type_hint=Optional[float],
-        )
+        prov = _build_prov(("optional_value", "config.yaml", 1, None, Optional[float]))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -305,13 +287,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["mixed"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value="hello",
-            type_hint=Union[int, str],
-        )
+        prov = _build_prov(("mixed", "config.yaml", 1, "hello", Union[int, str]))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -330,13 +306,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["nested"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=[{"a": 1}],
-            type_hint=list[dict[str, int]],
-        )
+        prov = _build_prov(("nested", "config.yaml", 1, [{"a": 1}], list[dict[str, int]]))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -354,13 +324,7 @@ class FlatHelpIntegrationTests(TestCase):
 
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["custom"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=None,
-            type_hint=MyCustomConfig,
-        )
+        prov = _build_prov(("custom", "config.yaml", 1, None, MyCustomConfig))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -375,13 +339,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["untyped"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=42,
-            type_hint=None,
-        )
+        prov = _build_prov(("untyped", "config.yaml", 1, 42, None))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -400,13 +358,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["nested"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value={"a": {"b": {"c": 1}}},
-            type_hint=dict,
-        )
+        prov = _build_prov(("nested", "config.yaml", 1, {"a": {"b": {"c": 1}}}, dict))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -422,13 +374,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["list_of_dicts"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=[{"key1": "value1"}, {"key2": "value2"}],
-            type_hint=list,
-        )
+        prov = _build_prov(("list_of_dicts", "config.yaml", 1, [{"key1": "value1"}, {"key2": "value2"}], list))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -443,13 +389,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["empty_str"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value="",
-            type_hint=str,
-        )
+        prov = _build_prov(("empty_str", "config.yaml", 1, "", str))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -464,13 +404,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["empty_list"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=[],
-            type_hint=list,
-        )
+        prov = _build_prov(("empty_list", "config.yaml", 1, [], list))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -485,13 +419,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["empty_dict"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value={},
-            type_hint=dict,
-        )
+        prov = _build_prov(("empty_dict", "config.yaml", 1, {}, dict))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -506,13 +434,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["unicode_val"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value="日本語",
-            type_hint=str,
-        )
+        prov = _build_prov(("unicode_val", "config.yaml", 1, "日本語", str))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -527,13 +449,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["special"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value="line1\nline2",
-            type_hint=str,
-        )
+        prov = _build_prov(("special", "config.yaml", 1, "line1\nline2", str))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -549,18 +465,9 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["small_float"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=0.001,
-            type_hint=float,
-        )
-        prov._entries["pi"] = ProvenanceEntry(
-            file="config.yaml",
-            line=2,
-            value=3.14159265358979,
-            type_hint=float,
+        prov = _build_prov(
+            ("small_float", "config.yaml", 1, 0.001, float),
+            ("pi", "config.yaml", 2, 3.14159265358979, float),
         )
 
         # Act
@@ -577,13 +484,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["disabled"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=False,
-            type_hint=bool,
-        )
+        prov = _build_prov(("disabled", "config.yaml", 1, False, bool))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -598,13 +499,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["count"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=42,
-            type_hint=int,
-        )
+        prov = _build_prov(("count", "config.yaml", 1, 42, int))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -622,14 +517,7 @@ class FlatHelpIntegrationTests(TestCase):
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
         long_desc = "This is a very long description that spans multiple words"
-        prov = Provenance()
-        prov._entries["option"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=42,
-            type_hint=int,
-            description=long_desc,
-        )
+        prov = _build_prov(("option", "config.yaml", 1, 42, int, long_desc))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -644,14 +532,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["operators"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=True,
-            type_hint=bool,
-            description="Use < and > operators",
-        )
+        prov = _build_prov(("operators", "config.yaml", 1, True, bool, "Use < and > operators"))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -666,14 +547,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["emoji_option"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=True,
-            type_hint=bool,
-            description="Enable emoji support 🎉",
-        )
+        prov = _build_prov(("emoji_option", "config.yaml", 1, True, bool, "Enable emoji support 🎉"))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -688,14 +562,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["no_desc"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=100,
-            type_hint=int,
-            description=None,
-        )
+        prov = _build_prov(("no_desc", "config.yaml", 1, 100, int, None))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -713,12 +580,9 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["a"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=1, type_hint=int,
-        )
-        prov._entries["very.long.path.name"] = ProvenanceEntry(
-            file="config.yaml", line=2, value=2, type_hint=int,
+        prov = _build_prov(
+            ("a", "config.yaml", 1, 1, int),
+            ("very.long.path.name", "config.yaml", 2, 2, int),
         )
 
         # Act
@@ -742,12 +606,9 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["short"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=1, type_hint=int,
-        )
-        prov._entries["long_val"] = ProvenanceEntry(
-            file="config.yaml", line=2, value=999999, type_hint=int,
+        prov = _build_prov(
+            ("short", "config.yaml", 1, 1, int),
+            ("long_val", "config.yaml", 2, 999999, int),
         )
 
         # Act
@@ -767,10 +628,7 @@ class FlatHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = FlatHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["test"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=42, type_hint=int,
-        )
+        prov = _build_prov(("test", "config.yaml", 1, 42, int))
 
         # Act
         with self.assertRaises(SystemExit):

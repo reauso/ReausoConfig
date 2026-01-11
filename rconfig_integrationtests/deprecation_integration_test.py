@@ -95,11 +95,11 @@ epochs: 100
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             from rconfig.deprecation.detector import check_deprecation
-            from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+            from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-            prov = Provenance()
-            prov._entries["test_key"] = ProvenanceEntry(file="test.yaml", line=1)
-            check_deprecation("test_key", "test.yaml", 1, prov)
+            builder = ProvenanceBuilder()
+            builder.add("test_key", file="test.yaml", line=1)
+            check_deprecation("test_key", "test.yaml", 1, builder)
 
         # Assert
         self.assertEqual(len(w), 1)
@@ -113,11 +113,11 @@ epochs: 100
         # Act & Assert
         with self.assertRaises(rc.DeprecatedKeyError):
             from rconfig.deprecation.detector import check_deprecation
-            from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+            from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-            prov = Provenance()
-            prov._entries["critical_key"] = ProvenanceEntry(file="test.yaml", line=1)
-            check_deprecation("critical_key", "test.yaml", 1, prov)
+            builder = ProvenanceBuilder()
+            builder.add("critical_key", file="test.yaml", line=1)
+            check_deprecation("critical_key", "test.yaml", 1, builder)
 
     def test_setDeprecationPolicy__Ignore__NoWarningOrError(self):
         # Arrange
@@ -128,11 +128,11 @@ epochs: 100
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             from rconfig.deprecation.detector import check_deprecation
-            from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+            from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-            prov = Provenance()
-            prov._entries["ignored_key"] = ProvenanceEntry(file="test.yaml", line=1)
-            check_deprecation("ignored_key", "test.yaml", 1, prov)
+            builder = ProvenanceBuilder()
+            builder.add("ignored_key", file="test.yaml", line=1)
+            check_deprecation("ignored_key", "test.yaml", 1, builder)
 
         # Assert - no warnings
         self.assertEqual(len(w), 0)
@@ -149,11 +149,11 @@ epochs: 100
 
         # Act
         from rconfig.deprecation.detector import check_deprecation
-        from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-        prov = Provenance()
-        prov._entries["test_key"] = ProvenanceEntry(file="test.yaml", line=5)
-        check_deprecation("test_key", "test.yaml", 5, prov)
+        builder = ProvenanceBuilder()
+        builder.add("test_key", file="test.yaml", line=5)
+        check_deprecation("test_key", "test.yaml", 5, builder)
 
         # Assert
         self.assertEqual(len(calls), 1)
@@ -174,11 +174,11 @@ epochs: 100
 
         # Act
         from rconfig.deprecation.detector import check_deprecation
-        from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-        prov = Provenance()
-        prov._entries["custom_key"] = ProvenanceEntry(file="test.yaml", line=1)
-        check_deprecation("custom_key", "test.yaml", 1, prov)
+        builder = ProvenanceBuilder()
+        builder.add("custom_key", file="test.yaml", line=1)
+        check_deprecation("custom_key", "test.yaml", 1, builder)
 
         # Assert
         self.assertEqual(len(calls), 1)
@@ -186,11 +186,12 @@ epochs: 100
 
     def test_deprecationsPreset__FullWorkflow__FormatsCorrectly(self):
         # Arrange
-        from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.deprecation.info import DeprecationInfo
 
-        prov = Provenance()
-        prov._entries["old_key"] = ProvenanceEntry(
+        builder = ProvenanceBuilder()
+        builder.add(
+            "old_key",
             file="config.yaml",
             line=5,
             value=42,
@@ -202,9 +203,8 @@ epochs: 100
                 remove_in="2.0.0",
             ),
         )
-        prov._entries["normal_key"] = ProvenanceEntry(
-            file="config.yaml", line=10, value="normal"
-        )
+        builder.add("normal_key", file="config.yaml", line=10, value="normal")
+        prov = builder.build()
 
         # Act
         result = str(prov.format().deprecations())
@@ -223,17 +223,15 @@ epochs: 100
 
         # Act
         from rconfig.deprecation.detector import check_deprecation
-        from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-        prov = Provenance()
-        prov._entries["model.encoder.dropout"] = ProvenanceEntry(
-            file="config.yaml", line=1
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.encoder.dropout", file="config.yaml", line=1)
 
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             result = check_deprecation(
-                "model.encoder.dropout", "config.yaml", 1, prov
+                "model.encoder.dropout", "config.yaml", 1, builder
             )
 
         # Assert
@@ -246,21 +244,19 @@ epochs: 100
 
         # Act
         from rconfig.deprecation.detector import check_deprecation
-        from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         # Should match
-        prov1 = Provenance()
-        prov1._entries["model.lr"] = ProvenanceEntry(file="config.yaml", line=1)
+        builder1 = ProvenanceBuilder()
+        builder1.add("model.lr", file="config.yaml", line=1)
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
-            result1 = check_deprecation("model.lr", "config.yaml", 1, prov1)
+            result1 = check_deprecation("model.lr", "config.yaml", 1, builder1)
 
         # Should NOT match (multiple levels)
-        prov2 = Provenance()
-        prov2._entries["model.encoder.lr"] = ProvenanceEntry(
-            file="config.yaml", line=2
-        )
-        result2 = check_deprecation("model.encoder.lr", "config.yaml", 2, prov2)
+        builder2 = ProvenanceBuilder()
+        builder2.add("model.encoder.lr", file="config.yaml", line=2)
+        result2 = check_deprecation("model.encoder.lr", "config.yaml", 2, builder2)
 
         # Assert
         self.assertIsNotNone(result1)
@@ -269,12 +265,13 @@ epochs: 100
     def test_autoMap__WithNewKey__CreatesIntermediateStructures(self):
         # Arrange
         from rconfig.deprecation.detector import auto_map_deprecated_values
-        from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.deprecation.info import DeprecationInfo
 
         config = {"learning_rate": 0.001}
-        prov = Provenance()
-        prov._entries["learning_rate"] = ProvenanceEntry(
+        builder = ProvenanceBuilder()
+        builder.add(
+            "learning_rate",
             file="config.yaml",
             line=1,
             deprecation=DeprecationInfo(
@@ -285,7 +282,7 @@ epochs: 100
         )
 
         # Act
-        result = auto_map_deprecated_values(config, prov)
+        result = auto_map_deprecated_values(config, builder)
 
         # Assert
         self.assertEqual(result["model"]["optimizer"]["lr"], 0.001)
@@ -294,15 +291,16 @@ epochs: 100
     def test_autoMap__NewKeyExists__DoesNotOverride(self):
         # Arrange
         from rconfig.deprecation.detector import auto_map_deprecated_values
-        from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.deprecation.info import DeprecationInfo
 
         config = {
             "old_lr": 0.001,
             "new_lr": 0.01,  # Already exists
         }
-        prov = Provenance()
-        prov._entries["old_lr"] = ProvenanceEntry(
+        builder = ProvenanceBuilder()
+        builder.add(
+            "old_lr",
             file="config.yaml",
             line=1,
             deprecation=DeprecationInfo(
@@ -313,7 +311,7 @@ epochs: 100
         )
 
         # Act
-        result = auto_map_deprecated_values(config, prov)
+        result = auto_map_deprecated_values(config, builder)
 
         # Assert
         self.assertEqual(result["new_lr"], 0.01)  # Keeps existing value
@@ -326,8 +324,8 @@ epochs: 100
         # Act & Assert
         with self.assertRaises(rc.DeprecatedKeyError):
             from rconfig.deprecation.detector import check_deprecation
-            from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+            from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-            prov = Provenance()
-            prov._entries["critical_key"] = ProvenanceEntry(file="test.yaml", line=1)
-            check_deprecation("critical_key", "test.yaml", 1, prov)
+            builder = ProvenanceBuilder()
+            builder.add("critical_key", file="test.yaml", line=1)
+            check_deprecation("critical_key", "test.yaml", 1, builder)

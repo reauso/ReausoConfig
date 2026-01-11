@@ -3,7 +3,7 @@
 import warnings
 from unittest import TestCase
 
-from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 from rconfig.deprecation.detector import (
     auto_map_deprecated_values,
     check_deprecation,
@@ -22,19 +22,17 @@ class CheckDeprecationTests(TestCase):
     def setUp(self) -> None:
         self.registry = get_deprecation_registry()
         self.registry.clear()
-        self.provenance = Provenance()
+        self.builder = ProvenanceBuilder()
 
     def tearDown(self) -> None:
         self.registry.clear()
 
     def test_checkDeprecation__NotRegistered__ReturnsNone(self):
         # Arrange
-        self.provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
+        self.builder.add("model.lr", file="config.yaml", line=5)
 
         # Act
-        result = check_deprecation("model.lr", "config.yaml", 5, self.provenance)
+        result = check_deprecation("model.lr", "config.yaml", 5, self.builder)
 
         # Assert
         self.assertIsNone(result)
@@ -42,14 +40,12 @@ class CheckDeprecationTests(TestCase):
     def test_checkDeprecation__Registered__ReturnsInfo(self):
         # Arrange
         self.registry.register("old_key", new_key="new_key")
-        self.provenance._entries["old_key"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
+        self.builder.add("old_key", file="config.yaml", line=5)
 
         # Act
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
-            result = check_deprecation("old_key", "config.yaml", 5, self.provenance)
+            result = check_deprecation("old_key", "config.yaml", 5, self.builder)
 
         # Assert
         self.assertIsNotNone(result)
@@ -60,15 +56,13 @@ class CheckDeprecationTests(TestCase):
     def test_checkDeprecation__GlobPattern__MatchesAndReturns(self):
         # Arrange
         self.registry.register("**.lr", message="Use optimizer.lr")
-        self.provenance._entries["model.encoder.lr"] = ProvenanceEntry(
-            file="config.yaml", line=10
-        )
+        self.builder.add("model.encoder.lr", file="config.yaml", line=10)
 
         # Act
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             result = check_deprecation(
-                "model.encoder.lr", "config.yaml", 10, self.provenance
+                "model.encoder.lr", "config.yaml", 10, self.builder
             )
 
         # Assert
@@ -79,17 +73,15 @@ class CheckDeprecationTests(TestCase):
     def test_checkDeprecation__RecordsInProvenance__DeprecationSet(self):
         # Arrange
         self.registry.register("old_key", new_key="new_key")
-        self.provenance._entries["old_key"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
+        self.builder.add("old_key", file="config.yaml", line=5)
 
         # Act
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
-            check_deprecation("old_key", "config.yaml", 5, self.provenance)
+            check_deprecation("old_key", "config.yaml", 5, self.builder)
 
         # Assert
-        entry = self.provenance.get("old_key")
+        entry = self.builder.get("old_key")
         self.assertIsNotNone(entry.deprecation)
         self.assertEqual(entry.deprecation.new_key, "new_key")
 
@@ -97,14 +89,12 @@ class CheckDeprecationTests(TestCase):
         # Arrange
         self.registry.register("old_key")
         self.registry.set_policy("warn")
-        self.provenance._entries["old_key"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
+        self.builder.add("old_key", file="config.yaml", line=5)
 
         # Act
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            check_deprecation("old_key", "config.yaml", 5, self.provenance)
+            check_deprecation("old_key", "config.yaml", 5, self.builder)
 
         # Assert
         self.assertEqual(len(w), 1)
@@ -113,13 +103,11 @@ class CheckDeprecationTests(TestCase):
     def test_checkDeprecation__PolicyError__RaisesException(self):
         # Arrange
         self.registry.register("critical_key", policy="error")
-        self.provenance._entries["critical_key"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
+        self.builder.add("critical_key", file="config.yaml", line=5)
 
         # Act & Assert
         with self.assertRaises(DeprecatedKeyError) as ctx:
-            check_deprecation("critical_key", "config.yaml", 5, self.provenance)
+            check_deprecation("critical_key", "config.yaml", 5, self.builder)
 
         self.assertIn("critical_key", str(ctx.exception))
 
@@ -127,14 +115,12 @@ class CheckDeprecationTests(TestCase):
         # Arrange
         self.registry.register("ignored_key")
         self.registry.set_policy("ignore")
-        self.provenance._entries["ignored_key"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
+        self.builder.add("ignored_key", file="config.yaml", line=5)
 
         # Act
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = check_deprecation("ignored_key", "config.yaml", 5, self.provenance)
+            result = check_deprecation("ignored_key", "config.yaml", 5, self.builder)
 
         # Assert - no warnings, but still returns info
         self.assertEqual(len(w), 0)
@@ -148,7 +134,7 @@ class HandleDeprecatedMarkerTests(TestCase):
         self.registry = get_deprecation_registry()
         self.registry.clear()
         self.registry.set_policy("warn")
-        self.provenance = Provenance()
+        self.builder = ProvenanceBuilder()
 
     def tearDown(self) -> None:
         self.registry.clear()
@@ -156,11 +142,11 @@ class HandleDeprecatedMarkerTests(TestCase):
     def test_handleDeprecatedMarker__NoMarker__ReturnsOriginal(self):
         # Arrange
         value = {"key": "value", "other": 123}
-        self.provenance._entries["test"] = ProvenanceEntry(file="config.yaml", line=1)
+        self.builder.add("test", file="config.yaml", line=1)
 
         # Act
         result, info = handle_deprecated_marker(
-            value, "test", "config.yaml", 1, self.provenance
+            value, "test", "config.yaml", 1, self.builder
         )
 
         # Assert
@@ -173,15 +159,13 @@ class HandleDeprecatedMarkerTests(TestCase):
             "_deprecated_": "Use new_param instead",
             "_value_": 42,
         }
-        self.provenance._entries["old_param"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
+        self.builder.add("old_param", file="config.yaml", line=5)
 
         # Act
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             result, info = handle_deprecated_marker(
-                value, "old_param", "config.yaml", 5, self.provenance
+                value, "old_param", "config.yaml", 5, self.builder
             )
 
         # Assert
@@ -199,15 +183,13 @@ class HandleDeprecatedMarkerTests(TestCase):
             },
             "_value_": "scalar_value",
         }
-        self.provenance._entries["old_key"] = ProvenanceEntry(
-            file="config.yaml", line=10
-        )
+        self.builder.add("old_key", file="config.yaml", line=10)
 
         # Act
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             result, info = handle_deprecated_marker(
-                value, "old_key", "config.yaml", 10, self.provenance
+                value, "old_key", "config.yaml", 10, self.builder
             )
 
         # Assert
@@ -224,15 +206,13 @@ class HandleDeprecatedMarkerTests(TestCase):
             "nested_key": "foo",
             "another": 123,
         }
-        self.provenance._entries["old_section"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
+        self.builder.add("old_section", file="config.yaml", line=5)
 
         # Act
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             result, info = handle_deprecated_marker(
-                value, "old_section", "config.yaml", 5, self.provenance
+                value, "old_section", "config.yaml", 5, self.builder
             )
 
         # Assert
@@ -242,31 +222,27 @@ class HandleDeprecatedMarkerTests(TestCase):
     def test_handleDeprecatedMarker__RecordsInProvenance__DeprecationSet(self):
         # Arrange
         value = {"_deprecated_": "Deprecated", "_value_": 42}
-        self.provenance._entries["test"] = ProvenanceEntry(
-            file="config.yaml", line=1
-        )
+        self.builder.add("test", file="config.yaml", line=1)
 
         # Act
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
-            handle_deprecated_marker(value, "test", "config.yaml", 1, self.provenance)
+            handle_deprecated_marker(value, "test", "config.yaml", 1, self.builder)
 
         # Assert
-        entry = self.provenance.get("test")
+        entry = self.builder.get("test")
         self.assertIsNotNone(entry.deprecation)
 
     def test_handleDeprecatedMarker__PolicyError__RaisesException(self):
         # Arrange
         self.registry.set_policy("error")
         value = {"_deprecated_": "Critical", "_value_": 42}
-        self.provenance._entries["critical"] = ProvenanceEntry(
-            file="config.yaml", line=1
-        )
+        self.builder.add("critical", file="config.yaml", line=1)
 
         # Act & Assert
         with self.assertRaises(DeprecatedKeyError):
             handle_deprecated_marker(
-                value, "critical", "config.yaml", 1, self.provenance
+                value, "critical", "config.yaml", 1, self.builder
             )
 
 
@@ -299,12 +275,13 @@ class AutoMapDeprecatedValuesTests(TestCase):
     """Tests for the auto_map_deprecated_values function."""
 
     def setUp(self) -> None:
-        self.provenance = Provenance()
+        self.builder = ProvenanceBuilder()
 
     def test_autoMap__WithNewKey__CopiesValue(self):
         # Arrange
         config = {"old_key": 42}
-        self.provenance._entries["old_key"] = ProvenanceEntry(
+        self.builder.add(
+            "old_key",
             file="config.yaml",
             line=1,
             deprecation=DeprecationInfo(
@@ -315,7 +292,7 @@ class AutoMapDeprecatedValuesTests(TestCase):
         )
 
         # Act
-        result = auto_map_deprecated_values(config, self.provenance)
+        result = auto_map_deprecated_values(config, self.builder)
 
         # Assert
         self.assertEqual(result["new_key"], 42)
@@ -324,7 +301,8 @@ class AutoMapDeprecatedValuesTests(TestCase):
     def test_autoMap__NestedNewKey__CreatesIntermediateStructures(self):
         # Arrange
         config = {"learning_rate": 0.001}
-        self.provenance._entries["learning_rate"] = ProvenanceEntry(
+        self.builder.add(
+            "learning_rate",
             file="config.yaml",
             line=1,
             deprecation=DeprecationInfo(
@@ -335,7 +313,7 @@ class AutoMapDeprecatedValuesTests(TestCase):
         )
 
         # Act
-        result = auto_map_deprecated_values(config, self.provenance)
+        result = auto_map_deprecated_values(config, self.builder)
 
         # Assert
         self.assertEqual(result["model"]["optimizer"]["lr"], 0.001)
@@ -346,7 +324,8 @@ class AutoMapDeprecatedValuesTests(TestCase):
             "old_key": 42,
             "new_key": 100,  # Already exists
         }
-        self.provenance._entries["old_key"] = ProvenanceEntry(
+        self.builder.add(
+            "old_key",
             file="config.yaml",
             line=1,
             deprecation=DeprecationInfo(
@@ -357,7 +336,7 @@ class AutoMapDeprecatedValuesTests(TestCase):
         )
 
         # Act
-        result = auto_map_deprecated_values(config, self.provenance)
+        result = auto_map_deprecated_values(config, self.builder)
 
         # Assert
         self.assertEqual(result["new_key"], 100)  # Keeps existing value
@@ -365,7 +344,8 @@ class AutoMapDeprecatedValuesTests(TestCase):
     def test_autoMap__NoNewKey__DoesNothing(self):
         # Arrange
         config = {"old_key": 42}
-        self.provenance._entries["old_key"] = ProvenanceEntry(
+        self.builder.add(
+            "old_key",
             file="config.yaml",
             line=1,
             deprecation=DeprecationInfo(
@@ -376,7 +356,7 @@ class AutoMapDeprecatedValuesTests(TestCase):
         )
 
         # Act
-        result = auto_map_deprecated_values(config, self.provenance)
+        result = auto_map_deprecated_values(config, self.builder)
 
         # Assert
         self.assertEqual(result, {"old_key": 42})
@@ -384,13 +364,11 @@ class AutoMapDeprecatedValuesTests(TestCase):
     def test_autoMap__NoDeprecation__DoesNothing(self):
         # Arrange
         config = {"key": "value"}
-        self.provenance._entries["key"] = ProvenanceEntry(
-            file="config.yaml", line=1
-            # No deprecation
-        )
+        self.builder.add("key", file="config.yaml", line=1)
+        # No deprecation
 
         # Act
-        result = auto_map_deprecated_values(config, self.provenance)
+        result = auto_map_deprecated_values(config, self.builder)
 
         # Assert
         self.assertEqual(result, {"key": "value"})
@@ -398,7 +376,8 @@ class AutoMapDeprecatedValuesTests(TestCase):
     def test_autoMap__OldKeyMissing__SkipsGracefully(self):
         # Arrange
         config = {}  # old_key not in config
-        self.provenance._entries["old_key"] = ProvenanceEntry(
+        self.builder.add(
+            "old_key",
             file="config.yaml",
             line=1,
             deprecation=DeprecationInfo(
@@ -409,7 +388,7 @@ class AutoMapDeprecatedValuesTests(TestCase):
         )
 
         # Act - should not raise
-        result = auto_map_deprecated_values(config, self.provenance)
+        result = auto_map_deprecated_values(config, self.builder)
 
         # Assert
         self.assertEqual(result, {})

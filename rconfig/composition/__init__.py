@@ -14,10 +14,19 @@ from .Walker import (
 )
 from .Merger import deep_merge
 from .InstanceResolver import InstanceResolver
-from .Provenance import Provenance, ProvenanceEntry, ProvenanceNode, InstanceRef
+from .Provenance import (
+    Provenance,
+    ProvenanceEntry,
+    ProvenanceNode,
+    InstanceRef,
+    EntrySourceType,
+    NodeSourceType,
+)
 from .ProvenanceLayout import ProvenanceLayout, FormatContext
 from .ProvenanceFormat import ProvenanceFormat, ProvenancePreset
 from .TreeLayout import TreeLayout
+
+from rconfig.errors import AmbiguousRefError
 
 __all__ = [
     "ConfigComposer",
@@ -34,9 +43,12 @@ __all__ = [
     "ProvenanceEntry",
     "ProvenanceNode",
     "InstanceRef",
+    "EntrySourceType",
+    "NodeSourceType",
     "ProvenanceLayout",
     "FormatContext",
     "ProvenanceFormat",
     "ProvenancePreset",
     "TreeLayout",
+    "AmbiguousRefError",
 ]

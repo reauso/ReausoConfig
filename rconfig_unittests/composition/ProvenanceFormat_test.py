@@ -11,24 +11,21 @@ from rconfig.composition import (
     ProvenanceLayout,
     FormatContext,
     TreeLayout,
+    EntrySourceType,
+    NodeSourceType,
 )
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
 
 class ProvenanceFormatBuilderTests(TestCase):
     """Tests for ProvenanceFormat fluent builder methods."""
 
     def setUp(self) -> None:
-        self.provenance = Provenance()
-        self.provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml",
-            line=5,
-            value=0.01,
-        )
-        self.provenance._entries["model.epochs"] = ProvenanceEntry(
-            file="config.yaml",
-            line=6,
-            value=100,
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5)
+        builder.add("model.epochs", file="config.yaml", line=6)
+        builder.set_config({"model": {"lr": 0.01, "epochs": 100}})
+        self.provenance = builder.build()
 
     def test_format__Default__ReturnsProvenanceFormat(self) -> None:
         result = self.provenance.format()
@@ -135,10 +132,10 @@ class ProvenanceFormatPresetTests(TestCase):
     """Tests for preset methods."""
 
     def setUp(self) -> None:
-        self.provenance = Provenance()
-        self.provenance._entries["test"] = ProvenanceEntry(
-            file="test.yaml", line=1, value=42
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="test.yaml", line=1)
+        builder.set_config({"test": 42})
+        self.provenance = builder.build()
 
     def test_format__MinimalPreset__HidesValuesAndChain(self) -> None:
         fmt = self.provenance.format().minimal()
@@ -201,16 +198,12 @@ class ProvenanceFormatFilterTests(TestCase):
     """Tests for filter methods."""
 
     def setUp(self) -> None:
-        self.provenance = Provenance()
-        self.provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=5, value=0.01
-        )
-        self.provenance._entries["model.epochs"] = ProvenanceEntry(
-            file="overrides.yaml", line=1, value=100
-        )
-        self.provenance._entries["data.path"] = ProvenanceEntry(
-            file="data.yaml", line=2, value="/data"
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5)
+        builder.add("model.epochs", file="overrides.yaml", line=1)
+        builder.add("data.path", file="data.yaml", line=2)
+        builder.set_config({"model": {"lr": 0.01, "epochs": 100}, "data": {"path": "/data"}})
+        self.provenance = builder.build()
 
     def test_format__ForPath__AddsFilter(self) -> None:
         fmt = self.provenance.format().for_path("/model.*")
@@ -241,10 +234,10 @@ class ProvenanceFormatLayoutTests(TestCase):
     """Tests for custom layout support."""
 
     def setUp(self) -> None:
-        self.provenance = Provenance()
-        self.provenance._entries["test"] = ProvenanceEntry(
-            file="test.yaml", line=1, value=42
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="test.yaml", line=1)
+        builder.set_config({"test": 42})
+        self.provenance = builder.build()
 
     def test_format__CustomLayout__UsesCustomLayout(self) -> None:
         class TestLayout(ProvenanceLayout):
@@ -302,6 +295,7 @@ class TreeLayoutTests(TestCase):
     def setUp(self) -> None:
         self.layout = TreeLayout()
         self.provenance = Provenance()
+        self._builder = ProvenanceBuilder()  # For building provenance in tests
 
     def test_formatProvenance__EmptyProvenance__ReturnsEmpty(self) -> None:
         ctx = FormatContext()
@@ -310,14 +304,13 @@ class TreeLayoutTests(TestCase):
         self.assertEqual("", result)
 
     def test_formatProvenance__SingleEntry__FormatsCorrectly(self) -> None:
-        self.provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml",
-            line=5,
-            value=0.01,
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5)
+        builder.set_config({"model": {"lr": 0.01}})
+        prov = builder.build()
         ctx = FormatContext()
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         self.assertIn("/model.lr", result)
         self.assertIn("0.01", result)
@@ -325,109 +318,100 @@ class TreeLayoutTests(TestCase):
         self.assertIn("5", result)
 
     def test_formatProvenance__MultipleEntries__SeparatesWithBlankLine(self) -> None:
-        self.provenance._entries["a"] = ProvenanceEntry(
-            file="a.yaml", line=1, value=1
-        )
-        self.provenance._entries["b"] = ProvenanceEntry(
-            file="b.yaml", line=2, value=2
-        )
+        builder = ProvenanceBuilder()
+        builder.add("a", file="a.yaml", line=1)
+        builder.add("b", file="b.yaml", line=2)
+        builder.set_config({"a": 1, "b": 2})
+        prov = builder.build()
         ctx = FormatContext()
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         # Entries should be separated by blank lines
         self.assertIn("\n\n", result)
 
     def test_formatProvenance__HideValues__OmitsValues(self) -> None:
-        self.provenance._entries["test"] = ProvenanceEntry(
-            file="test.yaml", line=1, value=42
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="test.yaml", line=1)
+        builder.set_config({"test": 42})
+        prov = builder.build()
         ctx = FormatContext(show_values=False)
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         self.assertIn("/test", result)
         self.assertNotIn("42", result)
 
     def test_formatProvenance__HidePaths__OmitsPaths(self) -> None:
-        self.provenance._entries["test"] = ProvenanceEntry(
-            file="test.yaml", line=1, value=42
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="test.yaml", line=1)
+        builder.set_config({"test": 42})
+        prov = builder.build()
         ctx = FormatContext(show_paths=False)
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         self.assertNotIn("/test", result)
         self.assertIn("42", result)
 
     def test_formatProvenance__PathFilter__FiltersEntries(self) -> None:
-        self.provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=0.01
-        )
-        self.provenance._entries["data.path"] = ProvenanceEntry(
-            file="config.yaml", line=2, value="/data"
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=1)
+        builder.add("data.path", file="config.yaml", line=2)
+        builder.set_config({"model": {"lr": 0.01}, "data": {"path": "/data"}})
+        prov = builder.build()
         ctx = FormatContext(path_filters=["/model.*"])
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         self.assertIn("/model.lr", result)
         self.assertNotIn("/data.path", result)
 
     def test_formatProvenance__FileFilter__FiltersEntries(self) -> None:
-        self.provenance._entries["a"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=1
-        )
-        self.provenance._entries["b"] = ProvenanceEntry(
-            file="other.json", line=2, value=2
-        )
+        builder = ProvenanceBuilder()
+        builder.add("a", file="config.yaml", line=1)
+        builder.add("b", file="other.json", line=2)
+        builder.set_config({"a": 1, "b": 2})
+        prov = builder.build()
         ctx = FormatContext(file_filters=["*.yaml"])
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         self.assertIn("config.yaml", result)
         self.assertNotIn("other.json", result)
 
     def test_formatProvenance__CliSourceType__ShowsCliMarker(self) -> None:
-        self.provenance._entries["test"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=42,
-            source_type="cli",
-            cli_arg="--test=42",
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="config.yaml", line=1, source_type=EntrySourceType.CLI, cli_arg="--test=42")
+        builder.set_config({"test": 42})
+        prov = builder.build()
         ctx = FormatContext()
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         self.assertIn("CLI", result)
         self.assertIn("--test=42", result)
 
     def test_formatProvenance__EnvSourceType__ShowsEnvMarker(self) -> None:
-        self.provenance._entries["test"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value="/data",
-            source_type="env",
-            env_var="DATA_PATH",
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="config.yaml", line=1, source_type=EntrySourceType.ENV, env_var="DATA_PATH")
+        builder.set_config({"test": "/data"})
+        prov = builder.build()
         ctx = FormatContext()
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         self.assertIn("env", result)
         self.assertIn("DATA_PATH", result)
 
     def test_formatProvenance__Override__ShowsOverrideInfo(self) -> None:
-        self.provenance._entries["test"] = ProvenanceEntry(
-            file="override.yaml",
-            line=5,
-            value=42,
-            overrode="base.yaml:10",
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="override.yaml", line=5, overrode="base.yaml:10")
+        builder.set_config({"test": 42})
+        prov = builder.build()
         ctx = FormatContext()
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         self.assertIn("Overrode", result)
         self.assertIn("base.yaml:10", result)
@@ -438,7 +422,7 @@ class ProvenanceNodeTests(TestCase):
 
     def test_toDict__BasicNode__ReturnsDict(self) -> None:
         node = ProvenanceNode(
-            source_type="file",
+            source_type=NodeSourceType.FILE,
             file="test.yaml",
             line=5,
             value=42,
@@ -452,8 +436,8 @@ class ProvenanceNodeTests(TestCase):
         self.assertEqual(42, result["value"])
 
     def test_toDict__WithChildren__IncludesChildren(self) -> None:
-        child = ProvenanceNode(source_type="file", value=1)
-        parent = ProvenanceNode(source_type="operator", operator="+", children=[child])
+        child = ProvenanceNode(source_type=NodeSourceType.FILE, value=1)
+        parent = ProvenanceNode(source_type=NodeSourceType.OPERATOR, operator="+", children=(child,))
 
         result = parent.to_dict()
 
@@ -462,7 +446,7 @@ class ProvenanceNodeTests(TestCase):
         self.assertEqual(1, result["children"][0]["value"])
 
     def test_toDict__OmitsNoneFields__ReturnsCompact(self) -> None:
-        node = ProvenanceNode(source_type="file")
+        node = ProvenanceNode(source_type=NodeSourceType.FILE)
 
         result = node.to_dict()
 
@@ -498,7 +482,7 @@ class ProvenanceEntryToDictTests(TestCase):
         entry = ProvenanceEntry(
             file="test.yaml",
             line=5,
-            source_type="cli",
+            source_type=EntrySourceType.CLI,
             cli_arg="--lr=0.01",
         )
 
@@ -519,9 +503,10 @@ class ProvenanceToDictTests(TestCase):
         self.assertEqual({}, result)
 
     def test_toDict__WithEntries__ReturnsDictOfEntries(self) -> None:
-        provenance = Provenance()
-        provenance._entries["a"] = ProvenanceEntry(file="a.yaml", line=1)
-        provenance._entries["b"] = ProvenanceEntry(file="b.yaml", line=2)
+        builder = ProvenanceBuilder()
+        builder.add("a", file="a.yaml", line=1)
+        builder.add("b", file="b.yaml", line=2)
+        provenance = builder.build()
 
         result = provenance.to_dict()
 
@@ -542,10 +527,10 @@ class ProvenanceTraceTests(TestCase):
         self.assertIsNone(result)
 
     def test_trace__BasicEntry__ReturnsNode(self) -> None:
-        provenance = Provenance()
-        provenance._entries["test"] = ProvenanceEntry(
-            file="test.yaml", line=5, value=42
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="test.yaml", line=5)
+        builder.set_config({"test": 42})
+        provenance = builder.build()
 
         result = provenance.trace("test")
 
@@ -556,14 +541,10 @@ class ProvenanceTraceTests(TestCase):
         self.assertEqual(42, result.value)
 
     def test_trace__CliEntry__ReturnsCliNode(self) -> None:
-        provenance = Provenance()
-        provenance._entries["test"] = ProvenanceEntry(
-            file="test.yaml",
-            line=5,
-            value=42,
-            source_type="cli",
-            cli_arg="--test=42",
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="test.yaml", line=5, source_type=EntrySourceType.CLI, cli_arg="--test=42")
+        builder.set_config({"test": 42})
+        provenance = builder.build()
 
         result = provenance.trace("test")
 
@@ -572,47 +553,52 @@ class ProvenanceTraceTests(TestCase):
 
 
 class ProvenanceSetConfigTests(TestCase):
-    """Tests for Provenance.set_config() value population."""
+    """Tests for ProvenanceBuilder.set_config() value population."""
 
     def test_setConfig__PopulatesValues__FillsEntryValues(self) -> None:
-        provenance = Provenance()
-        provenance._entries["model.lr"] = ProvenanceEntry(file="config.yaml", line=5)
-        provenance._entries["model.epochs"] = ProvenanceEntry(file="config.yaml", line=6)
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5)
+        builder.add("model.epochs", file="config.yaml", line=6)
         config = {"model": {"lr": 0.01, "epochs": 100}}
 
-        provenance.set_config(config)
+        builder.set_config(config)
+        provenance = builder.build()
 
         self.assertEqual(0.01, provenance.get("model.lr").value)
         self.assertEqual(100, provenance.get("model.epochs").value)
 
     def test_setConfig__PreservesExistingValues__DoesNotOverwrite(self) -> None:
-        provenance = Provenance()
         # Entry with value already set (e.g., from interpolation resolution)
-        provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=5, value=999
-        )
+        # Simulate by adding directly with value to builder's internal state
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5)
+        # Set value directly via the mutable entry
+        builder._entries["model.lr"].value = 999
         config = {"model": {"lr": 0.01}}
 
-        provenance.set_config(config)
+        builder.set_config(config)
+        provenance = builder.build()
 
         # Should preserve the existing value, not overwrite
         self.assertEqual(999, provenance.get("model.lr").value)
 
     def test_setConfig__MissingPath__KeepsNone(self) -> None:
-        provenance = Provenance()
-        provenance._entries["deleted.path"] = ProvenanceEntry(file="config.yaml", line=5)
+        builder = ProvenanceBuilder()
+        builder.add("deleted.path", file="config.yaml", line=5)
         config = {}  # Path doesn't exist
 
-        provenance.set_config(config)
+        builder.set_config(config)
+        provenance = builder.build()
 
         self.assertIsNone(provenance.get("deleted.path").value)
 
     def test_setConfig__NestedPath__PopulatesCorrectly(self) -> None:
-        provenance = Provenance()
-        provenance._entries["a.b.c.d"] = ProvenanceEntry(file="config.yaml", line=5)
+        builder = ProvenanceBuilder()
+        builder.add("a.b.c.d", file="config.yaml", line=5)
         config = {"a": {"b": {"c": {"d": "deep_value"}}}}
 
-        provenance.set_config(config)
+        builder.set_config(config)
+        provenance = builder.build()
 
         self.assertEqual("deep_value", provenance.get("a.b.c.d").value)
 
@@ -623,22 +609,22 @@ class OverrideProvenanceTests(TestCase):
     def test_applyOverrides__CliOverride__SetsCliSourceType(self) -> None:
         from rconfig.override import Override, apply_overrides
 
-        provenance = Provenance()
-        provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=5, value=0.001
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5)
+        builder.set_config({"model": {"lr": 0.001}})
         config = {"model": {"lr": 0.001}}
         overrides = [
             Override(
                 path=["model", "lr"],
                 value=0.01,
                 operation="set",
-                source_type="cli",
+                source_type=EntrySourceType.CLI,
                 cli_arg="model.lr=0.01",
             )
         ]
 
-        apply_overrides(config, overrides, provenance)
+        apply_overrides(config, overrides, builder)
+        provenance = builder.build()
 
         entry = provenance.get("model.lr")
         self.assertEqual("cli", entry.source_type)
@@ -649,21 +635,21 @@ class OverrideProvenanceTests(TestCase):
     def test_applyOverrides__ProgrammaticOverride__SetsProgrammaticSourceType(self) -> None:
         from rconfig.override import Override, apply_overrides
 
-        provenance = Provenance()
-        provenance._entries["model.epochs"] = ProvenanceEntry(
-            file="config.yaml", line=6, value=100
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.epochs", file="config.yaml", line=6)
+        builder.set_config({"model": {"epochs": 100}})
         config = {"model": {"epochs": 100}}
         overrides = [
             Override(
                 path=["model", "epochs"],
                 value=200,
                 operation="set",
-                source_type="programmatic",
+                source_type=EntrySourceType.PROGRAMMATIC,
             )
         ]
 
-        apply_overrides(config, overrides, provenance)
+        apply_overrides(config, overrides, builder)
+        provenance = builder.build()
 
         entry = provenance.get("model.epochs")
         self.assertEqual("programmatic", entry.source_type)
@@ -673,19 +659,20 @@ class OverrideProvenanceTests(TestCase):
     def test_applyOverrides__NewPath__CreatesEntry(self) -> None:
         from rconfig.override import Override, apply_overrides
 
-        provenance = Provenance()
+        builder = ProvenanceBuilder()
         config = {"model": {}}
         overrides = [
             Override(
                 path=["model", "new_param"],
                 value=42,
                 operation="set",
-                source_type="cli",
+                source_type=EntrySourceType.CLI,
                 cli_arg="model.new_param=42",
             )
         ]
 
-        apply_overrides(config, overrides, provenance)
+        apply_overrides(config, overrides, builder)
+        provenance = builder.build()
 
         entry = provenance.get("model.new_param")
         self.assertIsNotNone(entry)
@@ -715,10 +702,10 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
     """Edge case tests for ProvenanceFormat builder."""
 
     def setUp(self) -> None:
-        self.provenance = Provenance()
-        self.provenance._entries["test"] = ProvenanceEntry(
-            file="test.yaml", line=1, value=42
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="test.yaml", line=1)
+        builder.set_config({"test": 42})
+        self.provenance = builder.build()
 
     def test_format__Repr__ReturnsLayoutClassName(self) -> None:
         """Test that __repr__ returns layout class name."""
@@ -879,11 +866,11 @@ class ProvenanceFormatDeprecationTests(TestCase):
     def setUp(self) -> None:
         from rconfig.deprecation.info import DeprecationInfo
 
-        self.provenance = Provenance()
-        self.provenance._entries["learning_rate"] = ProvenanceEntry(
+        builder = ProvenanceBuilder()
+        builder.add(
+            "learning_rate",
             file="config.yaml",
             line=5,
-            value=0.01,
             deprecation=DeprecationInfo(
                 pattern="learning_rate",
                 new_key="model.optimizer.lr",
@@ -891,20 +878,18 @@ class ProvenanceFormatDeprecationTests(TestCase):
                 remove_in="2.0.0",
             ),
         )
-        self.provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml",
-            line=10,
-            value=0.01,
-        )
-        self.provenance._entries["n_epochs"] = ProvenanceEntry(
+        builder.add("model.lr", file="config.yaml", line=10)
+        builder.add(
+            "n_epochs",
             file="config.yaml",
             line=15,
-            value=100,
             deprecation=DeprecationInfo(
                 pattern="n_epochs",
                 new_key="training.epochs",
             ),
         )
+        builder.set_config({"learning_rate": 0.01, "model": {"lr": 0.01}, "n_epochs": 100})
+        self.provenance = builder.build()
 
     def test_format__ShowHideDeprecations__SetsOverride(self) -> None:
         fmt = self.provenance.format()
@@ -955,10 +940,10 @@ class ProvenanceFormatDeprecationTests(TestCase):
 
     def test_format__DeprecationsPreset__NoDeprecations__ShowsEmptyMessage(self) -> None:
         # Create provenance without deprecations
-        empty_prov = Provenance()
-        empty_prov._entries["test"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=42
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="config.yaml", line=1)
+        builder.set_config({"test": 42})
+        empty_prov = builder.build()
 
         result = str(empty_prov.format().deprecations())
 
@@ -1013,11 +998,11 @@ class TreeLayoutDeprecationTests(TestCase):
         from rconfig.deprecation.info import DeprecationInfo
 
         self.layout = TreeLayout()
-        self.provenance = Provenance()
-        self.provenance._entries["old_key"] = ProvenanceEntry(
+        builder = ProvenanceBuilder()
+        builder.add(
+            "old_key",
             file="config.yaml",
             line=5,
-            value=42,
             deprecation=DeprecationInfo(
                 pattern="old_key",
                 new_key="new_key",
@@ -1025,6 +1010,8 @@ class TreeLayoutDeprecationTests(TestCase):
                 remove_in="3.0.0",
             ),
         )
+        builder.set_config({"old_key": 42})
+        self.provenance = builder.build()
 
     def test_formatEntry__WithDeprecation__ShowsDeprecatedMarker(self) -> None:
         entry = self.provenance.get("old_key")
@@ -1071,13 +1058,12 @@ class TreeLayoutDeprecationTests(TestCase):
         from rconfig.deprecation.info import DeprecationInfo
 
         # Entry with only pattern, no new_key/message/remove_in
-        self.provenance._entries["simple"] = ProvenanceEntry(
+        entry = ProvenanceEntry(
             file="config.yaml",
             line=10,
             value="val",
             deprecation=DeprecationInfo(pattern="simple"),
         )
-        entry = self.provenance.get("simple")
         ctx = FormatContext()
 
         result = self.layout.format_entry(entry, "simple", ctx)
@@ -1088,13 +1074,27 @@ class TreeLayoutDeprecationTests(TestCase):
         self.assertNotIn("Message:", result)  # No message
 
     def test_formatProvenance__DeprecationsOnly__FiltersCorrectly(self) -> None:
-        # Add a non-deprecated entry
-        self.provenance._entries["normal"] = ProvenanceEntry(
-            file="config.yaml", line=20, value="normal_value"
+        from rconfig.deprecation.info import DeprecationInfo
+
+        # Build a provenance with both deprecated and normal entries
+        builder = ProvenanceBuilder()
+        builder.add(
+            "old_key",
+            file="config.yaml",
+            line=5,
+            deprecation=DeprecationInfo(
+                pattern="old_key",
+                new_key="new_key",
+                message="Custom deprecation message",
+                remove_in="3.0.0",
+            ),
         )
+        builder.add("normal", file="config.yaml", line=20)
+        builder.set_config({"old_key": 42, "normal": "normal_value"})
+        prov = builder.build()
         ctx = FormatContext(deprecations_only=True)
 
-        result = self.layout.format_provenance(self.provenance, ctx)
+        result = self.layout.format_provenance(prov, ctx)
 
         self.assertIn("old_key", result)
         self.assertNotIn("normal", result)
@@ -1107,10 +1107,10 @@ class TreeLayoutDeprecationTests(TestCase):
         self.assertIn("Deprecated Keys:", result)
 
     def test_formatProvenance__DeprecationsOnlyEmpty__ShowsMessage(self) -> None:
-        empty_prov = Provenance()
-        empty_prov._entries["normal"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=42
-        )
+        builder = ProvenanceBuilder()
+        builder.add("normal", file="config.yaml", line=1)
+        builder.set_config({"normal": 42})
+        empty_prov = builder.build()
         ctx = FormatContext(deprecations_only=True)
 
         result = self.layout.format_provenance(empty_prov, ctx)

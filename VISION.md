@@ -18,7 +18,7 @@ This document outlines potential features for rconfig based on analysis of state
 10. [Callbacks and Hooks](#10-callbacks-and-hooks)
 11. [XDG Base Directory Support](#11-xdg-base-directory-support)
 12. [✅ CLI `_ref_` Shorthand](#12-cli-_ref_-shorthand)
-13. [Extension-less `_ref_` Resolution](#13-extension-less-_ref_-resolution)
+13. [✅ Extension-less `_ref_` Resolution](#13-extension-less-_ref_-resolution)
 14. [Multirun Support](#14-multirun-support)
 15. [✅ CLI Help Integration](#15-cli-help-integration)
 
@@ -1274,9 +1274,9 @@ The shorthand is implemented via `apply_cli_overrides_with_ref_shorthand()` in `
 
 ---
 
-## 13. Extension-less `_ref_` Resolution
+## 13. ✅ Extension-less `_ref_` Resolution
 
-**Status:** Planned
+**Status:** Implemented
 
 ### Description
 

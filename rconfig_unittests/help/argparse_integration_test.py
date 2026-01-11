@@ -4,7 +4,8 @@ import argparse
 from unittest import TestCase
 
 from rconfig.help import ArgparseHelpIntegration
-from rconfig.composition import Provenance, ProvenanceEntry
+from rconfig.composition import Provenance
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
 
 class ArgparseHelpIntegrationTests(TestCase):
@@ -12,22 +13,24 @@ class ArgparseHelpIntegrationTests(TestCase):
 
     def _create_test_provenance(self) -> Provenance:
         """Create a test provenance object."""
-        prov = Provenance()
-        prov._entries["model.lr"] = ProvenanceEntry(
+        builder = ProvenanceBuilder()
+        builder.add(
+            "model.lr",
             file="config.yaml",
             line=1,
             value=0.001,
             type_hint=float,
             description="Learning rate",
         )
-        prov._entries["model.hidden_size"] = ProvenanceEntry(
+        builder.add(
+            "model.hidden_size",
             file="config.yaml",
             line=2,
             value=256,
             type_hint=int,
             description="Hidden layer size",
         )
-        return prov
+        return builder.build()
 
     # === Integration Tests ===
 
@@ -188,14 +191,12 @@ class ArgparseHelpIntegrationTests(TestCase):
         # Arrange
         parser = argparse.ArgumentParser()
         integration = ArgparseHelpIntegration(parser)
-        prov1 = Provenance()
-        prov1._entries["key1"] = ProvenanceEntry(
-            file="config1.yaml", line=1, value=1, type_hint=int,
-        )
-        prov2 = Provenance()
-        prov2._entries["key2"] = ProvenanceEntry(
-            file="config2.yaml", line=1, value=2, type_hint=int,
-        )
+        builder1 = ProvenanceBuilder()
+        builder1.add("key1", file="config1.yaml", line=1, value=1, type_hint=int)
+        prov1 = builder1.build()
+        builder2 = ProvenanceBuilder()
+        builder2.add("key2", file="config2.yaml", line=1, value=2, type_hint=int)
+        prov2 = builder2.build()
 
         # Act
         integration.integrate(prov1, "config1.yaml")

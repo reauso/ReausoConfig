@@ -741,111 +741,107 @@ class UpdateProvenanceForOverrideTests(TestCase):
     def test_updateProvenance__CliOverride__SetsCliSourceType(self):
         """Test that CLI override sets cli source type in provenance."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition import EntrySourceType
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
-        provenance = Provenance()
-        provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=5, value=0.001
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5, value=0.001)
         override = Override(
             path=["model", "lr"],
             value=0.01,
             operation="set",
-            source_type="cli",
+            source_type=EntrySourceType.CLI,
             cli_arg="model.lr=0.01",
         )
 
         # Act
-        _update_provenance_for_override(provenance, override)
+        _update_provenance_for_override(builder, override)
 
         # Assert
-        entry = provenance.get("model.lr")
+        entry = builder.get("model.lr")
         self.assertEqual("cli", entry.source_type)
         self.assertEqual("model.lr=0.01", entry.cli_arg)
 
     def test_updateProvenance__ProgrammaticOverride__SetsProgrammaticType(self):
         """Test that programmatic override sets programmatic source type."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition import EntrySourceType
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
-        provenance = Provenance()
-        provenance._entries["model.epochs"] = ProvenanceEntry(
-            file="config.yaml", line=6, value=100
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.epochs", file="config.yaml", line=6, value=100)
         override = Override(
             path=["model", "epochs"],
             value=200,
             operation="set",
-            source_type="programmatic",
+            source_type=EntrySourceType.PROGRAMMATIC,
         )
 
         # Act
-        _update_provenance_for_override(provenance, override)
+        _update_provenance_for_override(builder, override)
 
         # Assert
-        entry = provenance.get("model.epochs")
+        entry = builder.get("model.epochs")
         self.assertEqual("programmatic", entry.source_type)
         self.assertIsNone(entry.cli_arg)
 
     def test_updateProvenance__ExistingEntry__RecordsOverrode(self):
         """Test that overriding existing entry records what was overridden."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition import EntrySourceType
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
-        provenance = Provenance()
-        provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=5, value=0.001
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5, value=0.001)
         override = Override(
             path=["model", "lr"],
             value=0.01,
             operation="set",
-            source_type="cli",
+            source_type=EntrySourceType.CLI,
             cli_arg="model.lr=0.01",
         )
 
         # Act
-        _update_provenance_for_override(provenance, override)
+        _update_provenance_for_override(builder, override)
 
         # Assert
-        entry = provenance.get("model.lr")
+        entry = builder.get("model.lr")
         self.assertEqual("config.yaml:5", entry.overrode)
 
     def test_updateProvenance__NewPath__NoOverrode(self):
         """Test that new path has no overrode field."""
         # Arrange
-        from rconfig.composition import Provenance
+        from rconfig.composition import EntrySourceType
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
-        provenance = Provenance()  # Empty provenance
+        builder = ProvenanceBuilder()  # Empty builder
         override = Override(
             path=["new", "path"],
             value=42,
             operation="set",
-            source_type="cli",
+            source_type=EntrySourceType.CLI,
             cli_arg="new.path=42",
         )
 
         # Act
-        _update_provenance_for_override(provenance, override)
+        _update_provenance_for_override(builder, override)
 
         # Assert
-        entry = provenance.get("new.path")
+        entry = builder.get("new.path")
         self.assertIsNone(entry.overrode)
 
     def test_updateProvenance__SetsValue(self):
         """Test that override value is stored in provenance entry."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
-        provenance = Provenance()
-        provenance._entries["test"] = ProvenanceEntry(
-            file="config.yaml", line=1
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="config.yaml", line=1)
         override = Override(
             path=["test"],
             value="new_value",
@@ -853,59 +849,57 @@ class UpdateProvenanceForOverrideTests(TestCase):
         )
 
         # Act
-        _update_provenance_for_override(provenance, override)
+        _update_provenance_for_override(builder, override)
 
         # Assert
-        entry = provenance.get("test")
+        entry = builder.get("test")
         self.assertEqual("new_value", entry.value)
 
     def test_updateProvenance__CliArg__OnlyForCliType(self):
         """Test that cli_arg is only set for cli source type."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition import EntrySourceType
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
-        provenance = Provenance()
-        provenance._entries["test"] = ProvenanceEntry(
-            file="config.yaml", line=1
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="config.yaml", line=1)
         override = Override(
             path=["test"],
             value=42,
             operation="set",
-            source_type="cli",
+            source_type=EntrySourceType.CLI,
             cli_arg="test=42",
         )
 
         # Act
-        _update_provenance_for_override(provenance, override)
+        _update_provenance_for_override(builder, override)
 
         # Assert
-        entry = provenance.get("test")
+        entry = builder.get("test")
         self.assertEqual("test=42", entry.cli_arg)
 
     def test_updateProvenance__ProgrammaticArg__CliArgIsNone(self):
         """Test that programmatic override has None cli_arg."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition import EntrySourceType
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
-        provenance = Provenance()
-        provenance._entries["test"] = ProvenanceEntry(
-            file="config.yaml", line=1
-        )
+        builder = ProvenanceBuilder()
+        builder.add("test", file="config.yaml", line=1)
         override = Override(
             path=["test"],
             value=42,
             operation="set",
-            source_type="programmatic",
+            source_type=EntrySourceType.PROGRAMMATIC,
         )
 
         # Act
-        _update_provenance_for_override(provenance, override)
+        _update_provenance_for_override(builder, override)
 
         # Assert
-        entry = provenance.get("test")
+        entry = builder.get("test")
         self.assertIsNone(entry.cli_arg)
 
 
@@ -915,40 +909,37 @@ class ApplyOverridesWithProvenanceTests(TestCase):
     def test_applyOverrides__SetOperation__UpdatesProvenance(self):
         """Test that set operation updates provenance."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition import EntrySourceType
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-        provenance = Provenance()
-        provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=5, value=0.001
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5, value=0.001)
         config = {"model": {"lr": 0.001}}
         overrides = [
             Override(
                 path=["model", "lr"],
                 value=0.01,
                 operation="set",
-                source_type="cli",
+                source_type=EntrySourceType.CLI,
                 cli_arg="model.lr=0.01",
             )
         ]
 
         # Act
-        apply_overrides(config, overrides, provenance)
+        apply_overrides(config, overrides, builder)
 
         # Assert
-        entry = provenance.get("model.lr")
+        entry = builder.get("model.lr")
         self.assertEqual("cli", entry.source_type)
         self.assertEqual(0.01, entry.value)
 
     def test_applyOverrides__AddOperation__NoProvenanceUpdate(self):
         """Test that add operation doesn't crash with provenance."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-        provenance = Provenance()
-        provenance._entries["callbacks"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
+        builder = ProvenanceBuilder()
+        builder.add("callbacks", file="config.yaml", line=5)
         config = {"callbacks": ["a"]}
         overrides = [
             Override(
@@ -959,7 +950,7 @@ class ApplyOverridesWithProvenanceTests(TestCase):
         ]
 
         # Act - should not raise
-        result = apply_overrides(config, overrides, provenance)
+        result = apply_overrides(config, overrides, builder)
 
         # Assert
         self.assertEqual(["a", "b"], result["callbacks"])
@@ -967,12 +958,10 @@ class ApplyOverridesWithProvenanceTests(TestCase):
     def test_applyOverrides__RemoveOperation__NoProvenanceUpdate(self):
         """Test that remove operation doesn't crash with provenance."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-        provenance = Provenance()
-        provenance._entries["dropout"] = ProvenanceEntry(
-            file="config.yaml", line=5, value=0.1
-        )
+        builder = ProvenanceBuilder()
+        builder.add("dropout", file="config.yaml", line=5, value=0.1)
         config = {"dropout": 0.1, "lr": 0.01}
         overrides = [
             Override(
@@ -983,7 +972,7 @@ class ApplyOverridesWithProvenanceTests(TestCase):
         ]
 
         # Act - should not raise
-        result = apply_overrides(config, overrides, provenance)
+        result = apply_overrides(config, overrides, builder)
 
         # Assert
         self.assertNotIn("dropout", result)
@@ -1003,39 +992,36 @@ class ApplyOverridesWithProvenanceTests(TestCase):
     def test_applyOverrides__MultipleOverrides__AllTracked(self):
         """Test that multiple overrides are all tracked in provenance."""
         # Arrange
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition import EntrySourceType
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-        provenance = Provenance()
-        provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=5
-        )
-        provenance._entries["model.epochs"] = ProvenanceEntry(
-            file="config.yaml", line=6
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5)
+        builder.add("model.epochs", file="config.yaml", line=6)
         config = {"model": {"lr": 0.1, "epochs": 10}}
         overrides = [
             Override(
                 path=["model", "lr"],
                 value=0.01,
                 operation="set",
-                source_type="cli",
+                source_type=EntrySourceType.CLI,
                 cli_arg="model.lr=0.01",
             ),
             Override(
                 path=["model", "epochs"],
                 value=100,
                 operation="set",
-                source_type="cli",
+                source_type=EntrySourceType.CLI,
                 cli_arg="model.epochs=100",
             ),
         ]
 
         # Act
-        apply_overrides(config, overrides, provenance)
+        apply_overrides(config, overrides, builder)
 
         # Assert
-        lr_entry = provenance.get("model.lr")
-        epochs_entry = provenance.get("model.epochs")
+        lr_entry = builder.get("model.lr")
+        epochs_entry = builder.get("model.epochs")
         self.assertEqual("cli", lr_entry.source_type)
         self.assertEqual("cli", epochs_entry.source_type)
         self.assertEqual(0.01, lr_entry.value)
