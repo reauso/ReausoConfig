@@ -13,7 +13,7 @@ from .registry import get_deprecation_registry
 from rconfig.errors import DeprecatedKeyError
 
 if TYPE_CHECKING:
-    from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+    from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
 # Marker key for in-config deprecation
 _DEPRECATED_KEY = "_deprecated_"
@@ -24,7 +24,7 @@ def check_deprecation(
     config_path: str,
     file: str,
     line: int,
-    provenance: Provenance,
+    provenance: "ProvenanceBuilder",
 ) -> DeprecationInfo | None:
     """Check if a config path is deprecated via registry.
 
@@ -74,7 +74,7 @@ def handle_deprecated_marker(
     config_path: str,
     file: str,
     line: int,
-    provenance: Provenance,
+    provenance: "ProvenanceBuilder",
 ) -> tuple[Any, DeprecationInfo | None]:
     """Process _deprecated_ marker in a config dict.
 
@@ -158,7 +158,7 @@ def has_deprecated_marker(value: dict[str, Any]) -> bool:
 
 def auto_map_deprecated_values(
     config: dict[str, Any],
-    provenance: Provenance,
+    provenance: "ProvenanceBuilder",
 ) -> dict[str, Any]:
     """Map deprecated key values to new key locations.
 

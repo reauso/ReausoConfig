@@ -5,6 +5,7 @@ from unittest import TestCase
 
 from rconfig.help import HelpIntegration, FunctionHelpIntegration
 from rconfig.composition import Provenance, ProvenanceEntry
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
 
 class HelpIntegrationTests(TestCase):
@@ -12,23 +13,24 @@ class HelpIntegrationTests(TestCase):
 
     def _create_test_provenance(self) -> Provenance:
         """Create a test provenance object."""
-        prov = Provenance()
-        # Use the internal _entries dict to set entries with full details
-        prov._entries["model.lr"] = ProvenanceEntry(
+        builder = ProvenanceBuilder()
+        builder.add(
+            "model.lr",
             file="config.yaml",
             line=1,
             value=0.001,
             type_hint=float,
             description="Learning rate",
         )
-        prov._entries["model.hidden_size"] = ProvenanceEntry(
+        builder.add(
+            "model.hidden_size",
             file="config.yaml",
             line=2,
             value=256,
             type_hint=int,
             description="Hidden layer size",
         )
-        return prov
+        return builder.build()
 
     # === consume_help_flag Property Tests ===
 
@@ -77,13 +79,11 @@ class FunctionHelpIntegrationTests(TestCase):
 
     def _create_test_provenance(self) -> Provenance:
         """Create a test provenance object."""
-        prov = Provenance()
-        prov._entries["test.key"] = ProvenanceEntry(
-            file="test.yaml",
-            line=1,
-            value="test_value",
-        )
-        return prov
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+
+        builder = ProvenanceBuilder()
+        builder.add("test.key", file="test.yaml", line=1, value="test_value")
+        return builder.build()
 
     # === Integration Tests ===
 

@@ -358,7 +358,7 @@ def _apply_single_override(
 def _update_provenance_for_override(provenance: Any, override: Override) -> None:
     """Update provenance to record that a value came from an override.
 
-    :param provenance: The Provenance object to update.
+    :param provenance: The ProvenanceBuilder object to update.
     :param override: The override that was applied.
     """
     # Convert path list to dot-notation string
@@ -370,11 +370,9 @@ def _update_provenance_for_override(provenance: Any, override: Override) -> None
     if existing_entry is not None:
         overrode = f"{existing_entry.file}:{existing_entry.line}"
 
-    # Import ProvenanceEntry to create a new entry
-    from rconfig.composition.Provenance import ProvenanceEntry
-
-    # Create new entry with override info
-    new_entry = ProvenanceEntry(
+    # Add entry with override info using builder's add method
+    provenance.add(
+        path_str,
         file="<override>",
         line=0,
         overrode=overrode,
@@ -382,9 +380,6 @@ def _update_provenance_for_override(provenance: Any, override: Override) -> None
         cli_arg=override.cli_arg if override.source_type == "cli" else None,
         value=override.value,
     )
-
-    # Update the provenance's internal entries dict
-    provenance._entries[path_str] = new_entry
 
 
 def _navigate_to_parent(config: dict[str, Any], path: list[str | int]) -> Any:

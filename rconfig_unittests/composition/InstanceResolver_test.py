@@ -2,7 +2,8 @@
 
 from unittest import TestCase
 
-from rconfig.composition import InstanceMarker, InstanceResolver, Provenance
+from rconfig.composition import InstanceMarker, InstanceResolver
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 from rconfig.errors import CircularInstanceError, InstanceResolutionError
 
 
@@ -11,8 +12,8 @@ class InstanceResolverPropertyTests(TestCase):
 
     def test_instanceTargets__EmptyResolver__ReturnsEmptyDict(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
 
         # Act
         targets = resolver.instance_targets
@@ -22,8 +23,8 @@ class InstanceResolverPropertyTests(TestCase):
 
     def test_instanceTargets__AfterResolve__ReturnsCopy(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {
             "shared": {"_target_": "Database", "url": "postgres://localhost"},
             "service": {"_instance_": "/shared"},
@@ -42,8 +43,8 @@ class InstanceResolverPropertyTests(TestCase):
 
     def test_instanceTargets__ReturnsCopy__ModificationDoesNotAffectOriginal(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
 
         # Act
         targets = resolver.instance_targets
@@ -58,8 +59,8 @@ class InstancePathResolutionTests(TestCase):
 
     def test_resolvePath__AbsolutePath__StripsLeadingSlash(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {"shared": {"_target_": "Database"}}
 
         # Act
@@ -70,8 +71,8 @@ class InstancePathResolutionTests(TestCase):
 
     def test_resolvePath__RelativePathWithDotSlash__StripsPrefix(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {"shared": {"_target_": "Database"}}
 
         # Act
@@ -82,8 +83,8 @@ class InstancePathResolutionTests(TestCase):
 
     def test_resolvePath__PlainRelativePath__ReturnsAsIs(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {"shared": {"_target_": "Database"}}
 
         # Act
@@ -94,8 +95,8 @@ class InstancePathResolutionTests(TestCase):
 
     def test_resolvePath__NestedPath__ResolvesCorrectly(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {"data": {"sources": {"primary": {"_target_": "Source"}}}}
 
         # Act
@@ -108,8 +109,8 @@ class InstancePathResolutionTests(TestCase):
 
     def test_resolvePath__PathNotFound__RaisesInstanceResolutionError(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {"shared": {"_target_": "Database"}}
 
         # Act & Assert
@@ -125,8 +126,8 @@ class DeepCopyResolutionTests(TestCase):
 
     def test_deepCopy__ScalarValue__ReturnsSameValue(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
 
         # Act
         result = resolver._deep_copy_with_resolved_instances(42, "path", {})
@@ -136,8 +137,8 @@ class DeepCopyResolutionTests(TestCase):
 
     def test_deepCopy__StringValue__ReturnsSameValue(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
 
         # Act
         result = resolver._deep_copy_with_resolved_instances("hello", "path", {})
@@ -147,8 +148,8 @@ class DeepCopyResolutionTests(TestCase):
 
     def test_deepCopy__ListValue__CopiesList(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         value = [1, 2, 3]
 
         # Act
@@ -160,8 +161,8 @@ class DeepCopyResolutionTests(TestCase):
 
     def test_deepCopy__DictValue__CopiesDict(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         value = {"a": 1, "b": 2}
 
         # Act
@@ -173,8 +174,8 @@ class DeepCopyResolutionTests(TestCase):
 
     def test_deepCopy__InstanceMarker__ReplacesWithResolvedValue(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         value = {"_instance_": "/shared"}
         resolved = {"path": {"_target_": "Database", "url": "localhost"}}
 
@@ -186,8 +187,8 @@ class DeepCopyResolutionTests(TestCase):
 
     def test_deepCopy__InstanceMarkerNull__ReturnsNone(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         value = {"_instance_": None}
 
         # Act
@@ -198,8 +199,8 @@ class DeepCopyResolutionTests(TestCase):
 
     def test_deepCopy__NestedDict__RecursivelyCopies(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         value = {"outer": {"inner": {"deep": "value"}}}
 
         # Act
@@ -211,8 +212,8 @@ class DeepCopyResolutionTests(TestCase):
 
     def test_deepCopy__NestedList__RecursivelyCopies(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         value = {"items": [{"a": 1}, {"b": 2}]}
 
         # Act
@@ -229,8 +230,8 @@ class InstanceResolverIntegrationTests(TestCase):
 
     def test_resolve__NoInstances__ReturnsConfigUnchanged(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {"_target_": "App", "name": "test"}
 
         # Act
@@ -241,8 +242,8 @@ class InstanceResolverIntegrationTests(TestCase):
 
     def test_resolve__SimpleInstance__ReplacesMarkerWithValue(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {
             "shared": {"_target_": "Database", "url": "postgres://localhost"},
             "service": {"_instance_": "/shared"},
@@ -260,8 +261,8 @@ class InstanceResolverIntegrationTests(TestCase):
 
     def test_resolve__NullInstance__ReplacesWithNone(self):
         # Arrange
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {
             "optional": {"_instance_": None},
         }
@@ -281,8 +282,8 @@ class CircularInstanceTests(TestCase):
 
     def test_resolve__CircularInstanceReference__RaisesError(self):
         """Test that circular _instance_ references are detected."""
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {
             "a": {"_instance_": "/b"},
             "b": {"_instance_": "/a"},
@@ -301,8 +302,8 @@ class CircularInstanceTests(TestCase):
 
     def test_resolve__SelfReference__RaisesCircularError(self):
         """Test that self-referencing _instance_ is detected."""
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {
             "a": {"_instance_": "/a"},
         }
@@ -316,8 +317,8 @@ class CircularInstanceTests(TestCase):
 
     def test_resolve__ThreeWayCycle__RaisesError(self):
         """Test that three-way circular reference is detected."""
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {
             "a": {"_instance_": "/b"},
             "b": {"_instance_": "/c"},
@@ -335,8 +336,8 @@ class CircularInstanceTests(TestCase):
 
     def test_resolve__AlreadyResolved__ReturnsCachedValue(self):
         """Test that already resolved instances are returned from cache (line 77)."""
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {
             "shared": {"_target_": "Database", "url": "postgres://localhost"},
             "service1": {"_instance_": "/shared"},
@@ -355,8 +356,8 @@ class CircularInstanceTests(TestCase):
 
     def test_resolve__NonInstancePath__GetsValueFromConfig(self):
         """Test that non-instance paths get value directly from config (line 81)."""
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = {
             "data": {"value": 42},
             "ref": {"_instance_": "/data"},

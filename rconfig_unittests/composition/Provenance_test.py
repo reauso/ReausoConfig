@@ -1,6 +1,7 @@
 from unittest import TestCase
 
 from rconfig.composition import InstanceRef, Provenance, ProvenanceEntry
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
 
 class ProvenanceEntryTests(TestCase):
@@ -12,7 +13,7 @@ class ProvenanceEntryTests(TestCase):
             file="config.yaml",
             line=5,
             overrode="base.yaml:3",
-            instance=[InstanceRef("database", "app.yaml", 2)],
+            instance=(InstanceRef("database", "app.yaml", 2),),
         )
 
         # Assert
@@ -47,14 +48,15 @@ class InstanceRefTests(TestCase):
 
 
 class ProvenanceTests(TestCase):
-    """Tests for Provenance class."""
+    """Tests for Provenance class and ProvenanceBuilder."""
 
     def test_add_and_get__SimpleValue__ReturnsEntry(self):
         # Arrange
-        prov = Provenance()
+        builder = ProvenanceBuilder()
 
         # Act
-        prov.add("model.layers", file="config.yaml", line=5)
+        builder.add("model.layers", file="config.yaml", line=5)
+        prov = builder.build()
         entry = prov.get("model.layers")
 
         # Assert
@@ -74,10 +76,11 @@ class ProvenanceTests(TestCase):
 
     def test_add__WithOverride__StoresOverrideInfo(self):
         # Arrange
-        prov = Provenance()
+        builder = ProvenanceBuilder()
 
         # Act
-        prov.add("model.layers", file="trainer.yaml", line=5, overrode="model.yaml:2")
+        builder.add("model.layers", file="trainer.yaml", line=5, overrode="model.yaml:2")
+        prov = builder.build()
         entry = prov.get("model.layers")
 
         # Assert
@@ -85,14 +88,15 @@ class ProvenanceTests(TestCase):
 
     def test_add__WithInstanceChain__StoresInstanceRefs(self):
         # Arrange
-        prov = Provenance()
+        builder = ProvenanceBuilder()
         chain = [
             InstanceRef("alias", "app.yaml", 5),
             InstanceRef("database", "app.yaml", 2),
         ]
 
         # Act
-        prov.add("service.db", file="app.yaml", line=9, instance=chain)
+        builder.add("service.db", file="app.yaml", line=9, instance=chain)
+        prov = builder.build()
         entry = prov.get("service.db")
 
         # Assert
@@ -102,12 +106,13 @@ class ProvenanceTests(TestCase):
 
     def test_items__MultipleEntries__IteratesAll(self):
         # Arrange
-        prov = Provenance()
-        prov.add("a", file="a.yaml", line=1)
-        prov.add("b", file="b.yaml", line=2)
-        prov.add("c", file="c.yaml", line=3)
+        builder = ProvenanceBuilder()
+        builder.add("a", file="a.yaml", line=1)
+        builder.add("b", file="b.yaml", line=2)
+        builder.add("c", file="c.yaml", line=3)
 
         # Act
+        prov = builder.build()
         items = list(prov.items())
 
         # Assert
@@ -129,16 +134,17 @@ class ProvenanceTests(TestCase):
 
     def test_str__SimpleConfig__FormatsWithAnnotations(self):
         # Arrange
-        prov = Provenance()
-        prov.add("_target_", file="trainer.yaml", line=1)
-        prov.add("model", file="trainer.yaml", line=2)
-        prov.add("model.layers", file="trainer.yaml", line=3)
-        prov.set_config({
+        builder = ProvenanceBuilder()
+        builder.add("_target_", file="trainer.yaml", line=1)
+        builder.add("model", file="trainer.yaml", line=2)
+        builder.add("model.layers", file="trainer.yaml", line=3)
+        builder.set_config({
             "_target_": "Trainer",
             "model": {
                 "layers": 50,
             },
         })
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -151,13 +157,14 @@ class ProvenanceTests(TestCase):
 
     def test_str__WithOverride__ShowsOverrideAnnotation(self):
         # Arrange
-        prov = Provenance()
-        prov.add("model.layers", file="trainer.yaml", line=5, overrode="model.yaml:2")
-        prov.set_config({
+        builder = ProvenanceBuilder()
+        builder.add("model.layers", file="trainer.yaml", line=5, overrode="model.yaml:2")
+        builder.set_config({
             "model": {
                 "layers": 50,
             },
         })
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -167,12 +174,13 @@ class ProvenanceTests(TestCase):
 
     def test_str__WithList__FormatsListItems(self):
         # Arrange
-        prov = Provenance()
-        prov.add("callbacks[0]", file="config.yaml", line=5)
-        prov.add("callbacks[1]", file="config.yaml", line=6)
-        prov.set_config({
+        builder = ProvenanceBuilder()
+        builder.add("callbacks[0]", file="config.yaml", line=5)
+        builder.add("callbacks[1]", file="config.yaml", line=6)
+        builder.set_config({
             "callbacks": ["logger", "checkpoint"],
         })
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -184,9 +192,10 @@ class ProvenanceTests(TestCase):
 
     def test_str__WithNullValue__FormatsAsNull(self):
         # Arrange
-        prov = Provenance()
-        prov.add("value", file="config.yaml", line=1)
-        prov.set_config({"value": None})
+        builder = ProvenanceBuilder()
+        builder.add("value", file="config.yaml", line=1)
+        builder.set_config({"value": None})
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -196,10 +205,11 @@ class ProvenanceTests(TestCase):
 
     def test_str__WithBoolValue__FormatsAsTrueFalse(self):
         # Arrange
-        prov = Provenance()
-        prov.add("enabled", file="config.yaml", line=1)
-        prov.add("disabled", file="config.yaml", line=2)
-        prov.set_config({"enabled": True, "disabled": False})
+        builder = ProvenanceBuilder()
+        builder.add("enabled", file="config.yaml", line=1)
+        builder.add("disabled", file="config.yaml", line=2)
+        builder.set_config({"enabled": True, "disabled": False})
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -210,9 +220,10 @@ class ProvenanceTests(TestCase):
 
     def test_str__WithStringContainingSpecialChars__QuotesString(self):
         # Arrange
-        prov = Provenance()
-        prov.add("url", file="config.yaml", line=1)
-        prov.set_config({"url": "http://localhost:8080"})
+        builder = ProvenanceBuilder()
+        builder.add("url", file="config.yaml", line=1)
+        builder.set_config({"url": "http://localhost:8080"})
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -223,17 +234,18 @@ class ProvenanceTests(TestCase):
 
     def test_str__NestedDicts__FormatsWithIndentation(self):
         # Arrange
-        prov = Provenance()
-        prov.add("level1", file="config.yaml", line=1)
-        prov.add("level1.level2", file="config.yaml", line=2)
-        prov.add("level1.level2.value", file="config.yaml", line=3)
-        prov.set_config({
+        builder = ProvenanceBuilder()
+        builder.add("level1", file="config.yaml", line=1)
+        builder.add("level1.level2", file="config.yaml", line=2)
+        builder.add("level1.level2.value", file="config.yaml", line=3)
+        builder.set_config({
             "level1": {
                 "level2": {
                     "value": 42,
                 },
             },
         })
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -249,14 +261,15 @@ class ProvenanceTests(TestCase):
 
     def test_str__NestedList__FormatsCorrectly(self):
         # Arrange
-        prov = Provenance()
-        prov.add("matrix[0]", file="config.yaml", line=1)
-        prov.add("matrix[0][0]", file="config.yaml", line=2)
-        prov.set_config({
+        builder = ProvenanceBuilder()
+        builder.add("matrix[0]", file="config.yaml", line=1)
+        builder.add("matrix[0][0]", file="config.yaml", line=2)
+        builder.set_config({
             "matrix": [
                 [1, 2, 3],
             ],
         })
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -266,14 +279,15 @@ class ProvenanceTests(TestCase):
 
     def test_str__DictInList__FormatsCorrectly(self):
         # Arrange
-        prov = Provenance()
-        prov.add("items[0]", file="config.yaml", line=1)
-        prov.add("items[0].name", file="config.yaml", line=2)
-        prov.set_config({
+        builder = ProvenanceBuilder()
+        builder.add("items[0]", file="config.yaml", line=1)
+        builder.add("items[0].name", file="config.yaml", line=2)
+        builder.set_config({
             "items": [
                 {"name": "first"},
             ],
         })
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -284,10 +298,11 @@ class ProvenanceTests(TestCase):
 
     def test_str__NoAnnotationForPath__OmitsAnnotation(self):
         # Arrange
-        prov = Provenance()
-        prov.add("a", file="config.yaml", line=1)
+        builder = ProvenanceBuilder()
+        builder.add("a", file="config.yaml", line=1)
         # Note: "b" is NOT added to provenance
-        prov.set_config({"a": 1, "b": 2})
+        builder.set_config({"a": 1, "b": 2})
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -304,11 +319,12 @@ class ProvenanceEdgeCaseTests(TestCase):
 
     def test_add__OverwritesExistingEntry(self):
         # Arrange
-        prov = Provenance()
-        prov.add("path", file="first.yaml", line=1)
+        builder = ProvenanceBuilder()
+        builder.add("path", file="first.yaml", line=1)
 
         # Act
-        prov.add("path", file="second.yaml", line=5)
+        builder.add("path", file="second.yaml", line=5)
+        prov = builder.build()
         entry = prov.get("path")
 
         # Assert
@@ -327,9 +343,10 @@ class ProvenanceEdgeCaseTests(TestCase):
 
     def test_str__StringWithQuotes__QuotesCorrectly(self):
         # Arrange
-        prov = Provenance()
-        prov.add("value", file="config.yaml", line=1)
-        prov.set_config({"value": "'quoted'"})
+        builder = ProvenanceBuilder()
+        builder.add("value", file="config.yaml", line=1)
+        builder.set_config({"value": "'quoted'"})
+        prov = builder.build()
 
         # Act
         result = str(prov)
@@ -344,8 +361,9 @@ class ProvenanceCoverageTests(TestCase):
     def test_format_value__RootScalar__FormatsWithAnnotation(self):
         """Test formatting a scalar value at the root level."""
         # Arrange - lines 166-168
-        prov = Provenance()
-        prov.add("", file="config.yaml", line=1)  # Root-level entry
+        builder = ProvenanceBuilder()
+        builder.add("", file="config.yaml", line=1)  # Root-level entry
+        prov = builder.build()
 
         # Call the internal method directly
         lines: list[str] = []
@@ -358,8 +376,9 @@ class ProvenanceCoverageTests(TestCase):
     def test_format_value__RootScalarWithProvenance__IncludesAnnotation(self):
         """Test formatting a scalar value at the root with provenance entry."""
         # Arrange - lines 166-168
-        prov = Provenance()
-        prov.add("", file="config.yaml", line=42)
+        builder = ProvenanceBuilder()
+        builder.add("", file="config.yaml", line=42)
+        prov = builder.build()
 
         # Call the internal method directly
         lines: list[str] = []
@@ -377,10 +396,10 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__AllFieldsSet__IncludesAll(self):
         """Test that all fields are included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode
+        from rconfig.composition import ProvenanceNode, NodeSourceType
 
         node = ProvenanceNode(
-            source_type="cli",
+            source_type=NodeSourceType.CLI,
             path="/model.lr",
             file="<override>",
             line=0,
@@ -408,10 +427,10 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__CliArg__IncludesCliArg(self):
         """Test that cli_arg is included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode
+        from rconfig.composition import ProvenanceNode, NodeSourceType
 
         node = ProvenanceNode(
-            source_type="cli",
+            source_type=NodeSourceType.CLI,
             cli_arg="--lr=0.01",
         )
 
@@ -424,10 +443,10 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__EnvVar__IncludesEnvVar(self):
         """Test that env_var is included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode
+        from rconfig.composition import ProvenanceNode, NodeSourceType
 
         node = ProvenanceNode(
-            source_type="env",
+            source_type=NodeSourceType.ENV,
             env_var="DATA_PATH",
         )
 
@@ -440,10 +459,10 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__Expression__IncludesExpression(self):
         """Test that expression is included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode
+        from rconfig.composition import ProvenanceNode, NodeSourceType
 
         node = ProvenanceNode(
-            source_type="interpolation",
+            source_type=NodeSourceType.INTERPOLATION,
             expression="${/defaults.lr * 2}",
         )
 
@@ -456,10 +475,10 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__Operator__IncludesOperator(self):
         """Test that operator is included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode
+        from rconfig.composition import ProvenanceNode, NodeSourceType
 
         node = ProvenanceNode(
-            source_type="operator",
+            source_type=NodeSourceType.OPERATOR,
             operator="*",
         )
 
@@ -472,9 +491,9 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__EmptyChildren__OmitsChildren(self):
         """Test that empty children list is omitted."""
         # Arrange
-        from rconfig.composition import ProvenanceNode
+        from rconfig.composition import ProvenanceNode, NodeSourceType
 
-        node = ProvenanceNode(source_type="file")
+        node = ProvenanceNode(source_type=NodeSourceType.FILE)
 
         # Act
         result = node.to_dict()
@@ -485,9 +504,9 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__ValueIsFalse__IncludesValue(self):
         """Test that False value is included (not omitted as falsy)."""
         # Arrange
-        from rconfig.composition import ProvenanceNode
+        from rconfig.composition import ProvenanceNode, NodeSourceType
 
-        node = ProvenanceNode(source_type="file", value=False)
+        node = ProvenanceNode(source_type=NodeSourceType.FILE, value=False)
 
         # Act
         result = node.to_dict()
@@ -501,9 +520,9 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__ValueIsZero__IncludesValue(self):
         """Test that zero value is included (not omitted as falsy)."""
         # Arrange
-        from rconfig.composition import ProvenanceNode
+        from rconfig.composition import ProvenanceNode, NodeSourceType
 
-        node = ProvenanceNode(source_type="file", value=0)
+        node = ProvenanceNode(source_type=NodeSourceType.FILE, value=0)
 
         # Act
         result = node.to_dict()
@@ -571,10 +590,10 @@ class ProvenanceEntryToDictExtendedTests(TestCase):
         entry = ProvenanceEntry(
             file="app.yaml",
             line=10,
-            instance=[
+            instance=(
                 InstanceRef(path="/shared.db", file="shared.yaml", line=5),
                 InstanceRef(path="/common.db", file="common.yaml", line=2),
-            ],
+            ),
         )
 
         # Act
@@ -589,10 +608,12 @@ class ProvenanceEntryToDictExtendedTests(TestCase):
     def test_toDict__WithEnvVar__IncludesEnvVar(self):
         """Test that env_var is included."""
         # Arrange
+        from rconfig.composition import EntrySourceType
+
         entry = ProvenanceEntry(
             file="<override>",
             line=0,
-            source_type="env",
+            source_type=EntrySourceType.ENV,
             env_var="DATA_PATH",
         )
 
@@ -659,11 +680,13 @@ class ProvenanceEntryTraceTests(TestCase):
     def test_trace__FileSourceType__ReturnsFileNode(self):
         """Test that file source type creates file node."""
         # Arrange
+        from rconfig.composition import EntrySourceType
+
         entry = ProvenanceEntry(
             file="config.yaml",
             line=5,
             value=42,
-            source_type="file",
+            source_type=EntrySourceType.FILE,
         )
 
         # Act
@@ -678,11 +701,13 @@ class ProvenanceEntryTraceTests(TestCase):
     def test_trace__CliSourceType__ReturnsCliNode(self):
         """Test that CLI source type creates cli node."""
         # Arrange
+        from rconfig.composition import EntrySourceType
+
         entry = ProvenanceEntry(
             file="<override>",
             line=0,
             value=0.01,
-            source_type="cli",
+            source_type=EntrySourceType.CLI,
             cli_arg="--lr=0.01",
         )
 
@@ -696,11 +721,13 @@ class ProvenanceEntryTraceTests(TestCase):
     def test_trace__EnvSourceType__ReturnsEnvNode(self):
         """Test that env source type creates env node."""
         # Arrange
+        from rconfig.composition import EntrySourceType
+
         entry = ProvenanceEntry(
             file="<override>",
             line=0,
             value="/data",
-            source_type="env",
+            source_type=EntrySourceType.ENV,
             env_var="DATA_PATH",
         )
 
@@ -714,11 +741,13 @@ class ProvenanceEntryTraceTests(TestCase):
     def test_trace__ProgrammaticSourceType__ReturnsProgrammaticNode(self):
         """Test that programmatic source type creates programmatic node."""
         # Arrange
+        from rconfig.composition import EntrySourceType
+
         entry = ProvenanceEntry(
             file="<override>",
             line=0,
             value=100,
-            source_type="programmatic",
+            source_type=EntrySourceType.PROGRAMMATIC,
         )
 
         # Act
@@ -759,10 +788,10 @@ class ProvenanceEntryTraceTests(TestCase):
             file="app.yaml",
             line=10,
             value={"host": "localhost"},
-            instance=[
+            instance=(
                 InstanceRef(path="/shared.db", file="shared.yaml", line=5),
                 InstanceRef(path="/common.db", file="common.yaml", line=2),
-            ],
+            ),
         )
 
         # Act
@@ -904,18 +933,19 @@ class ProvenanceEntryTraceTests(TestCase):
 
 
 class ProvenanceSetConfigExtendedTests(TestCase):
-    """Extended tests for Provenance.set_config()."""
+    """Extended tests for ProvenanceBuilder.set_config()."""
 
     def test_setConfig__ListIndex__PopulatesCorrectly(self):
         """Test that list indices are populated correctly."""
         # Arrange
-        prov = Provenance()
-        prov.add("items[0]", file="config.yaml", line=1)
-        prov.add("items[1]", file="config.yaml", line=2)
+        builder = ProvenanceBuilder()
+        builder.add("items[0]", file="config.yaml", line=1)
+        builder.add("items[1]", file="config.yaml", line=2)
         config = {"items": ["first", "second"]}
 
         # Act
-        prov.set_config(config)
+        builder.set_config(config)
+        prov = builder.build()
 
         # Assert
         self.assertEqual("first", prov.get("items[0]").value)
@@ -924,12 +954,13 @@ class ProvenanceSetConfigExtendedTests(TestCase):
     def test_setConfig__TypeError__KeepsNone(self):
         """Test that TypeError during path navigation keeps value as None."""
         # Arrange
-        prov = Provenance()
-        prov.add("a.b.c", file="config.yaml", line=1)
+        builder = ProvenanceBuilder()
+        builder.add("a.b.c", file="config.yaml", line=1)
         config = {"a": None}  # Can't navigate through None
 
         # Act
-        prov.set_config(config)
+        builder.set_config(config)
+        prov = builder.build()
 
         # Assert
         self.assertIsNone(prov.get("a.b.c").value)
@@ -937,12 +968,13 @@ class ProvenanceSetConfigExtendedTests(TestCase):
     def test_setConfig__IndexError__KeepsNone(self):
         """Test that IndexError during path navigation keeps value as None."""
         # Arrange
-        prov = Provenance()
-        prov.add("items[5]", file="config.yaml", line=1)
+        builder = ProvenanceBuilder()
+        builder.add("items[5]", file="config.yaml", line=1)
         config = {"items": [1, 2]}  # Only 2 items, index 5 is out of range
 
         # Act
-        prov.set_config(config)
+        builder.set_config(config)
+        prov = builder.build()
 
         # Assert
         self.assertIsNone(prov.get("items[5]").value)
@@ -1017,13 +1049,13 @@ class ProvenanceEntryTargetTests(TestCase):
 
 
 class ProvenanceResolveTargetsTests(TestCase):
-    """Tests for Provenance.resolve_targets method."""
+    """Tests for ProvenanceBuilder.resolve_targets method."""
 
     def test_resolveTargets__RegisteredTarget__PopulatesClassAndModule(self):
         """Test that registered target gets class and module info."""
         # Arrange
-        prov = Provenance()
-        prov.add("model", file="config.yaml", line=5, target_name="mymodel")
+        builder = ProvenanceBuilder()
+        builder.add("model", file="config.yaml", line=5, target_name="mymodel")
 
         # Create a mock reference with target_class
         class MockModel:
@@ -1038,7 +1070,8 @@ class ProvenanceResolveTargetsTests(TestCase):
         known_refs = {"mymodel": MockRef()}
 
         # Act
-        prov.resolve_targets(known_refs)
+        builder.resolve_targets(known_refs)
+        prov = builder.build()
 
         # Assert
         entry = prov.get("model")
@@ -1049,11 +1082,12 @@ class ProvenanceResolveTargetsTests(TestCase):
     def test_resolveTargets__UnregisteredTarget__LeavesClassNone(self):
         """Test that unregistered target leaves class as None."""
         # Arrange
-        prov = Provenance()
-        prov.add("model", file="config.yaml", line=5, target_name="unknown")
+        builder = ProvenanceBuilder()
+        builder.add("model", file="config.yaml", line=5, target_name="unknown")
 
         # Act
-        prov.resolve_targets({})
+        builder.resolve_targets({})
+        prov = builder.build()
 
         # Assert
         entry = prov.get("model")
@@ -1064,8 +1098,8 @@ class ProvenanceResolveTargetsTests(TestCase):
     def test_resolveTargets__AutoRegisteredTarget__SetsAutoRegisteredFlag(self):
         """Test that auto-registered target gets the flag set."""
         # Arrange
-        prov = Provenance()
-        prov.add("model", file="config.yaml", line=5, target_name="mymodel")
+        builder = ProvenanceBuilder()
+        builder.add("model", file="config.yaml", line=5, target_name="mymodel")
 
         class MockModel:
             pass
@@ -1080,7 +1114,8 @@ class ProvenanceResolveTargetsTests(TestCase):
         auto_registered = {"mymodel"}
 
         # Act
-        prov.resolve_targets(known_refs, auto_registered)
+        builder.resolve_targets(known_refs, auto_registered)
+        prov = builder.build()
 
         # Assert
         entry = prov.get("model")
@@ -1089,11 +1124,12 @@ class ProvenanceResolveTargetsTests(TestCase):
     def test_resolveTargets__NoTargetInConfig__DoesNothing(self):
         """Test that entries without target_name are skipped."""
         # Arrange
-        prov = Provenance()
-        prov.add("model.layers", file="config.yaml", line=5)
+        builder = ProvenanceBuilder()
+        builder.add("model.layers", file="config.yaml", line=5)
 
         # Act
-        prov.resolve_targets({})
+        builder.resolve_targets({})
+        prov = builder.build()
 
         # Assert
         entry = prov.get("model.layers")
@@ -1103,9 +1139,9 @@ class ProvenanceResolveTargetsTests(TestCase):
     def test_resolveTargets__NestedTargets__ResolvesAll(self):
         """Test that multiple entries with targets are all resolved."""
         # Arrange
-        prov = Provenance()
-        prov.add("model", file="config.yaml", line=5, target_name="model")
-        prov.add("trainer", file="config.yaml", line=10, target_name="trainer")
+        builder = ProvenanceBuilder()
+        builder.add("model", file="config.yaml", line=5, target_name="model")
+        builder.add("trainer", file="config.yaml", line=10, target_name="trainer")
 
         class ModelClass:
             pass
@@ -1128,8 +1164,48 @@ class ProvenanceResolveTargetsTests(TestCase):
         known_refs = {"model": ModelRef(), "trainer": TrainerRef()}
 
         # Act
-        prov.resolve_targets(known_refs)
+        builder.resolve_targets(known_refs)
+        prov = builder.build()
 
         # Assert
         self.assertEqual(prov.get("model").target_class, "Model")
         self.assertEqual(prov.get("trainer").target_class, "Trainer")
+
+
+class ProvenanceImmutabilityTests(TestCase):
+    """Tests for Provenance immutability guarantees."""
+
+    def test_Provenance__Config__CannotBeModified(self):
+        """Test that prov.config["new"] = x raises TypeError."""
+        # Arrange
+        builder = ProvenanceBuilder()
+        builder.add("key", file="config.yaml", line=1)
+        builder.set_config({"key": "value"})
+        prov = builder.build()
+
+        # Act & Assert
+        with self.assertRaises(TypeError):
+            prov.config["new"] = "should_fail"
+
+    def test_Provenance__Config__ExistingKeyCannotBeModified(self):
+        """Test that modifying existing key in config raises TypeError."""
+        # Arrange
+        builder = ProvenanceBuilder()
+        builder.add("key", file="config.yaml", line=1)
+        builder.set_config({"key": "value"})
+        prov = builder.build()
+
+        # Act & Assert
+        with self.assertRaises(TypeError):
+            prov.config["key"] = "modified"
+
+    def test_Provenance__Entries__CannotBeModified(self):
+        """Test that prov._entries["new"] = x raises TypeError."""
+        # Arrange
+        builder = ProvenanceBuilder()
+        builder.add("key", file="config.yaml", line=1)
+        prov = builder.build()
+
+        # Act & Assert
+        with self.assertRaises(TypeError):
+            prov._entries["new"] = ProvenanceEntry(file="x.yaml", line=1)

@@ -3,7 +3,9 @@ from pathlib import Path
 from unittest import TestCase
 
 from rconfig.errors import (
+    AmbiguousRefError,
     AmbiguousTargetError,
+    CompositionError,
     ConfigError,
     ConfigFileError,
     InstantiationError,
@@ -340,6 +342,66 @@ class TypeInferenceErrorTests(TestCase):
             field="item",
             inferred_type=MyClass,
             validation_errors=[],
+            config_path="",
+        )
+
+        # Assert
+        self.assertNotIn("at ''", str(error))
+
+
+class AmbiguousRefErrorTests(TestCase):
+    """Tests for AmbiguousRefError."""
+
+    def test_AmbiguousRefError__AllFields__StoresValues(self):
+        # Act
+        error = AmbiguousRefError(
+            ref_path="models/vit",
+            found_files=["vit.yaml", "vit.json"],
+            config_path="model.encoder",
+        )
+
+        # Assert
+        self.assertEqual(error.ref_path, "models/vit")
+        self.assertEqual(error.found_files, ["vit.yaml", "vit.json"])
+        self.assertEqual(error.config_path, "model.encoder")
+
+    def test_AmbiguousRefError__ErrorMessage__ContainsAllFiles(self):
+        # Act
+        error = AmbiguousRefError(
+            ref_path="config",
+            found_files=["config.yaml", "config.json", "config.toml"],
+        )
+
+        # Assert
+        message = str(error)
+        self.assertIn("config.yaml", message)
+        self.assertIn("config.json", message)
+        self.assertIn("config.toml", message)
+        self.assertIn("Ambiguous", message)
+
+    def test_AmbiguousRefError__IsCompositionError__InheritsCorrectly(self):
+        # Act
+        error = AmbiguousRefError("path", ["a.yaml", "a.json"])
+
+        # Assert
+        self.assertIsInstance(error, CompositionError)
+
+    def test_AmbiguousRefError__WithConfigPath__IncludesLocation(self):
+        # Act
+        error = AmbiguousRefError(
+            ref_path="model",
+            found_files=["model.yaml", "model.json"],
+            config_path="trainer.model",
+        )
+
+        # Assert
+        self.assertIn("at 'trainer.model'", str(error))
+
+    def test_AmbiguousRefError__WithoutConfigPath__OmitsLocation(self):
+        # Act
+        error = AmbiguousRefError(
+            ref_path="model",
+            found_files=["model.yaml", "model.json"],
             config_path="",
         )
 
