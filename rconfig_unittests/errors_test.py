@@ -5,16 +5,32 @@ from unittest import TestCase
 from rconfig.errors import (
     AmbiguousRefError,
     AmbiguousTargetError,
+    CircularInstanceError,
+    CircularInterpolationError,
+    CircularRefError,
     CompositionError,
     ConfigError,
     ConfigFileError,
+    EnvironmentVariableError,
+    InstanceResolutionError,
     InstantiationError,
+    InterpolationResolutionError,
+    InterpolationSyntaxError,
+    InvalidInnerPathError,
+    InvalidOverridePathError,
+    InvalidOverrideSyntaxError,
     MergeError,
     MissingFieldError,
+    RefAtRootError,
+    RefInstanceConflictError,
+    RefResolutionError,
+    ResolverExecutionError,
+    RequiredValueError,
     TargetNotFoundError,
     TargetTypeMismatchError,
     TypeInferenceError,
     TypeMismatchError,
+    UnknownResolverError,
     ValidationError,
 )
 
@@ -407,3 +423,183 @@ class AmbiguousRefErrorTests(TestCase):
 
         # Assert
         self.assertNotIn("at ''", str(error))
+
+
+class ErrorHintsTests(TestCase):
+    """Tests to verify all error types include actionable hints."""
+
+    def test_ConfigFileError__WithHint__IncludesHint(self):
+        # Act
+        error = ConfigFileError(Path("/test.yaml"), "file not found", hint="Check the path.")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+        self.assertIn("Check the path.", str(error))
+
+    def test_ConfigFileError__WithoutHint__NoHintLine(self):
+        # Act
+        error = ConfigFileError(Path("/test.yaml"), "file not found")
+
+        # Assert
+        self.assertNotIn("Hint:", str(error))
+
+    def test_TargetNotFoundError__IncludesHint(self):
+        # Act
+        error = TargetNotFoundError("unknown", ["a", "b"])
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+        self.assertIn("register", str(error).lower())
+
+    def test_MissingFieldError__IncludesHint(self):
+        # Act
+        error = MissingFieldError("field", "target")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_TypeMismatchError__IncludesHint(self):
+        # Act
+        error = TypeMismatchError("field", int, str)
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_InstantiationError__IncludesHint(self):
+        # Act
+        error = InstantiationError("target", "reason")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_CircularRefError__IncludesHint(self):
+        # Act
+        error = CircularRefError(["a.yaml", "b.yaml", "a.yaml"])
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+        self.assertIn("cycle", str(error).lower())
+
+    def test_RefResolutionError__WithHint__IncludesHint(self):
+        # Act
+        error = RefResolutionError("./file.yaml", "not found", hint="Check the path.")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+        self.assertIn("Check the path.", str(error))
+
+    def test_RefAtRootError__IncludesHint(self):
+        # Act
+        error = RefAtRootError("test.yaml")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_RefInstanceConflictError__IncludesHint(self):
+        # Act
+        error = RefInstanceConflictError("model")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_InstanceResolutionError__WithHint__IncludesHint(self):
+        # Act
+        error = InstanceResolutionError("path", "reason", hint="Check syntax.")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_CircularInstanceError__IncludesHint(self):
+        # Act
+        error = CircularInstanceError(["a", "b", "a"])
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_InvalidInnerPathError__IncludesHint(self):
+        # Act
+        error = InvalidInnerPathError("path", "reason")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_InvalidOverridePathError__IncludesHint(self):
+        # Act
+        error = InvalidOverridePathError(["model", "lr"], "not found")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_InvalidOverrideSyntaxError__IncludesHint(self):
+        # Act
+        error = InvalidOverrideSyntaxError("bad=syntax=here", "invalid")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_InterpolationSyntaxError__IncludesHint(self):
+        # Act
+        error = InterpolationSyntaxError("bad expr", "parse error")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_InterpolationResolutionError__WithHint__IncludesHint(self):
+        # Act
+        error = InterpolationResolutionError("expr", "reason", hint="Fix it.")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+        self.assertIn("Fix it.", str(error))
+
+    def test_CircularInterpolationError__IncludesHint(self):
+        # Act
+        error = CircularInterpolationError(["a", "b", "a"])
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_EnvironmentVariableError__IncludesHint(self):
+        # Act
+        error = EnvironmentVariableError("MY_VAR")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+        self.assertIn("?:", str(error))  # Coalesce operator
+
+    def test_UnknownResolverError__IncludesHint(self):
+        # Act
+        error = UnknownResolverError("my_resolver", ["uuid", "now"])
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+        self.assertIn("register_resolver", str(error))
+
+    def test_ResolverExecutionError__IncludesHint(self):
+        # Act
+        error = ResolverExecutionError("my_resolver", ValueError("bad"))
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_RequiredValueError__IncludesHint(self):
+        # Act
+        error = RequiredValueError([("model.lr", float), ("model.name", str)])
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+
+    def test_MergeError__WithHint__IncludesHint(self):
+        # Act
+        error = MergeError("message", "path", hint="Fix the merge.")
+
+        # Assert
+        self.assertIn("Hint:", str(error))
+        self.assertIn("Fix the merge.", str(error))
+
+    def test_MergeError__WithoutHint__NoHintLine(self):
+        # Act
+        error = MergeError("message", "path")
+
+        # Assert
+        self.assertNotIn("Hint:", str(error))

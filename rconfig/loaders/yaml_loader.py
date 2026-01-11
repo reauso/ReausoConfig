@@ -38,11 +38,23 @@ class YamlConfigLoader(ConfigFileLoader):
             with open(path, "r", encoding="utf-8") as f:
                 content = self._yaml.load(f)
         except FileNotFoundError:
-            raise ConfigFileError(path, "file not found")
+            raise ConfigFileError(
+                path,
+                "file not found",
+                hint="Check that the file path is correct and the file exists.",
+            )
         except PermissionError:
-            raise ConfigFileError(path, "permission denied")
+            raise ConfigFileError(
+                path,
+                "permission denied",
+                hint="Check file permissions or run with appropriate access rights.",
+            )
         except YAMLError as e:
-            raise ConfigFileError(path, f"invalid YAML syntax: {e}")
+            raise ConfigFileError(
+                path,
+                f"invalid YAML syntax: {e}",
+                hint="Check the file for syntax errors at the indicated location.",
+            )
         except Exception as e:
             raise ConfigFileError(path, str(e))
 
@@ -52,7 +64,8 @@ class YamlConfigLoader(ConfigFileLoader):
         if not isinstance(content, dict):
             raise ConfigFileError(
                 path,
-                f"expected a mapping at root level, got {type(content).__name__}"
+                f"expected a mapping at root level, got {type(content).__name__}",
+                hint="Ensure the root of the file is a YAML mapping (key: value pairs).",
             )
 
         return dict(content)
@@ -76,11 +89,23 @@ class YamlConfigLoader(ConfigFileLoader):
             with open(path, "r", encoding="utf-8") as f:
                 content = self._yaml.load(f)
         except FileNotFoundError:
-            raise ConfigFileError(path, "file not found")
+            raise ConfigFileError(
+                path,
+                "file not found",
+                hint="Check that the file path is correct and the file exists.",
+            )
         except PermissionError:
-            raise ConfigFileError(path, "permission denied")
+            raise ConfigFileError(
+                path,
+                "permission denied",
+                hint="Check file permissions or run with appropriate access rights.",
+            )
         except YAMLError as e:
-            raise ConfigFileError(path, f"invalid YAML syntax: {e}")
+            raise ConfigFileError(
+                path,
+                f"invalid YAML syntax: {e}",
+                hint="Check the file for syntax errors at the indicated location.",
+            )
         except Exception as e:
             raise ConfigFileError(path, str(e))
 
@@ -90,7 +115,8 @@ class YamlConfigLoader(ConfigFileLoader):
         if not isinstance(content, dict):
             raise ConfigFileError(
                 path,
-                f"expected a mapping at root level, got {type(content).__name__}"
+                f"expected a mapping at root level, got {type(content).__name__}",
+                hint="Ensure the root of the file is a YAML mapping (key: value pairs).",
             )
 
         return self._commented_map_to_position_map(content)

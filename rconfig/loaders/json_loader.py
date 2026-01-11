@@ -38,11 +38,23 @@ class JsonConfigLoader(ConfigFileLoader):
             with open(path, "r", encoding="utf-8") as f:
                 content = json.load(f)
         except FileNotFoundError:
-            raise ConfigFileError(path, "file not found")
+            raise ConfigFileError(
+                path,
+                "file not found",
+                hint="Check that the file path is correct and the file exists.",
+            )
         except PermissionError:
-            raise ConfigFileError(path, "permission denied")
+            raise ConfigFileError(
+                path,
+                "permission denied",
+                hint="Check file permissions or run with appropriate access rights.",
+            )
         except json.JSONDecodeError as e:
-            raise ConfigFileError(path, f"invalid JSON syntax: {e}")
+            raise ConfigFileError(
+                path,
+                f"invalid JSON syntax: {e}",
+                hint="Check the file for syntax errors at the indicated location.",
+            )
         except Exception as e:
             raise ConfigFileError(path, str(e))
 
@@ -53,6 +65,7 @@ class JsonConfigLoader(ConfigFileLoader):
             raise ConfigFileError(
                 path,
                 f"expected a mapping at root level, got {type(content).__name__}",
+                hint="Ensure the root of the file is a JSON object ({...}).",
             )
 
         return content
@@ -73,9 +86,17 @@ class JsonConfigLoader(ConfigFileLoader):
             with open(path, "r", encoding="utf-8") as f:
                 source = f.read()
         except FileNotFoundError:
-            raise ConfigFileError(path, "file not found")
+            raise ConfigFileError(
+                path,
+                "file not found",
+                hint="Check that the file path is correct and the file exists.",
+            )
         except PermissionError:
-            raise ConfigFileError(path, "permission denied")
+            raise ConfigFileError(
+                path,
+                "permission denied",
+                hint="Check file permissions or run with appropriate access rights.",
+            )
         except Exception as e:
             raise ConfigFileError(path, str(e))
 
@@ -85,12 +106,17 @@ class JsonConfigLoader(ConfigFileLoader):
         try:
             content = json.loads(source)
         except json.JSONDecodeError as e:
-            raise ConfigFileError(path, f"invalid JSON syntax: {e}")
+            raise ConfigFileError(
+                path,
+                f"invalid JSON syntax: {e}",
+                hint="Check the file for syntax errors at the indicated location.",
+            )
 
         if not isinstance(content, dict):
             raise ConfigFileError(
                 path,
                 f"expected a mapping at root level, got {type(content).__name__}",
+                hint="Ensure the root of the file is a JSON object ({...}).",
             )
 
         positions = self._extract_positions(source)

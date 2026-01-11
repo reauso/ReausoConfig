@@ -41,11 +41,23 @@ class TomlConfigLoader(ConfigFileLoader):
                 source = f.read()
             content = tomllib.loads(source)
         except FileNotFoundError:
-            raise ConfigFileError(path, "file not found")
+            raise ConfigFileError(
+                path,
+                "file not found",
+                hint="Check that the file path is correct and the file exists.",
+            )
         except PermissionError:
-            raise ConfigFileError(path, "permission denied")
+            raise ConfigFileError(
+                path,
+                "permission denied",
+                hint="Check file permissions or run with appropriate access rights.",
+            )
         except tomllib.TOMLDecodeError as e:
-            raise ConfigFileError(path, f"invalid TOML syntax: {e}")
+            raise ConfigFileError(
+                path,
+                f"invalid TOML syntax: {e}",
+                hint="Check the file for syntax errors at the indicated location.",
+            )
         except Exception as e:
             raise ConfigFileError(path, str(e))
 
@@ -67,11 +79,23 @@ class TomlConfigLoader(ConfigFileLoader):
             with open(path, "r", encoding="utf-8") as f:
                 source = f.read()
         except FileNotFoundError:
-            raise ConfigFileError(path, "file not found")
+            raise ConfigFileError(
+                path,
+                "file not found",
+                hint="Check that the file path is correct and the file exists.",
+            )
         except PermissionError:
-            raise ConfigFileError(path, "permission denied")
+            raise ConfigFileError(
+                path,
+                "permission denied",
+                hint="Check file permissions or run with appropriate access rights.",
+            )
         except UnicodeDecodeError as e:
-            raise ConfigFileError(path, f"invalid encoding: {e}")
+            raise ConfigFileError(
+                path,
+                f"invalid encoding: {e}",
+                hint="Ensure the file is UTF-8 encoded.",
+            )
         except Exception as e:
             raise ConfigFileError(path, str(e))
 
@@ -81,7 +105,11 @@ class TomlConfigLoader(ConfigFileLoader):
         try:
             content = tomllib.loads(source)
         except tomllib.TOMLDecodeError as e:
-            raise ConfigFileError(path, f"invalid TOML syntax: {e}")
+            raise ConfigFileError(
+                path,
+                f"invalid TOML syntax: {e}",
+                hint="Check the file for syntax errors at the indicated location.",
+            )
 
         positions = self._extract_positions(source)
         return self._build_position_map(content, positions)

@@ -354,6 +354,7 @@ class CompositionWalker:
                 str(instance_path),
                 f"_instance_ must be a string or null, got {type(instance_path).__name__}",
                 config_path,
+                hint="Use a string path like 'database.connection' to reference another config path.",
             )
 
         # Get line number for provenance
@@ -392,6 +393,7 @@ class CompositionWalker:
                 str(ref_path),
                 f"_ref_ must be a string, got {type(ref_path).__name__}",
                 config_path,
+                hint="Use a string file path like './config.yaml' or '/path/to/config.yaml'.",
             )
 
         # Resolve the file path
@@ -424,6 +426,7 @@ class CompositionWalker:
                 ref_path,
                 "cannot override _target_ to null",
                 config_path,
+                hint="Remove the _target_ override or set it to a valid target name.",
             )
 
         # Track provenance for overrides
@@ -512,6 +515,7 @@ class CompositionWalker:
                     ref_path,
                     "cannot use absolute path without config root",
                     config_path,
+                    hint="Use a relative path (e.g., './file.yaml') or set config_root when composing.",
                 )
             base_path = self._config_root / ref_path[1:]
         else:
@@ -527,6 +531,7 @@ class CompositionWalker:
                     ref_path,
                     "file not found",
                     config_path,
+                    hint="Verify the file path is correct. Use './' for relative paths or '/' for paths from config root.",
                 )
             return resolved
 
