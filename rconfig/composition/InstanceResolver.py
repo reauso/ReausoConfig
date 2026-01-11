@@ -220,6 +220,7 @@ class InstanceResolver:
                 instance_path,
                 f"path not found in config: {e}",
                 config_path,
+                hint="Ensure the path exists in the config. Use dot notation (e.g., 'database.connection').",
             )
 
         return target_path

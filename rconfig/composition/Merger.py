@@ -83,6 +83,7 @@ def _list_operation_result(
         raise MergeError(
             f"Cannot use both '{_EXTEND_KEY}' and '{_PREPEND_KEY}' in the same block",
             path,
+            hint="Use _extend_ to add items at the end or _prepend_ to add at the beginning, not both.",
         )
 
     # Validate: can't have other keys alongside list operations
@@ -92,6 +93,7 @@ def _list_operation_result(
         raise MergeError(
             f"'{operation_key}' cannot be combined with other keys: {other_keys}",
             path,
+            hint="Use _extend_/_prepend_ alone to modify a list, or use regular keys to replace it.",
         )
 
     # Validate: base must be a list
@@ -99,6 +101,7 @@ def _list_operation_result(
         raise MergeError(
             f"Cannot apply '{operation_key}' to non-list value of type '{type(base_value).__name__}'",
             path,
+            hint="The target field must be a list to use _extend_/_prepend_.",
         )
 
     # Validate: operation value must be a list
@@ -107,6 +110,7 @@ def _list_operation_result(
         raise MergeError(
             f"'{operation_key}' value must be a list, got '{type(operation_value).__name__}'",
             path,
+            hint="Provide a list of items to extend/prepend.",
         )
 
     # Apply the operation

@@ -26,12 +26,17 @@ class ConfigFileError(ConfigError):
 
     :param path: Path to the problematic config file.
     :param reason: Description of what went wrong.
+    :param hint: Optional hint for how to fix the error.
     """
 
-    def __init__(self, path: Path, reason: str) -> None:
+    def __init__(self, path: Path, reason: str, hint: str = "") -> None:
         self.path = path
         self.reason = reason
-        super().__init__(f"Failed to load config file '{path}': {reason}")
+        self.hint = hint
+        message = f"Failed to load config file '{path}': {reason}"
+        if hint:
+            message += f"\nHint: {hint}"
+        super().__init__(message)
 
 
 class TargetNotFoundError(ConfigError):
@@ -56,7 +61,9 @@ class TargetNotFoundError(ConfigError):
         available_str = ", ".join(f"'{name}'" for name in available) if available else "(none)"
         super().__init__(
             f"Target '{target}'{location} is not registered. "
-            f"Available targets: {available_str}"
+            f"Available targets: {available_str}\n"
+            f"Hint: Register the target using @config.register('{target}') decorator "
+            f"or config.register(MyClass, '{target}')."
         )
 
 
@@ -85,7 +92,9 @@ class MissingFieldError(ValidationError):
 
         location = _format_location(config_path)
         super().__init__(
-            f"Missing required field '{field}' for target '{target}'{location}",
+            f"Missing required field '{field}' for target '{target}'{location}\n"
+            f"Hint: Add the '{field}' field to your config or provide a default value "
+            f"in the target class.",
             config_path,
         )
 
@@ -114,7 +123,8 @@ class TypeMismatchError(ValidationError):
         location = _format_location(config_path)
         super().__init__(
             f"Type mismatch for field '{field}'{location}: "
-            f"expected {expected_name}, got {actual.__name__}",
+            f"expected {expected_name}, got {actual.__name__}\n"
+            f"Hint: Provide a value of type '{expected_name}' or check your config.",
             config_path,
         )
 
@@ -273,7 +283,9 @@ class InstantiationError(ConfigError):
 
         location = _format_location(config_path)
         super().__init__(
-            f"Failed to instantiate target '{target}'{location}: {reason}"
+            f"Failed to instantiate target '{target}'{location}: {reason}\n"
+            f"Hint: Check the constructor arguments and ensure all required "
+            f"fields are provided with correct types."
         )
 
 
@@ -286,12 +298,17 @@ class MergeError(CompositionError):
 
     :param message: Description of what went wrong.
     :param path: The config path where the error occurred.
+    :param hint: Optional hint for how to fix the error.
     """
 
-    def __init__(self, message: str, path: str = "") -> None:
+    def __init__(self, message: str, path: str = "", hint: str = "") -> None:
         self.path = path
+        self.hint = hint
         location = _format_location(path)
-        super().__init__(f"{message}{location}")
+        msg = f"{message}{location}"
+        if hint:
+            msg += f"\nHint: {hint}"
+        super().__init__(msg)
 
 
 class CircularRefError(CompositionError):
@@ -303,7 +320,11 @@ class CircularRefError(CompositionError):
     def __init__(self, chain: list[str]) -> None:
         self.chain = chain
         chain_str = " → ".join(chain)
-        super().__init__(f"Circular _ref_ dependency detected: {chain_str}")
+        super().__init__(
+            f"Circular _ref_ dependency detected: {chain_str}\n"
+            f"Hint: Break the cycle by restructuring your config files "
+            f"or using _instance_ for shared objects."
+        )
 
 
 class RefResolutionError(CompositionError):
@@ -312,15 +333,22 @@ class RefResolutionError(CompositionError):
     :param ref_path: The _ref_ path that failed to resolve.
     :param reason: Description of what went wrong.
     :param config_path: Path in config where error occurred.
+    :param hint: Optional hint for how to fix the error.
     """
 
-    def __init__(self, ref_path: str, reason: str, config_path: str = "") -> None:
+    def __init__(
+        self, ref_path: str, reason: str, config_path: str = "", hint: str = ""
+    ) -> None:
         self.ref_path = ref_path
         self.reason = reason
         self.config_path = config_path
+        self.hint = hint
 
         location = _format_location(config_path)
-        super().__init__(f"Failed to resolve _ref_ '{ref_path}'{location}: {reason}")
+        message = f"Failed to resolve _ref_ '{ref_path}'{location}: {reason}"
+        if hint:
+            message += f"\nHint: {hint}"
+        super().__init__(message)
 
 
 class AmbiguousRefError(CompositionError):
@@ -359,7 +387,8 @@ class RefAtRootError(CompositionError):
         self.file_path = file_path
         super().__init__(
             f"_ref_ is not allowed at root level in '{file_path}'. "
-            f"Every config file must define an object, not a reference."
+            f"Every config file must define an object, not a reference.\n"
+            f"Hint: Move the _ref_ inside a nested object, or inline the referenced content."
         )
 
 
@@ -373,7 +402,9 @@ class RefInstanceConflictError(CompositionError):
         self.config_path = config_path
         location = _format_location(config_path)
         super().__init__(
-            f"Cannot use both '_ref_' and '_instance_' in the same block{location}"
+            f"Cannot use both '_ref_' and '_instance_' in the same block{location}\n"
+            f"Hint: Use _ref_ for file references or _instance_ for config path references, "
+            f"not both."
         )
 
 
@@ -383,17 +414,22 @@ class InstanceResolutionError(CompositionError):
     :param instance_path: The _instance_ path that failed to resolve.
     :param reason: Description of what went wrong.
     :param config_path: Path in config where error occurred.
+    :param hint: Optional hint for how to fix the error.
     """
 
-    def __init__(self, instance_path: str, reason: str, config_path: str = "") -> None:
+    def __init__(
+        self, instance_path: str, reason: str, config_path: str = "", hint: str = ""
+    ) -> None:
         self.instance_path = instance_path
         self.reason = reason
         self.config_path = config_path
+        self.hint = hint
 
         location = _format_location(config_path)
-        super().__init__(
-            f"Failed to resolve _instance_ '{instance_path}'{location}: {reason}"
-        )
+        message = f"Failed to resolve _instance_ '{instance_path}'{location}: {reason}"
+        if hint:
+            message += f"\nHint: {hint}"
+        super().__init__(message)
 
 
 class CircularInstanceError(CompositionError):
@@ -405,7 +441,11 @@ class CircularInstanceError(CompositionError):
     def __init__(self, chain: list[str]) -> None:
         self.chain = chain
         chain_str = " → ".join(chain)
-        super().__init__(f"Circular _instance_ dependency detected: {chain_str}")
+        super().__init__(
+            f"Circular _instance_ dependency detected: {chain_str}\n"
+            f"Hint: Break the cycle by restructuring your config or "
+            f"inlining one of the instances."
+        )
 
 
 class InvalidInnerPathError(CompositionError):
@@ -419,7 +459,8 @@ class InvalidInnerPathError(CompositionError):
         self.inner_path = inner_path
         self.reason = reason
         super().__init__(
-            f"Invalid inner_path '{inner_path}' for partial instantiation: {reason}"
+            f"Invalid inner_path '{inner_path}' for partial instantiation: {reason}\n"
+            f"Hint: Use dot notation for nested paths (e.g., 'model.encoder')."
         )
 
 
@@ -438,7 +479,11 @@ class InvalidOverridePathError(OverrideError):
         self.path = path
         self.reason = reason
         path_str = _format_override_path(path)
-        super().__init__(f"Invalid override path '{path_str}': {reason}")
+        super().__init__(
+            f"Invalid override path '{path_str}': {reason}\n"
+            f"Hint: Use dot notation for nested keys (e.g., 'model.lr') "
+            f"and [n] for list indices."
+        )
 
 
 class InvalidOverrideSyntaxError(OverrideError):
@@ -451,7 +496,10 @@ class InvalidOverrideSyntaxError(OverrideError):
     def __init__(self, override_string: str, reason: str) -> None:
         self.override_string = override_string
         self.reason = reason
-        super().__init__(f"Invalid override syntax '{override_string}': {reason}")
+        super().__init__(
+            f"Invalid override syntax '{override_string}': {reason}\n"
+            f"Hint: Use format 'key=value', 'key.nested=value', or 'key[0]=value'."
+        )
 
 
 def _format_override_path(path: list[str | int]) -> str:
@@ -493,7 +541,9 @@ class InterpolationSyntaxError(InterpolationError):
 
         location = f" at '{config_path}'" if config_path else ""
         super().__init__(
-            f"Failed to parse interpolation '${{{expression}}}'{location}: {reason}"
+            f"Failed to parse interpolation '${{{expression}}}'{location}: {reason}\n"
+            f"Hint: Check syntax: use ${{path.to.value}} for config references, "
+            f"${{env:VAR}} for environment variables."
         )
 
 
@@ -503,19 +553,22 @@ class InterpolationResolutionError(InterpolationError):
     :param expression: The expression that failed to resolve.
     :param reason: Description of what went wrong.
     :param config_path: Path in config where the error occurred.
+    :param hint: Optional hint for how to fix the error.
     """
 
     def __init__(
-        self, expression: str, reason: str, config_path: str = ""
+        self, expression: str, reason: str, config_path: str = "", hint: str = ""
     ) -> None:
         self.expression = expression
         self.reason = reason
         self.config_path = config_path
+        self.hint = hint
 
         location = f" at '{config_path}'" if config_path else ""
-        super().__init__(
-            f"Failed to resolve interpolation '${{{expression}}}'{location}: {reason}"
-        )
+        message = f"Failed to resolve interpolation '${{{expression}}}'{location}: {reason}"
+        if hint:
+            message += f"\nHint: {hint}"
+        super().__init__(message)
 
 
 class CircularInterpolationError(InterpolationError):
@@ -527,7 +580,10 @@ class CircularInterpolationError(InterpolationError):
     def __init__(self, chain: list[str]) -> None:
         self.chain = chain
         chain_str = " → ".join(chain)
-        super().__init__(f"Circular interpolation detected: {chain_str}")
+        super().__init__(
+            f"Circular interpolation detected: {chain_str}\n"
+            f"Hint: Break the cycle by using a literal value or restructuring your config."
+        )
 
 
 class EnvironmentVariableError(InterpolationError):
@@ -543,7 +599,9 @@ class EnvironmentVariableError(InterpolationError):
 
         location = f" at '{config_path}'" if config_path else ""
         super().__init__(
-            f"Environment variable '{var_name}' is not set{location}"
+            f"Environment variable '{var_name}' is not set{location}\n"
+            f"Hint: Set the environment variable or use a coalesce operator for a fallback: "
+            f"${{env:{var_name} ?: \"default\"}}"
         )
 
 
@@ -572,7 +630,8 @@ class UnknownResolverError(ResolverError):
         )
         super().__init__(
             f"Resolver 'app:{path}' is not registered{location}. "
-            f"Available resolvers: {available_str}"
+            f"Available resolvers: {available_str}\n"
+            f"Hint: Register the resolver using config.register_resolver('{path}', func)."
         )
 
 
@@ -594,7 +653,8 @@ class ResolverExecutionError(ResolverError):
         location = f" at '{config_path}'" if config_path else ""
         super().__init__(
             f"Resolver 'app:{path}' raised an exception{location}: "
-            f"{type(original_error).__name__}: {original_error}"
+            f"{type(original_error).__name__}: {original_error}\n"
+            f"Hint: Check the resolver function implementation and its inputs."
         )
 
 
@@ -618,7 +678,9 @@ class RequiredValueError(ValidationError):
             lines.append(f"  - {path}{type_hint}")
 
         super().__init__(
-            f"The following required values were not provided:\n" + "\n".join(lines)
+            f"The following required values were not provided:\n"
+            + "\n".join(lines)
+            + "\nHint: Provide these values via overrides or in your config file."
         )
 
 

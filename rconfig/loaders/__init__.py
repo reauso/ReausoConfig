@@ -90,16 +90,19 @@ def get_loader(path: Path) -> ConfigFileLoader:
 
     # Check for typos (simple Levenshtein-like suggestion)
     suggestion = _suggest_extension(ext, supported)
+    hint = "To support this format, register a custom loader using register_loader()."
     if suggestion:
         raise ConfigFileError(
             path,
             f"unsupported file format '{path.suffix}'. "
             f"Did you mean '{suggestion}'? Supported formats: {supported_str}",
+            hint=hint,
         )
 
     raise ConfigFileError(
         path,
         f"unsupported file format '{path.suffix}'. Supported formats: {supported_str}",
+        hint=hint,
     )
 
 
