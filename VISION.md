@@ -1744,7 +1744,7 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 ### Planned Enhancements
 
 12. ✅ CLI `_ref_` Shorthand
-13. Extension-less `_ref_` Resolution
+13. ✅ Extension-less `_ref_` Resolution
 14. Multirun Support
 15. ✅ CLI Help Integration
 
