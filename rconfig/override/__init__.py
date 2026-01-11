@@ -5,6 +5,7 @@ Parses and applies configuration overrides.
 
 from .override import (
     Override,
+    apply_cli_overrides_with_ref_shorthand,
     apply_overrides,
     extract_cli_overrides,
     parse_cli_arg,
@@ -15,6 +16,7 @@ from .override import (
 
 __all__ = [
     "Override",
+    "apply_cli_overrides_with_ref_shorthand",
     "apply_overrides",
     "extract_cli_overrides",
     "parse_cli_arg",

@@ -22,6 +22,7 @@ class Override:
     :param operation: The type of override operation.
     :param source_type: Where this override came from ("cli" or "programmatic").
     :param cli_arg: Original CLI argument string (for CLI overrides).
+    :param is_literal: If True, value was quoted and should not be converted to _ref_.
     """
 
     path: list[str | int]
@@ -29,6 +30,7 @@ class Override:
     operation: Literal["set", "add", "remove"]
     source_type: Literal["cli", "programmatic"] = "programmatic"
     cli_arg: str | None = None
+    is_literal: bool = False
 
 
 # Regex patterns for parsing override keys
@@ -242,6 +244,14 @@ def parse_cli_arg(arg: str) -> Override | None:
     except InvalidOverrideSyntaxError:
         return None
 
+    # Check for quoted value (literal string, skip _ref_ shorthand)
+    is_literal = False
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        value = value[1:-1]  # Strip quotes
+        is_literal = True
+
     # Parse value (type inference happens later with type hints)
     return Override(
         path=path,
@@ -249,6 +259,7 @@ def parse_cli_arg(arg: str) -> Override | None:
         operation=operation,
         source_type="cli",
         cli_arg=arg,
+        is_literal=is_literal,
     )
 
 
@@ -450,3 +461,86 @@ def _apply_remove(current: Any, final_key: str | int) -> None:
         if final_key not in current:
             raise KeyError(f"Key '{final_key}' not found for removal")
         del current[final_key]
+
+
+def _should_convert_to_ref(
+    key_path: list[str | int],
+    config: dict[str, Any],
+) -> bool:
+    """Check if CLI override should be converted to _ref_ assignment.
+
+    Returns True if the target field exists and is a dict. This enables
+    the CLI shorthand where ``model=models/vit.yaml`` is automatically
+    converted to ``model._ref_=models/vit.yaml``.
+
+    :param key_path: Path to the target field (e.g., ["model"] or ["trainer", "model"]).
+    :param config: The configuration dictionary to check against.
+    :return: True if the target field is a dict, False otherwise.
+
+    Examples::
+
+        config = {"model": {"_target_": "resnet"}, "name": "experiment"}
+        _should_convert_to_ref(["model"], config)  # True (model is dict)
+        _should_convert_to_ref(["name"], config)   # False (name is string)
+        _should_convert_to_ref(["new"], config)    # False (doesn't exist)
+    """
+    try:
+        target = navigate_path(config, key_path)
+        return isinstance(target, dict)
+    except PathNavigationError:
+        # Field doesn't exist - no shorthand
+        return False
+
+
+def apply_cli_overrides_with_ref_shorthand(
+    config: dict[str, Any],
+    overrides: list[Override],
+    provenance: Any | None = None,
+) -> dict[str, Any]:
+    """Apply CLI overrides with automatic _ref_ shorthand conversion.
+
+    For CLI overrides where the target field is a dict and the value is not
+    quoted, this function converts ``key=value`` to ``key._ref_=value``.
+
+    :param config: Original configuration dictionary.
+    :param overrides: List of Override objects to apply.
+    :param provenance: Optional Provenance object to update with override sources.
+    :return: New configuration dictionary with overrides applied.
+
+    Examples::
+
+        # Config: {"model": {"_target_": "resnet"}, "name": "exp1"}
+        # Override: model=models/vit.yaml
+        # Result: model._ref_ is set to "models/vit.yaml"
+
+        # Override: name=models/vit.yaml
+        # Result: name is set to "models/vit.yaml" (no conversion, name is string)
+
+        # Override: model="models/vit.yaml" (quoted)
+        # Result: model is set to "models/vit.yaml" (no conversion, quoted)
+    """
+    result = copy.deepcopy(config)
+
+    for override in overrides:
+        # Check if this override should be converted to _ref_
+        if (
+            override.source_type == "cli"
+            and override.operation == "set"
+            and not override.is_literal
+            and isinstance(override.value, str)
+            and _should_convert_to_ref(override.path, result)
+        ):
+            # Convert to _ref_ assignment
+            ref_override = Override(
+                path=override.path + ["_ref_"],
+                value=override.value,
+                operation="set",
+                source_type=override.source_type,
+                cli_arg=override.cli_arg,
+                is_literal=False,
+            )
+            _apply_single_override(result, ref_override, provenance)
+        else:
+            _apply_single_override(result, override, provenance)
+
+    return result

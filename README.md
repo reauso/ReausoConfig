@@ -553,6 +553,30 @@ trainer = rc.instantiate(
 | Add to list   | `+callbacks=logger`  | Append to list   |
 | Remove key    | `~dropout`           | Delete key       |
 
+#### CLI `_ref_` Shorthand
+
+When overriding a dict field from CLI, you can use shorthand syntax to reference another config file:
+
+```bash
+# Instead of:
+python train.py model._ref_=models/vit.yaml
+
+# You can write:
+python train.py model=models/vit.yaml
+```
+
+**How it works:** If the target field is a dict in your config, the override is automatically converted to a `_ref_` assignment. This loads and merges the referenced config file.
+
+**When shorthand applies:**
+- Target field exists AND is a dict
+- Value is not quoted
+
+**Force literal string:** Use quotes to prevent `_ref_` conversion:
+
+```bash
+python train.py model="models/vit.yaml"  # Literal string, not a ref
+```
+
 #### Disabling CLI Overrides
 
 For tests or library usage, disable automatic CLI parsing:

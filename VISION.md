@@ -12,11 +12,14 @@ This document outlines potential features for rconfig based on analysis of state
 4. [Frozen Config Mode](#4-frozen-config-mode)
 5. [Structured Config Schemas](#5-structured-config-schemas)
 6. [Deprecation Warnings](#6-deprecation-warnings)
-7. [Defaults List / Composition Groups](#7-defaults-list--composition-groups)
+7. [:x: Defaults List / Composition Groups](#7-x-defaults-list--composition-groups)
 8. [Multi-Environment Profiles](#8-multi-environment-profiles)
 9. [Config Diffing](#9-config-diffing)
 10. [Callbacks and Hooks](#10-callbacks-and-hooks)
 11. [XDG Base Directory Support](#11-xdg-base-directory-support)
+12. [CLI `_ref_` Shorthand](#12-cli-_ref_-shorthand)
+13. [Extension-less `_ref_` Resolution](#13-extension-less-_ref_-resolution)
+14. [Multirun Support](#14-multirun-support)
 
 ---
 
@@ -515,9 +518,30 @@ rconfig.migrate("old_config.yaml", output="new_config.yaml")
 
 ---
 
-## 7. Defaults List / Composition Groups
+## 7. :x: Defaults List / Composition Groups
 
 **Adopted by:** Hydra (core feature)
+
+**Status:** Not Implemented
+
+### Why Not Implemented
+
+ReausoConfig's existing `_ref_` feature already provides equivalent composition capabilities:
+
+- **Modular configs**: `_ref_` loads and merges configs from other files
+- **Deep merge with overrides**: Sibling keys override referenced values
+- **CLI integration**: Override any value including `_ref_` paths via CLI
+- **Flexible structure**: Works at any nesting level, no enforced directory conventions
+
+The defaults list pattern would add a second composition system with marginal benefits:
+- Forced directory conventions (`model/`, `optimizer/`, etc.)
+- New syntax to learn alongside `_ref_`
+- Overlap and confusion about when to use which approach
+
+**Planned alternatives** that achieve similar ergonomics without a parallel system:
+- CLI `_ref_` shorthand (see section 12)
+- Extension-less `_ref_` resolution (see section 13)
+- Multirun support (see section 14)
 
 ### Description
 
@@ -1196,9 +1220,317 @@ rconfig.init_user_config(
 
 ---
 
+## 12. ✅ CLI `_ref_` Shorthand
+
+**Status:** Implemented
+
+### Description
+
+When a CLI override targets a dict field, it is automatically interpreted as a `_ref_` assignment. This enables shorter, more intuitive CLI commands when swapping configuration components.
+
+### Why It Adds Value
+
+- **Shorter CLI commands**: `model=models/vit.yaml` instead of `model._ref_=models/vit.yaml`
+- **Intuitive**: Assigning to a dict field naturally implies "replace with this config"
+- **Predictable**: Based on target field type, not value heuristics
+
+### Usage Example
+
+```bash
+# These are equivalent:
+python train.py model._ref_=models/vit.yaml
+python train.py model=models/vit.yaml
+
+# Literal string values use quotes:
+python train.py model="models/vit.yaml"
+```
+
+### Detection Rules
+
+**The Rule:** Shorthand works if the target field is a dict.
+
+A CLI override `key=value` is converted to `key._ref_=value` when:
+- Target field exists in config AND is a dict
+- Value is not quoted
+
+**Literal strings:** Use quotes to force literal interpretation:
+
+```bash
+# Config: model: {_target_: resnet, ...}, name: "experiment_1"
+
+model=models/vit.yaml      # → model._ref_=models/vit.yaml (model is dict)
+model=vit.yaml             # → model._ref_=vit.yaml (model is dict, no path sep needed)
+name=models/vit.yaml       # → name="models/vit.yaml" (name is string, no conversion)
+new_field=models/vit.yaml  # → new_field="models/vit.yaml" (doesn't exist, no conversion)
+model="models/vit.yaml"    # → model="models/vit.yaml" (quoted = literal string)
+```
+
+**Rationale:** Dict-based detection ensures the shorthand only applies where `_ref_` semantically makes sense. Scalar fields and new fields require explicit `key._ref_=value` syntax.
+
+### Implementation
+
+The shorthand is implemented via `apply_cli_overrides_with_ref_shorthand()` in `rconfig.override.override`. Use this function instead of `apply_overrides()` when processing CLI overrides to enable the shorthand behavior.
+
+---
+
+## 13. Extension-less `_ref_` Resolution
+
+**Status:** Planned
+
+### Description
+
+Allow `_ref_` paths without file extensions. The system auto-detects the file format by checking which files exist with the given stem.
+
+### Why It Adds Value
+
+- **Cleaner configs**: `_ref_: models/vit` instead of `_ref_: models/vit.yaml`
+- **Format-agnostic**: Switch from YAML to JSON without updating references
+- **Extensible**: Works with any registered loader, not just built-in formats
+
+### Usage Example
+
+```yaml
+# config.yaml
+model:
+  _ref_: models/vit  # No extension - auto-detected
+```
+
+```
+models/
+├── vit.yaml      # ← Found and used
+└── resnet.json
+```
+
+### Resolution Rules
+
+1. Use glob to find all files matching `{stem}.*`
+2. **Exactly one file exists** → use it (check loader is registered)
+3. **No files exist** → `RefResolutionError` with searched location
+4. **Multiple files exist** → `AmbiguousRefError` listing all found files
+
+```python
+# Pseudocode
+found = list(parent.glob(f"{stem}.*"))
+
+if len(found) == 1:
+    if found[0].suffix.lower() in supported_loader_extensions():
+        return found[0]
+    else:
+        raise UnsupportedExtensionError(
+            f"No loader for '{found[0].suffix}'. "
+            f"Register with: rc.register_loader(MyLoader(), '{found[0].suffix}')"
+        )
+elif len(found) == 0:
+    raise RefResolutionError(f"No config file found matching '{stem}.*'")
+else:
+    raise AmbiguousRefError(
+        f"Multiple files found: {[f.name for f in found]}. "
+        f"Specify extension explicitly or remove duplicates."
+    )
+```
+
+### Key Design Decision
+
+**Strict uniqueness**: Only one file with the stem may exist, regardless of extension. This avoids confusion where `vit.yaml` and `vit.bak` coexist and user doesn't realize `.bak` is ignored.
+
+---
+
+## 14. Multirun Support
+
+**Status:** Planned
+
+### Description
+
+Generate and instantiate multiple config combinations from sweep parameters and explicit experiments. Enables hyperparameter sweeps and ablation studies without external orchestration.
+
+### Why It Adds Value
+
+- **Experiment management**: Run grid searches over parameters
+- **Single API**: No external scripts needed for simple sweeps
+- **Lazy generation**: Memory-efficient iterator, instantiates one at a time
+- **Object-oriented**: Returns both config dict and instance together
+- **Flexible**: Combine explicit experiments with sweeps
+
+### Usage Example
+
+```python
+import rconfig as rc
+from pathlib import Path
+
+for result in rc.instantiate_multirun(
+    path=Path("config.yaml"),
+    sweep={
+        "model": ["models/resnet.yaml", "models/vit.yaml"],
+        "optimizer.lr": [0.01, 0.001],
+    },
+    overrides={
+        "epochs": 100,  # Constant across all runs
+        "callbacks": ["logger", "checkpoint"],  # List VALUE, not sweep
+    },
+):
+    # result.config: immutable dict (MappingProxyType)
+    # result.instance: instantiated object
+
+    # Save config for reproducibility
+    rc.to_file(source=result, output_path=Path(f"runs/{run_id}/config.yaml"))
+
+    # Run experiment
+    train(result.instance)
+```
+
+### Experiments + Sweep Combination
+
+Users can define explicit experiment configurations and optionally sweep additional parameters on top:
+
+```python
+for result in rc.instantiate_multirun(
+    path=Path("config.yaml"),
+    experiments=[
+        # Explicit experiment definitions (not full cartesian)
+        {"model": "models/resnet.yaml", "optimizer.lr": 0.01},
+        {"model": "models/vit.yaml", "optimizer.lr": 0.001},
+        {"model": "models/mlp.yaml", "optimizer.lr": 0.1, "epochs": 50},
+    ],
+    sweep={
+        # Additional sweep applied to each experiment
+        "data.augmentation": ["flip", "rotate", "crop"],
+    },
+    overrides={
+        "epochs": 100,  # Default (can be overridden by experiment)
+    },
+):
+    # 3 experiments × 3 augmentations = 9 runs
+    train(result.instance)
+```
+
+**Behavior:**
+- If only `sweep` → cartesian product of all sweep values
+- If only `experiments` → run each experiment as defined
+- If both → each experiment is expanded with sweep cartesian product
+- `overrides` applied to all runs (experiments can override these)
+
+### CLI Syntax
+
+```bash
+# Comma-separated values (simple)
+python train.py model=models/resnet.yaml,models/vit.yaml optimizer.lr=0.01,0.001
+
+# Explicit list syntax (clearer, handles values with commas)
+python train.py "model=[resnet.yaml, vit.yaml]" "optimizer.lr=[0.01, 0.001]"
+
+# Can mix both styles
+python train.py model=resnet.yaml,vit.yaml "tags=[a,b,c]"
+
+# Generates 4 runs (cartesian product):
+# - resnet + lr=0.01
+# - resnet + lr=0.001
+# - vit + lr=0.01
+# - vit + lr=0.001
+```
+
+### API Design
+
+```python
+@dataclass(frozen=True)
+class MultirunResult(Generic[T]):
+    config: MappingProxyType[str, Any]  # Immutable resolved config
+    instance: T                          # Instantiated object
+
+
+def instantiate_multirun(
+    path: Path,
+    expected_type: type[T] | None = None,
+    *,
+    experiments: list[dict[str, Any]] | None = None,  # Explicit experiment configs
+    sweep: dict[str, list[Any]] | None = None,        # Cartesian product sweep
+    overrides: dict[str, Any] | None = None,          # Applied to all runs
+    cli_overrides: bool = True,
+    lazy: bool = False,
+) -> Generator[MultirunResult[T], None, None]:
+    """
+    Yields MultirunResult for each combination of experiments and sweep parameters.
+
+    Args:
+        path: Config file path
+        expected_type: Optional type for type-safe returns
+        experiments: List of explicit experiment override dicts
+        sweep: Dict of parameter paths to list of values (cartesian product)
+        overrides: Constant overrides applied to all runs
+        cli_overrides: Parse CLI arguments
+        lazy: Delay nested object initialization
+
+    Raises:
+        ValueError: If sweep values are not lists
+        ValueError: If neither experiments nor sweep is provided
+    """
+```
+
+### Parameter Separation
+
+**Why separate `sweep` and `overrides`?**
+
+Using lists in `overrides` would be ambiguous:
+
+```python
+# Ambiguous: is this a sweep or a list value?
+overrides={"callbacks": ["logger", "checkpoint"]}
+```
+
+Separate parameters make intent clear:
+- `overrides`: Values applied as-is (lists are list values)
+- `sweep`: Must be lists, each generates combinations
+- `experiments`: Explicit experiment definitions
+
+### Sweep Validation for List-Type Parameters
+
+When sweeping a parameter that expects a list type, the sweep value must be a list of lists:
+
+```python
+# Parameter "callbacks" expects List[str]
+
+# WRONG - looks like sweep over 3 string values
+sweep={"callbacks": ["logger", "checkpoint", "early_stop"]}
+
+# CORRECT - sweep over 2 list values
+sweep={"callbacks": [
+    ["logger", "checkpoint"],           # Run 1
+    ["logger", "early_stop"],           # Run 2
+]}
+
+# For scalar parameters, simple list is correct
+sweep={"optimizer.lr": [0.01, 0.001]}  # Sweep over 2 float values
+```
+
+**Validation:**
+- Detect target parameter's type hint
+- If type hint is `list[X]`, sweep value must be `list[list[...]]`
+- Raise `ValueError` with clear message if validation fails
+- **Requires dedicated test cases**
+
+### Integration with `to_file` / `to_files`
+
+Extend existing export functions via singledispatch to accept `MultirunResult`:
+
+```python
+# Existing
+rc.to_file(source=Path("config.yaml"), output_path=Path("out.yaml"))
+rc.to_file(source={"key": "value"}, output_path=Path("out.yaml"))
+
+# New overload
+rc.to_file(source=result, output_path=Path("out.yaml"))  # MultirunResult
+```
+
+### Scope Limitations
+
+- **CLI-based only**: No config-based `_multirun_:` marker initially
+- **No `multirun_to_dict`**: Edge case users can use internal classes directly
+- **No orchestration**: rconfig generates configs, user controls execution
+
+---
+
 ## Summary
 
-This vision document outlines 11 features that would enhance rconfig based on proven patterns from the configuration library ecosystem. The features are prioritized by community adoption and general-purpose utility:
+This vision document outlines 14 features that would enhance rconfig based on proven patterns from the configuration library ecosystem. The features are prioritized by community adoption and general-purpose utility:
 
 ### High Priority (Widely Adopted)
 
@@ -1208,7 +1540,7 @@ This vision document outlines 11 features that would enhance rconfig based on pr
 4. ✅ Frozen Config Mode
 5. ✅ Structured Config Schemas
 6. ✅ Deprecation Warnings
-7. Defaults List / Composition Groups
+7. :x: Defaults List / Composition Groups (see rationale in section)
 
 ### Medium Priority (Common Patterns)
 
@@ -1216,5 +1548,11 @@ This vision document outlines 11 features that would enhance rconfig based on pr
 9. Config Diffing
 10. Callbacks and Hooks
 11. XDG Base Directory Support
+
+### Planned Enhancements
+
+12. ✅ CLI `_ref_` Shorthand
+13. Extension-less `_ref_` Resolution
+14. Multirun Support
 
 Each feature includes detailed usage examples showing how users would interact with the functionality, highlighting the key benefits and use cases.
