@@ -11,6 +11,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, TextIO
 
 from .integration import HelpIntegration
+from .multirun_help import MULTIRUN_HELP
 
 if TYPE_CHECKING:
     from rconfig.composition.Provenance import Provenance, ProvenanceEntry
@@ -108,6 +109,9 @@ class GroupedHelpIntegration(HelpIntegration):
                 if desc_str:
                     line += f"  {desc_str}"
                 lines.append(line)
+
+        # Add multirun help
+        lines.append(MULTIRUN_HELP)
 
         return lines
 

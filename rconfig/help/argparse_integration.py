@@ -10,6 +10,7 @@ import argparse
 from typing import TYPE_CHECKING
 
 from .integration import HelpIntegration
+from .multirun_help import MULTIRUN_HELP
 
 if TYPE_CHECKING:
     from rconfig.composition.Provenance import Provenance
@@ -99,6 +100,7 @@ class ArgparseHelpIntegration(HelpIntegration):
 
         lines.append("")
         lines.append("Override with: python script.py key=value")
+        lines.append(MULTIRUN_HELP)
 
         return "\n".join(lines)
 
