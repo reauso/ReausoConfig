@@ -13,13 +13,13 @@ This document outlines potential features for rconfig based on analysis of state
 5. [✅ Structured Config Schemas](#5-structured-config-schemas)
 6. [✅ Deprecation Warnings](#6-deprecation-warnings)
 7. [:x: Defaults List / Composition Groups](#7-x-defaults-list--composition-groups)
-8. [Multi-Environment Profiles](#8-multi-environment-profiles)
+8. [:x: Multi-Environment Profiles](#8-x-multi-environment-profiles)
 9. [Config Diffing](#9-config-diffing)
 10. [Callbacks and Hooks](#10-callbacks-and-hooks)
 11. [XDG Base Directory Support](#11-xdg-base-directory-support)
 12. [✅ CLI `_ref_` Shorthand](#12-cli-_ref_-shorthand)
 13. [✅ Extension-less `_ref_` Resolution](#13-extension-less-_ref_-resolution)
-14. [Multirun Support](#14-multirun-support)
+14. [✅ Multirun Support](#14-multirun-support)
 15. [✅ CLI Help Integration](#15-cli-help-integration)
 
 ---
@@ -688,9 +688,28 @@ num_layers: 50
 
 ---
 
-## 8. Multi-Environment Profiles
+## 8. :x: Multi-Environment Profiles
 
 **Adopted by:** Dynaconf, Spring Boot, Rails
+
+**Status:** Not Implemented
+
+### Why Not Implemented
+
+ReausoConfig's existing features already provide equivalent multi-environment capabilities:
+
+- **Dynamic `_ref_` with env interpolation**: `_ref_: envs/${env:APP_ENV ?: "dev"}.yaml`
+- **CLI `_ref_` shorthand**: `python main.py config=envs/prod.yaml`
+- **File-per-environment pattern**: Each environment has its own file that references a shared base via `_ref_`
+- **Deep merge**: Environment-specific overrides are naturally handled
+
+The single-file multi-environment pattern would add a second composition system with marginal benefits:
+- New `env=` parameter and `RCONFIG_ENV` detection overlapping with existing `_ref_` + env interpolation
+- New `_inherits_:` directive adding complexity alongside `_ref_`
+- Single large file vs. modular per-environment files (team collaboration concerns)
+- Production secrets in same file as dev defaults (security concern)
+
+**Recommended approach**: Use `_ref_` + environment variable interpolation for multi-environment setups. See documentation for patterns.
 
 ### Description
 
@@ -1336,9 +1355,9 @@ else:
 
 ---
 
-## 14. Multirun Support
+## 14. ✅ Multirun Support
 
-**Status:** Planned
+**Status:** Implemented
 
 ### Description
 
@@ -1736,7 +1755,7 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 
 ### Medium Priority (Common Patterns)
 
-8. Multi-Environment Profiles
+8. :x: Multi-Environment Profiles (see rationale in section)
 9. Config Diffing
 10. Callbacks and Hooks
 11. XDG Base Directory Support
@@ -1745,7 +1764,7 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 
 12. ✅ CLI `_ref_` Shorthand
 13. ✅ Extension-less `_ref_` Resolution
-14. Multirun Support
+14. ✅ Multirun Support
 15. ✅ CLI Help Integration
 
 Each feature includes detailed usage examples showing how users would interact with the functionality, highlighting the key benefits and use cases.
