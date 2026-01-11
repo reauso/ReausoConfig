@@ -30,6 +30,8 @@ class FormatContext:
     :param show_overrides: Show what was overridden.
     :param show_targets: Show target class information.
     :param show_deprecations: Show deprecation information.
+    :param show_types: Show type hint information.
+    :param show_descriptions: Show description information.
     :param deprecations_only: Filter to show only deprecated keys.
     :param indent_size: Number of spaces per indentation level.
     :param path_filters: Glob patterns to filter by config path.
@@ -45,6 +47,8 @@ class FormatContext:
     show_overrides: bool = True
     show_targets: bool = True
     show_deprecations: bool = True
+    show_types: bool = False
+    show_descriptions: bool = False
     deprecations_only: bool = False
     indent_size: int = 2
     path_filters: list[str] = field(default_factory=list)
@@ -221,6 +225,30 @@ class ProvenanceLayout(ABC):
         :return: Formatted override string.
         """
         return f"Overrode: {overrode}"
+
+    def format_type_hint(self, type_hint: type | None, ctx: FormatContext) -> str:
+        """Format a type hint.
+
+        :param type_hint: The type hint (e.g., float, list[int]).
+        :param ctx: Format context.
+        :return: Formatted type hint string.
+        """
+        if type_hint is None:
+            return ""
+        if hasattr(type_hint, "__name__"):
+            return type_hint.__name__
+        return str(type_hint)
+
+    def format_description(self, description: str | None, ctx: FormatContext) -> str:
+        """Format a description.
+
+        :param description: The description from structured config.
+        :param ctx: Format context.
+        :return: Formatted description string.
+        """
+        if description is None:
+            return ""
+        return description
 
     def join_entries(self, entries: list[str], ctx: FormatContext) -> str:
         """Join all formatted entries into final output.
