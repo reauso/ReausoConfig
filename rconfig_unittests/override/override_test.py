@@ -12,6 +12,10 @@ from rconfig.override import (
     parse_override_key,
     parse_override_value,
 )
+from rconfig.override.override import (
+    _should_convert_to_ref,
+    apply_cli_overrides_with_ref_shorthand,
+)
 
 
 class ParseOverrideKeyTests(TestCase):
@@ -1062,3 +1066,312 @@ class ApplyOverridesNonListTests(TestCase):
         with self.assertRaises(KeyError) as ctx:
             apply_overrides(config, overrides)
         self.assertIn("non-list", str(ctx.exception))
+
+
+class ShouldConvertToRefTests(TestCase):
+    """Tests for _should_convert_to_ref function."""
+
+    def test__TargetIsDict__ReturnsTrue(self):
+        """Test that dict fields return True."""
+        config = {"model": {"_target_": "resnet"}}
+
+        result = _should_convert_to_ref(["model"], config)
+
+        self.assertTrue(result)
+
+    def test__TargetIsString__ReturnsFalse(self):
+        """Test that string fields return False."""
+        config = {"name": "experiment_1"}
+
+        result = _should_convert_to_ref(["name"], config)
+
+        self.assertFalse(result)
+
+    def test__TargetIsInt__ReturnsFalse(self):
+        """Test that int fields return False."""
+        config = {"epochs": 100}
+
+        result = _should_convert_to_ref(["epochs"], config)
+
+        self.assertFalse(result)
+
+    def test__TargetIsList__ReturnsFalse(self):
+        """Test that list fields return False."""
+        config = {"callbacks": ["logger", "checkpoint"]}
+
+        result = _should_convert_to_ref(["callbacks"], config)
+
+        self.assertFalse(result)
+
+    def test__TargetDoesNotExist__ReturnsFalse(self):
+        """Test that non-existent fields return False."""
+        config = {"model": {"_target_": "resnet"}}
+
+        result = _should_convert_to_ref(["new_field"], config)
+
+        self.assertFalse(result)
+
+    def test__NestedDictTarget__ReturnsTrue(self):
+        """Test that nested dict fields return True."""
+        config = {"trainer": {"model": {"_target_": "resnet"}}}
+
+        result = _should_convert_to_ref(["trainer", "model"], config)
+
+        self.assertTrue(result)
+
+    def test__EmptyDict__ReturnsTrue(self):
+        """Test that empty dict fields return True."""
+        config = {"model": {}}
+
+        result = _should_convert_to_ref(["model"], config)
+
+        self.assertTrue(result)
+
+    def test__DictWithRef__ReturnsTrue(self):
+        """Test that dict fields with _ref_ return True."""
+        config = {"model": {"_ref_": "models/resnet.yaml"}}
+
+        result = _should_convert_to_ref(["model"], config)
+
+        self.assertTrue(result)
+
+    def test__NestedPathDoesNotExist__ReturnsFalse(self):
+        """Test that nested non-existent paths return False."""
+        config = {"model": {"_target_": "resnet"}}
+
+        result = _should_convert_to_ref(["model", "nonexistent"], config)
+
+        self.assertFalse(result)
+
+    def test__ListIndex__ReturnsFalse(self):
+        """Test that list indices return False (list element is not dict)."""
+        config = {"items": [1, 2, 3]}
+
+        result = _should_convert_to_ref(["items", 0], config)
+
+        self.assertFalse(result)
+
+    def test__ListOfDicts__ElementIsDict__ReturnsTrue(self):
+        """Test that dict elements in lists return True."""
+        config = {"layers": [{"size": 64}, {"size": 128}]}
+
+        result = _should_convert_to_ref(["layers", 0], config)
+
+        self.assertTrue(result)
+
+
+class ParseCliArgQuotedValueTests(TestCase):
+    """Tests for parse_cli_arg with quoted values."""
+
+    def test_parse__DoubleQuotedValue__StripsQuotesAndSetsLiteral(self):
+        """Test that double-quoted values are stripped and marked literal."""
+        result = parse_cli_arg('model="models/vit.yaml"')
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.value, "models/vit.yaml")
+        self.assertTrue(result.is_literal)
+
+    def test_parse__SingleQuotedValue__StripsQuotesAndSetsLiteral(self):
+        """Test that single-quoted values are stripped and marked literal."""
+        result = parse_cli_arg("model='models/vit.yaml'")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.value, "models/vit.yaml")
+        self.assertTrue(result.is_literal)
+
+    def test_parse__UnquotedValue__NotLiteral(self):
+        """Test that unquoted values are not marked literal."""
+        result = parse_cli_arg("model=models/vit.yaml")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.value, "models/vit.yaml")
+        self.assertFalse(result.is_literal)
+
+    def test_parse__PartiallyQuotedStart__NotLiteral(self):
+        """Test that values with only start quote are not stripped."""
+        result = parse_cli_arg('model="models/vit.yaml')
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.value, '"models/vit.yaml')
+        self.assertFalse(result.is_literal)
+
+    def test_parse__PartiallyQuotedEnd__NotLiteral(self):
+        """Test that values with only end quote are not stripped."""
+        result = parse_cli_arg('model=models/vit.yaml"')
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.value, 'models/vit.yaml"')
+        self.assertFalse(result.is_literal)
+
+    def test_parse__EmptyQuotedValue__StripsQuotes(self):
+        """Test that empty quoted values work."""
+        result = parse_cli_arg('name=""')
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.value, "")
+        self.assertTrue(result.is_literal)
+
+
+class ApplyCliOverridesWithRefShorthandTests(TestCase):
+    """Tests for apply_cli_overrides_with_ref_shorthand function."""
+
+    def test_apply__DictField_UnquotedValue__ConvertsToRef(self):
+        """Test that unquoted value on dict field converts to _ref_."""
+        config = {"model": {"_target_": "resnet"}}
+        overrides = [
+            Override(
+                path=["model"],
+                value="models/vit.yaml",
+                operation="set",
+                source_type="cli",
+                cli_arg="model=models/vit.yaml",
+                is_literal=False,
+            )
+        ]
+
+        result = apply_cli_overrides_with_ref_shorthand(config, overrides)
+
+        self.assertEqual(result["model"]["_ref_"], "models/vit.yaml")
+        # Original dict keys should still exist (will be overwritten by _ref_ processing)
+        self.assertIn("_target_", result["model"])
+
+    def test_apply__StringField_UnquotedValue__NoConversion(self):
+        """Test that unquoted value on string field is set directly."""
+        config = {"name": "experiment_1"}
+        overrides = [
+            Override(
+                path=["name"],
+                value="models/vit.yaml",
+                operation="set",
+                source_type="cli",
+                cli_arg="name=models/vit.yaml",
+                is_literal=False,
+            )
+        ]
+
+        result = apply_cli_overrides_with_ref_shorthand(config, overrides)
+
+        self.assertEqual(result["name"], "models/vit.yaml")
+
+    def test_apply__DictField_QuotedValue__NoConversion(self):
+        """Test that quoted value on dict field is set directly (replaces dict)."""
+        config = {"model": {"_target_": "resnet"}}
+        overrides = [
+            Override(
+                path=["model"],
+                value="models/vit.yaml",
+                operation="set",
+                source_type="cli",
+                cli_arg='model="models/vit.yaml"',
+                is_literal=True,  # Quoted
+            )
+        ]
+
+        result = apply_cli_overrides_with_ref_shorthand(config, overrides)
+
+        self.assertEqual(result["model"], "models/vit.yaml")
+
+    def test_apply__NewField__NoConversion(self):
+        """Test that new field assignment doesn't convert to _ref_."""
+        config = {"model": {"_target_": "resnet"}}
+        overrides = [
+            Override(
+                path=["new_field"],
+                value="models/vit.yaml",
+                operation="set",
+                source_type="cli",
+                cli_arg="new_field=models/vit.yaml",
+                is_literal=False,
+            )
+        ]
+
+        result = apply_cli_overrides_with_ref_shorthand(config, overrides)
+
+        self.assertEqual(result["new_field"], "models/vit.yaml")
+
+    def test_apply__NestedDictField__ConvertsToRef(self):
+        """Test that nested dict field converts to _ref_."""
+        config = {"trainer": {"model": {"_target_": "resnet"}}}
+        overrides = [
+            Override(
+                path=["trainer", "model"],
+                value="models/vit.yaml",
+                operation="set",
+                source_type="cli",
+                cli_arg="trainer.model=models/vit.yaml",
+                is_literal=False,
+            )
+        ]
+
+        result = apply_cli_overrides_with_ref_shorthand(config, overrides)
+
+        self.assertEqual(result["trainer"]["model"]["_ref_"], "models/vit.yaml")
+
+    def test_apply__ProgrammaticOverride__NoConversion(self):
+        """Test that programmatic overrides don't convert to _ref_."""
+        config = {"model": {"_target_": "resnet"}}
+        overrides = [
+            Override(
+                path=["model"],
+                value="models/vit.yaml",
+                operation="set",
+                source_type="programmatic",  # Not CLI
+                is_literal=False,
+            )
+        ]
+
+        result = apply_cli_overrides_with_ref_shorthand(config, overrides)
+
+        # Should set model directly, not convert to _ref_
+        self.assertEqual(result["model"], "models/vit.yaml")
+
+    def test_apply__AddOperation__NoConversion(self):
+        """Test that add operations don't convert to _ref_."""
+        config = {"callbacks": ["logger"]}
+        overrides = [
+            Override(
+                path=["callbacks"],
+                value="models/vit.yaml",
+                operation="add",  # Not set
+                source_type="cli",
+                is_literal=False,
+            )
+        ]
+
+        result = apply_cli_overrides_with_ref_shorthand(config, overrides)
+
+        self.assertEqual(result["callbacks"], ["logger", "models/vit.yaml"])
+
+    def test_apply__NonStringValue__NoConversion(self):
+        """Test that non-string values don't convert to _ref_."""
+        config = {"model": {"_target_": "resnet"}}
+        overrides = [
+            Override(
+                path=["model"],
+                value={"_target_": "vit"},  # Dict, not string
+                operation="set",
+                source_type="cli",
+                is_literal=False,
+            )
+        ]
+
+        result = apply_cli_overrides_with_ref_shorthand(config, overrides)
+
+        self.assertEqual(result["model"], {"_target_": "vit"})
+
+    def test_apply__OriginalConfigUnchanged(self):
+        """Test that original config is not modified."""
+        config = {"model": {"_target_": "resnet"}}
+        overrides = [
+            Override(
+                path=["model"],
+                value="models/vit.yaml",
+                operation="set",
+                source_type="cli",
+                is_literal=False,
+            )
+        ]
+
+        apply_cli_overrides_with_ref_shorthand(config, overrides)
+
+        self.assertEqual(config, {"model": {"_target_": "resnet"}})
