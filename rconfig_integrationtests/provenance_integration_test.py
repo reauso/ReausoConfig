@@ -59,22 +59,22 @@ class ProvenanceIntegrationTests(TestCase):
     def test_getProvenance__WithInterpolation__TracksInterpolationSources(self):
         """Test that provenance tracks interpolation sources."""
         # Arrange - use interpolation resolver directly
-        from rconfig.composition import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.interpolation import resolve_interpolations
 
         config = {
             "defaults": {"lr": 0.01},
             "model": {"learning_rate": "${/defaults.lr}"},
         }
-        provenance = Provenance()
-        provenance.add("defaults.lr", "config.yaml", 1)
-        provenance.add("model.learning_rate", "config.yaml", 3)
+        builder = ProvenanceBuilder()
+        builder.add("defaults.lr", file="config.yaml", line=1)
+        builder.add("model.learning_rate", file="config.yaml", line=3)
 
         # Act
-        resolve_interpolations(config, provenance)
+        resolve_interpolations(config, builder)
 
         # Assert
-        entry = provenance.get("model.learning_rate")
+        entry = builder.get("model.learning_rate")
         self.assertIsNotNone(entry)
         self.assertIsNotNone(entry.interpolation)
 
@@ -270,12 +270,12 @@ class ProvenanceWithOverridesIntegrationTests(TestCase):
         """Test that CLI overrides are tracked in provenance."""
         # Arrange
         from rconfig.override import Override, apply_overrides
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         config = {"lr": 0.1, "epochs": 10}
-        provenance = Provenance()
-        provenance.add("lr", "config.yaml", 1)
-        provenance.add("epochs", "config.yaml", 2)
+        builder = ProvenanceBuilder()
+        builder.add("lr", file="config.yaml", line=1)
+        builder.add("epochs", file="config.yaml", line=2)
 
         overrides = [
             Override(
@@ -288,10 +288,10 @@ class ProvenanceWithOverridesIntegrationTests(TestCase):
         ]
 
         # Act
-        apply_overrides(config, overrides, provenance)
+        apply_overrides(config, overrides, builder)
 
         # Assert
-        entry = provenance.get("lr")
+        entry = builder.get("lr")
         self.assertEqual("cli", entry.source_type)
         self.assertEqual("lr=0.01", entry.cli_arg)
         self.assertEqual("config.yaml:1", entry.overrode)
@@ -300,11 +300,10 @@ class ProvenanceWithOverridesIntegrationTests(TestCase):
         """Test that CLI override is shown in formatted output."""
         # Arrange
         from rconfig.override import Override, apply_overrides
-        from rconfig.composition import Provenance, ProvenanceEntry
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-        provenance = Provenance()
-        provenance.add("lr", "config.yaml", 1)
-        provenance._entries["lr"].value = 0.1
+        builder = ProvenanceBuilder()
+        builder.add("lr", file="config.yaml", line=1, value=0.1)
 
         overrides = [
             Override(
@@ -315,7 +314,8 @@ class ProvenanceWithOverridesIntegrationTests(TestCase):
                 cli_arg="lr=0.01",
             )
         ]
-        apply_overrides({"lr": 0.1}, overrides, provenance)
+        apply_overrides({"lr": 0.1}, overrides, builder)
+        provenance = builder.build()
 
         # Act
         output = str(provenance.format().full())
@@ -331,22 +331,22 @@ class ProvenanceWithInterpolationIntegrationTests(TestCase):
     def test_resolveInterpolations__TracksInterpolationSource(self):
         """Test that interpolation sources are tracked."""
         # Arrange - use interpolation resolver directly
-        from rconfig.composition import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.interpolation import resolve_interpolations
 
         config = {
             "defaults": {"lr": 0.01},
             "model": {"learning_rate": "${/defaults.lr}"},
         }
-        provenance = Provenance()
-        provenance.add("defaults.lr", "config.yaml", 1)
-        provenance.add("model.learning_rate", "config.yaml", 3)
+        builder = ProvenanceBuilder()
+        builder.add("defaults.lr", file="config.yaml", line=1)
+        builder.add("model.learning_rate", file="config.yaml", line=3)
 
         # Act
-        resolve_interpolations(config, provenance)
+        resolve_interpolations(config, builder)
 
         # Assert
-        entry = provenance.get("model.learning_rate")
+        entry = builder.get("model.learning_rate")
         self.assertIsNotNone(entry)
         self.assertEqual(0.01, entry.value)
         self.assertIsNotNone(entry.interpolation)
@@ -354,22 +354,22 @@ class ProvenanceWithInterpolationIntegrationTests(TestCase):
     def test_resolveInterpolations__TracksExpressionOperator(self):
         """Test that expression operators are tracked."""
         # Arrange - use interpolation resolver directly
-        from rconfig.composition import Provenance
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
         from rconfig.interpolation import resolve_interpolations
 
         config = {
             "base_lr": 0.01,
             "model": {"learning_rate": "${/base_lr * 2}"},
         }
-        provenance = Provenance()
-        provenance.add("base_lr", "config.yaml", 1)
-        provenance.add("model.learning_rate", "config.yaml", 3)
+        builder = ProvenanceBuilder()
+        builder.add("base_lr", file="config.yaml", line=1)
+        builder.add("model.learning_rate", file="config.yaml", line=3)
 
         # Act
-        resolve_interpolations(config, provenance)
+        resolve_interpolations(config, builder)
 
         # Assert
-        entry = provenance.get("model.learning_rate")
+        entry = builder.get("model.learning_rate")
         self.assertIsNotNone(entry)
         self.assertEqual(0.02, entry.value)
         self.assertIsNotNone(entry.interpolation)

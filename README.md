@@ -475,8 +475,8 @@ dropout: 0.1
 # trainer.yaml
 _target_: trainer
 model:
-  _ref_: models/resnet.yaml  # Load from file
-  dropout: 0.2               # Override: merged on top
+  _ref_: models/resnet  # Load from file (auto-detects format)
+  dropout: 0.2          # Override: merged on top
 epochs: 10
 ```
 
@@ -484,10 +484,12 @@ epochs: 10
 
 | Syntax | Example | Description |
 |--------|---------|-------------|
-| Relative (implicit) | `models/resnet.yaml` | Relative to current file |
-| Relative (explicit) | `./local.yaml` | Explicit relative to current file |
-| Parent directory | `../shared/base.yaml` | Navigate up directories |
-| Absolute | `/models/resnet.yaml` | From config root directory |
+| Relative (implicit) | `models/resnet` | Relative to current file |
+| Relative (explicit) | `./local` | Explicit relative to current file |
+| Parent directory | `../shared/base` | Navigate up directories |
+| Absolute | `/models/resnet` | From config root directory |
+
+File extensions are auto-detected. If you have multiple files with the same stem (e.g., `model.yaml` and `model.json`), specify the extension explicitly to disambiguate.
 
 **Deep merge:** Sibling keys override values from the referenced file.
 
@@ -2428,6 +2430,7 @@ ConfigError (base)
 ├── CompositionError              # Config composition issues
 │   ├── CircularRefError              # Circular _ref_ detected
 │   ├── RefResolutionError            # Cannot resolve _ref_ path
+│   ├── AmbiguousRefError             # Multiple files match extension-less _ref_
 │   ├── RefAtRootError                # _ref_ at root level
 │   ├── RefInstanceConflictError      # Both _ref_ and _instance_ in same block
 │   ├── CircularInstanceError         # Circular _instance_ detected

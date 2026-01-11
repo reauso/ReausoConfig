@@ -9,6 +9,7 @@ from rconfig.composition import (
     ProvenanceEntry,
     TreeLayout,
 )
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 from rconfig.interpolation.evaluator import InterpolationSource
 
 
@@ -743,10 +744,9 @@ class TreeLayoutFormatProvenanceTests(TestCase):
     def test_formatProvenance__SingleEntry__FormatsCorrectly(self) -> None:
         """Test single entry is formatted correctly."""
         # Arrange
-        provenance = Provenance()
-        provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=5, value=0.01
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=5, value=0.01)
+        provenance = builder.build()
         ctx = FormatContext()
 
         # Act
@@ -760,9 +760,10 @@ class TreeLayoutFormatProvenanceTests(TestCase):
     def test_formatProvenance__MultipleEntries__SeparatesWithBlankLine(self) -> None:
         """Test multiple entries are separated by blank lines."""
         # Arrange
-        provenance = Provenance()
-        provenance._entries["a"] = ProvenanceEntry(file="a.yaml", line=1, value=1)
-        provenance._entries["b"] = ProvenanceEntry(file="b.yaml", line=2, value=2)
+        builder = ProvenanceBuilder()
+        builder.add("a", file="a.yaml", line=1, value=1)
+        builder.add("b", file="b.yaml", line=2, value=2)
+        provenance = builder.build()
         ctx = FormatContext()
 
         # Act
@@ -774,13 +775,10 @@ class TreeLayoutFormatProvenanceTests(TestCase):
     def test_formatProvenance__FilterApplied__FiltersEntries(self) -> None:
         """Test that path filter is applied to entries."""
         # Arrange
-        provenance = Provenance()
-        provenance._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=0.01
-        )
-        provenance._entries["data.path"] = ProvenanceEntry(
-            file="config.yaml", line=2, value="/data"
-        )
+        builder = ProvenanceBuilder()
+        builder.add("model.lr", file="config.yaml", line=1, value=0.01)
+        builder.add("data.path", file="config.yaml", line=2, value="/data")
+        provenance = builder.build()
         ctx = FormatContext(path_filters=["/model.*"])
 
         # Act

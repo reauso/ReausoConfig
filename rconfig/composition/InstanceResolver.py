@@ -11,7 +11,8 @@ from typing import Any
 from .Walker import InstanceMarker
 from rconfig.errors import CircularInstanceError, InstanceResolutionError
 from rconfig._internal.path_utils import build_child_path, get_value_at_path
-from .Provenance import InstanceRef, Provenance
+from .Provenance import InstanceRef
+from .ProvenanceBuilder import ProvenanceBuilder
 
 
 # Special key for instance markers
@@ -27,15 +28,15 @@ class InstanceResolver:
 
     Example::
 
-        provenance = Provenance()
-        resolver = InstanceResolver(provenance)
+        builder = ProvenanceBuilder()
+        resolver = InstanceResolver(builder)
         config = resolver.resolve(walk_result.instances, walk_result.config)
     """
 
-    def __init__(self, provenance: Provenance) -> None:
+    def __init__(self, provenance: ProvenanceBuilder) -> None:
         """Initialize the resolver.
 
-        :param provenance: Provenance tracker to record value origins.
+        :param provenance: ProvenanceBuilder to record value origins.
         """
         self._provenance = provenance
         self._instance_targets: dict[str, str | None] = {}

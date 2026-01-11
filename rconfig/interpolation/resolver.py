@@ -24,7 +24,7 @@ from rconfig.interpolation.parser import (
 )
 
 if TYPE_CHECKING:
-    from rconfig.composition import Provenance
+    from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
 
 class InterpolationResolver:
@@ -40,7 +40,7 @@ class InterpolationResolver:
     - Provenance tracking for debugging
 
     :param config: The composed config dictionary to resolve.
-    :param provenance: Optional Provenance object for tracking sources.
+    :param provenance: Optional ProvenanceBuilder for tracking sources.
 
     Example::
 
@@ -56,7 +56,7 @@ class InterpolationResolver:
     def __init__(
         self,
         config: dict[str, Any],
-        provenance: Provenance | None = None,
+        provenance: "ProvenanceBuilder | None" = None,
     ) -> None:
         self._original_config = config
         self._provenance = provenance
@@ -279,7 +279,7 @@ class InterpolationResolver:
         if self._provenance is None:
             return
 
-        entry = self._provenance.get(path)
+        entry = self._provenance.get_entry(path)
         if entry:
             # Update existing entry with interpolation info and resolved value
             entry.interpolation = source
@@ -288,12 +288,12 @@ class InterpolationResolver:
 
 def resolve_interpolations(
     config: dict[str, Any],
-    provenance: Provenance | None = None,
+    provenance: "ProvenanceBuilder | None" = None,
 ) -> dict[str, Any]:
     """Convenience function to resolve all interpolations in a config.
 
     :param config: The composed config dictionary.
-    :param provenance: Optional Provenance object for tracking.
+    :param provenance: Optional ProvenanceBuilder for tracking.
     :return: Config with all interpolations resolved.
 
     Example::

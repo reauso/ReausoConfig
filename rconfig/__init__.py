@@ -48,6 +48,7 @@ from .help import (
 
 if TYPE_CHECKING:
     from .composition import Provenance
+    from .composition.ProvenanceBuilder import ProvenanceBuilder
 from .validation import ConfigValidator, ValidationResult
 from .instantiation import ConfigInstantiator, is_lazy_proxy, force_initialize
 from .composition import (
@@ -57,6 +58,8 @@ from .composition import (
     Provenance,
     ProvenanceEntry,
     InstanceRef,
+    EntrySourceType,
+    NodeSourceType,
 )
 from .override import (
     Override,
@@ -90,6 +93,7 @@ from .loaders import (
     supported_loader_extensions,
 )
 from .errors import (
+    AmbiguousRefError,
     AmbiguousTargetError,
     CircularInstanceError,
     CircularInterpolationError,
@@ -613,7 +617,7 @@ def resolver(*path: str) -> Callable[[F], F]:
     return decorator
 
 
-def get_provenance(path: Path) -> Provenance:
+def get_provenance(path: Path) -> "Provenance":
     """Compose a config file and track the origin of each value.
 
     :param path: Path to the entry-point config file.
@@ -628,19 +632,33 @@ def get_provenance(path: Path) -> Provenance:
             print(f"{path}: {entry.file}:{entry.line}")
     """
     from rconfig.interpolation import resolve_interpolations
+    from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+    from rconfig.composition.Walker import CompositionWalker
+    from rconfig.composition.InstanceResolver import InstanceResolver
 
-    composer = ConfigComposer()
-    provenance = composer.compose_with_provenance(path)
+    # Create builder for accumulating provenance during composition
+    builder = ProvenanceBuilder()
 
-    # Resolve interpolations and update provenance with interpolation sources
-    config = provenance._config
-    resolved = resolve_interpolations(config, provenance)
-    provenance.set_config(resolved)
+    # Compose the config tree, resolving _ref_ and collecting _instance_ markers
+    walker = CompositionWalker(None, builder)
+    result = walker.compose(path)
+
+    # Resolve all _instance_ references
+    instance_resolver = InstanceResolver(builder)
+    config = instance_resolver.resolve(result.instances, result.config)
+
+    # Set initial config
+    builder.set_config(config)
+
+    # Resolve interpolations and update builder with interpolation sources
+    resolved = resolve_interpolations(config, builder)
+    builder.set_config(resolved)
 
     # Resolve target class information from registered targets
-    provenance.resolve_targets(_store.known_references)
+    builder.resolve_targets(_store.known_references)
 
-    return provenance
+    # Build the final immutable provenance
+    return builder.build()
 
 
 # === Deprecation API ===
@@ -1224,6 +1242,7 @@ __all__ = [
     "get_loader",
     "supported_loader_extensions",
     # Exceptions (available at root for convenience)
+    "AmbiguousRefError",
     "AmbiguousTargetError",
     "CircularInstanceError",
     "CircularRefError",

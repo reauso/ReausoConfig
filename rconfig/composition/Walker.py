@@ -16,6 +16,7 @@ from typing import Any
 
 from .Merger import deep_merge
 from rconfig.errors import (
+    AmbiguousRefError,
     CircularRefError,
     ConfigFileError,
     InstanceResolutionError,
@@ -23,10 +24,10 @@ from rconfig.errors import (
     RefInstanceConflictError,
     RefResolutionError,
 )
-from rconfig.loaders import get_loader
+from rconfig.loaders import get_loader, supported_loader_extensions
 from rconfig.loaders.position_map import PositionMap
 from rconfig._internal.path_utils import build_child_path
-from .Provenance import Provenance
+from .ProvenanceBuilder import ProvenanceBuilder
 
 
 # Special keys
@@ -115,8 +116,8 @@ class CompositionWalker:
 
     Example::
 
-        provenance = Provenance()
-        walker = CompositionWalker(config_root, provenance)
+        builder = ProvenanceBuilder()
+        walker = CompositionWalker(config_root, builder)
         result = walker.compose(Path("app.yaml"))
         # result.config has all _ref_ resolved
         # result.instances has _instance_ markers to resolve
@@ -125,13 +126,13 @@ class CompositionWalker:
     def __init__(
         self,
         config_root: Path | None,
-        provenance: Provenance,
+        provenance: ProvenanceBuilder,
     ) -> None:
         """Initialize the walker.
 
         :param config_root: Root directory for absolute path resolution.
                            If None, derived from the walked file's parent.
-        :param provenance: Provenance tracker to record value origins.
+        :param provenance: ProvenanceBuilder to record value origins.
         """
         self._config_root = config_root
         self._provenance = provenance
@@ -493,6 +494,12 @@ class CompositionWalker:
         - `../file.yaml` - Relative to current file's directory
         - `file.yaml` - Relative to current file's directory
 
+        Extension-less resolution:
+        - If path has no extension, glob for `{stem}.*`
+        - Exactly one matching file with supported extension -> use it
+        - No files -> RefResolutionError
+        - Multiple files -> AmbiguousRefError
+
         :param ref_path: The _ref_ path string.
         :param current_dir: Directory of the current file.
         :param config_path: Current path in config (for error messages).
@@ -506,21 +513,100 @@ class CompositionWalker:
                     "cannot use absolute path without config root",
                     config_path,
                 )
-            resolved = self._config_root / ref_path[1:]
+            base_path = self._config_root / ref_path[1:]
         else:
             # Relative to current file's directory
-            resolved = current_dir / ref_path
+            base_path = current_dir / ref_path
 
-        resolved = resolved.resolve()
+        # Check if path has an extension
+        if self._has_extension(ref_path):
+            # Explicit extension - use existing behavior
+            resolved = base_path.resolve()
+            if not resolved.exists():
+                raise RefResolutionError(
+                    ref_path,
+                    "file not found",
+                    config_path,
+                )
+            return resolved
 
-        if not resolved.exists():
+        # Extension-less resolution
+        return self._resolve_extensionless_path(base_path, ref_path, config_path)
+
+    def _has_extension(self, ref_path: str) -> bool:
+        """Check if a path has a file extension.
+
+        :param ref_path: The reference path string.
+        :return: True if the filename has an extension.
+        """
+        filename = Path(ref_path).name
+        # Use Path.suffix - it's empty if no extension, handles dotfiles correctly
+        # .hidden -> suffix is "" (no extension)
+        # .env.yaml -> suffix is ".yaml" (has extension)
+        # config.yaml -> suffix is ".yaml" (has extension)
+        # models/vit -> suffix is "" (no extension)
+        return bool(Path(filename).suffix)
+
+    def _resolve_extensionless_path(
+        self,
+        base_path: Path,
+        ref_path: str,
+        config_path: str,
+    ) -> Path:
+        """Resolve an extension-less _ref_ path by globbing.
+
+        :param base_path: The base path without extension.
+        :param ref_path: Original _ref_ path (for error messages).
+        :param config_path: Current path in config (for error messages).
+        :return: Resolved absolute path.
+        :raises RefResolutionError: If no matching file found.
+        :raises AmbiguousRefError: If multiple matching files found.
+        """
+        parent = base_path.parent.resolve()
+        stem = base_path.name
+
+        # Check parent directory exists
+        if not parent.exists():
             raise RefResolutionError(
                 ref_path,
-                "file not found",
+                f"directory not found: {parent}",
                 config_path,
             )
 
-        return resolved
+        # Find all files matching stem.*
+        pattern = f"{stem}.*"
+        all_matches = list(parent.glob(pattern))
+
+        # Filter to only files with supported extensions
+        supported_exts = supported_loader_extensions()
+        matching_files = [
+            f for f in all_matches if f.is_file() and f.suffix.lower() in supported_exts
+        ]
+
+        if len(matching_files) == 0:
+            # Provide helpful error message
+            if all_matches:
+                # Files exist but have unsupported extensions
+                found_exts = [f.suffix for f in all_matches if f.is_file()]
+                raise RefResolutionError(
+                    ref_path,
+                    f"no config file found matching '{stem}.*' with supported extension. "
+                    f"Found files with unsupported extensions: {found_exts}. "
+                    f"Supported extensions: {sorted(supported_exts)}",
+                    config_path,
+                )
+            else:
+                raise RefResolutionError(
+                    ref_path,
+                    f"no config file found matching '{stem}.*' in {parent}",
+                    config_path,
+                )
+
+        if len(matching_files) > 1:
+            file_names = sorted([f.name for f in matching_files])
+            raise AmbiguousRefError(ref_path, file_names, config_path)
+
+        return matching_files[0]
 
     def _resolved_list(
         self,

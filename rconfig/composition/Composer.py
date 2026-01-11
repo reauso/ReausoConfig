@@ -11,6 +11,7 @@ from typing import Any
 from .Walker import CompositionWalker, clear_cache, set_cache_size
 from .InstanceResolver import InstanceResolver
 from .Provenance import Provenance
+from .ProvenanceBuilder import ProvenanceBuilder
 
 
 # Re-export cache functions for backwards compatibility
@@ -47,6 +48,7 @@ class ConfigComposer:
         """
         self._config_root = config_root
         self._provenance: Provenance | None = None
+        self._provenance_builder: ProvenanceBuilder | None = None
         self._instance_resolver: InstanceResolver | None = None
         self._ref_graph: dict[str, list[str]] = {}
 
@@ -62,21 +64,23 @@ class ConfigComposer:
         :raises InstanceResolutionError: If an _instance_ path cannot be resolved.
         :raises CircularInstanceError: If circular _instance_ references detected.
         """
-        # Always create provenance
-        self._provenance = Provenance()
+        # Create builder for accumulating provenance during composition
+        self._provenance_builder = ProvenanceBuilder()
 
         # Compose the config tree, resolving _ref_ and collecting _instance_ markers
-        walker = CompositionWalker(self._config_root, self._provenance)
+        walker = CompositionWalker(self._config_root, self._provenance_builder)
         result = walker.compose(path)
 
         # Store ref graph from walker
         self._ref_graph = walker.ref_graph
 
         # Resolve all _instance_ references
-        self._instance_resolver = InstanceResolver(self._provenance)
+        self._instance_resolver = InstanceResolver(self._provenance_builder)
         config = self._instance_resolver.resolve(result.instances, result.config)
 
-        self._provenance.set_config(config)
+        # Set config and build immutable provenance
+        self._provenance_builder.set_config(config)
+        self._provenance = self._provenance_builder.build()
         return config
 
     @property

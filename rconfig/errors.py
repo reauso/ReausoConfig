@@ -323,6 +323,32 @@ class RefResolutionError(CompositionError):
         super().__init__(f"Failed to resolve _ref_ '{ref_path}'{location}: {reason}")
 
 
+class AmbiguousRefError(CompositionError):
+    """Raised when multiple files match an extension-less _ref_ path.
+
+    :param ref_path: The _ref_ path that matched multiple files.
+    :param found_files: List of file names that matched.
+    :param config_path: Path in config where error occurred.
+    """
+
+    def __init__(
+        self,
+        ref_path: str,
+        found_files: list[str],
+        config_path: str = "",
+    ) -> None:
+        self.ref_path = ref_path
+        self.found_files = found_files
+        self.config_path = config_path
+
+        location = _format_location(config_path)
+        files_str = ", ".join(f"'{f}'" for f in found_files)
+        super().__init__(
+            f"Ambiguous _ref_ '{ref_path}'{location}: multiple files found ({files_str}). "
+            f"Specify extension explicitly or remove duplicates."
+        )
+
+
 class RefAtRootError(CompositionError):
     """Raised when _ref_ is used at the root level of a config file.
 

@@ -5,7 +5,22 @@ from typing import Any, Optional, Union
 from unittest import TestCase
 
 from rconfig.help import GroupedHelpIntegration
-from rconfig.composition import Provenance, ProvenanceEntry
+from rconfig.composition import Provenance
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+
+
+def _build_prov(*entries):
+    """Helper to quickly build a Provenance from entry specs.
+
+    Each entry is a tuple: (path, file, line, value, type_hint?, description?)
+    """
+    builder = ProvenanceBuilder()
+    for entry in entries:
+        path, file, line, value = entry[0], entry[1], entry[2], entry[3]
+        type_hint = entry[4] if len(entry) > 4 else None
+        description = entry[5] if len(entry) > 5 else None
+        builder.add(path, file=file, line=line, value=value, type_hint=type_hint, description=description)
+    return builder.build()
 
 
 class GroupedHelpIntegrationTests(TestCase):
@@ -13,36 +28,40 @@ class GroupedHelpIntegrationTests(TestCase):
 
     def _create_test_provenance(self) -> Provenance:
         """Create a test provenance object with grouped entries."""
-        prov = Provenance()
-        prov._entries["model.lr"] = ProvenanceEntry(
+        builder = ProvenanceBuilder()
+        builder.add(
+            "model.lr",
             file="config.yaml",
             line=1,
             value=0.001,
             type_hint=float,
             description="Learning rate",
         )
-        prov._entries["model.hidden_size"] = ProvenanceEntry(
+        builder.add(
+            "model.hidden_size",
             file="config.yaml",
             line=2,
             value=256,
             type_hint=int,
             description="Hidden layer size",
         )
-        prov._entries["data.path"] = ProvenanceEntry(
+        builder.add(
+            "data.path",
             file="config.yaml",
             line=3,
             value="/data",
             type_hint=str,
             description="Path to data",
         )
-        prov._entries["data.batch_size"] = ProvenanceEntry(
+        builder.add(
+            "data.batch_size",
             file="config.yaml",
             line=4,
             value=32,
             type_hint=int,
             description="Batch size",
         )
-        return prov
+        return builder.build()
 
     # === Output Format Tests ===
 
@@ -186,13 +205,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["debug"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=True,
-            type_hint=bool,
-        )
+        prov = _build_prov(("debug", "config.yaml", 1, True, bool))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -210,24 +223,10 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["model.optimizer.lr"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=0.001,
-            type_hint=float,
-        )
-        prov._entries["model.optimizer.weight_decay"] = ProvenanceEntry(
-            file="config.yaml",
-            line=2,
-            value=0.0001,
-            type_hint=float,
-        )
-        prov._entries["model.layers.hidden.size"] = ProvenanceEntry(
-            file="config.yaml",
-            line=3,
-            value=256,
-            type_hint=int,
+        prov = _build_prov(
+            ("model.optimizer.lr", "config.yaml", 1, 0.001, float),
+            ("model.optimizer.weight_decay", "config.yaml", 2, 0.0001, float),
+            ("model.layers.hidden.size", "config.yaml", 3, 256, int),
         )
 
         # Act
@@ -247,24 +246,10 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["debug"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=True,
-            type_hint=bool,
-        )
-        prov._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml",
-            line=2,
-            value=0.001,
-            type_hint=float,
-        )
-        prov._entries["model.hidden_size"] = ProvenanceEntry(
-            file="config.yaml",
-            line=3,
-            value=256,
-            type_hint=int,
+        prov = _build_prov(
+            ("debug", "config.yaml", 1, True, bool),
+            ("model.lr", "config.yaml", 2, 0.001, float),
+            ("model.hidden_size", "config.yaml", 3, 256, int),
         )
 
         # Act
@@ -282,13 +267,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["verbose"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=False,
-            type_hint=bool,
-        )
+        prov = _build_prov(("verbose", "config.yaml", 1, False, bool))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -305,15 +284,10 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["model.lr"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=0.001, type_hint=float,
-        )
-        prov._entries["data.path"] = ProvenanceEntry(
-            file="config.yaml", line=2, value="/data", type_hint=str,
-        )
-        prov._entries["training.epochs"] = ProvenanceEntry(
-            file="config.yaml", line=3, value=100, type_hint=int,
+        prov = _build_prov(
+            ("model.lr", "config.yaml", 1, 0.001, float),
+            ("data.path", "config.yaml", 2, "/data", str),
+            ("training.epochs", "config.yaml", 3, 100, int),
         )
 
         # Act
@@ -333,13 +307,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["config.numbers"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=[1, 2, 3],
-            type_hint=list[int],
-        )
+        prov = _build_prov(("config.numbers", "config.yaml", 1, [1, 2, 3], list[int]))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -354,13 +322,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["config.mapping"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value={"key": "value"},
-            type_hint=dict[str, Any],
-        )
+        prov = _build_prov(("config.mapping", "config.yaml", 1, {"key": "value"}, dict[str, Any]))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -376,13 +338,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["config.optional_value"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=None,
-            type_hint=Optional[float],
-        )
+        prov = _build_prov(("config.optional_value", "config.yaml", 1, None, Optional[float]))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -403,13 +359,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["config.empty_list"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=[],
-            type_hint=list,
-        )
+        prov = _build_prov(("config.empty_list", "config.yaml", 1, [], list))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -424,13 +374,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["config.empty_dict"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value={},
-            type_hint=dict,
-        )
+        prov = _build_prov(("config.empty_dict", "config.yaml", 1, {}, dict))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -445,13 +389,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["config.unicode_val"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value="日本語",
-            type_hint=str,
-        )
+        prov = _build_prov(("config.unicode_val", "config.yaml", 1, "日本語", str))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -466,13 +404,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["config.disabled"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=False,
-            type_hint=bool,
-        )
+        prov = _build_prov(("config.disabled", "config.yaml", 1, False, bool))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -490,14 +422,7 @@ class GroupedHelpIntegrationTests(TestCase):
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
         long_desc = "This is a very long description that spans many words"
-        prov = Provenance()
-        prov._entries["config.option"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=42,
-            type_hint=int,
-            description=long_desc,
-        )
+        prov = _build_prov(("config.option", "config.yaml", 1, 42, int, long_desc))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -512,14 +437,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["config.emoji"] = ProvenanceEntry(
-            file="config.yaml",
-            line=1,
-            value=True,
-            type_hint=bool,
-            description="Enable emoji support 🎉",
-        )
+        prov = _build_prov(("config.emoji", "config.yaml", 1, True, bool, "Enable emoji support 🎉"))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -536,10 +454,7 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["test.value"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=42, type_hint=int,
-        )
+        prov = _build_prov(("test.value", "config.yaml", 1, 42, int))
 
         # Act
         with self.assertRaises(SystemExit):
@@ -557,12 +472,9 @@ class GroupedHelpIntegrationTests(TestCase):
         # Arrange
         output = StringIO()
         integration = GroupedHelpIntegration(output=output)
-        prov = Provenance()
-        prov._entries["model.a"] = ProvenanceEntry(
-            file="config.yaml", line=1, value=1, type_hint=int,
-        )
-        prov._entries["model.very_long_name"] = ProvenanceEntry(
-            file="config.yaml", line=2, value=2, type_hint=int,
+        prov = _build_prov(
+            ("model.a", "config.yaml", 1, 1, int),
+            ("model.very_long_name", "config.yaml", 2, 2, int),
         )
 
         # Act
