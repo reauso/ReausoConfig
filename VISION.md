@@ -6,20 +6,21 @@ This document outlines potential features for rconfig based on analysis of state
 
 ## Table of Contents
 
-1. [Custom Resolvers](#1-custom-resolvers)
-2. [Config Export / Serialization](#2-config-export--serialization)
-3. [Built-in TOML and JSON Loaders](#3-built-in-toml-and-json-loaders)
-4. [Frozen Config Mode](#4-frozen-config-mode)
-5. [Structured Config Schemas](#5-structured-config-schemas)
-6. [Deprecation Warnings](#6-deprecation-warnings)
+1. [✅ Custom Resolvers](#1-custom-resolvers)
+2. [✅ Config Export / Serialization](#2-config-export--serialization)
+3. [✅ Built-in TOML and JSON Loaders](#3-built-in-toml-and-json-loaders)
+4. [✅ Frozen Config Mode](#4-frozen-config-mode)
+5. [✅ Structured Config Schemas](#5-structured-config-schemas)
+6. [✅ Deprecation Warnings](#6-deprecation-warnings)
 7. [:x: Defaults List / Composition Groups](#7-x-defaults-list--composition-groups)
 8. [Multi-Environment Profiles](#8-multi-environment-profiles)
 9. [Config Diffing](#9-config-diffing)
 10. [Callbacks and Hooks](#10-callbacks-and-hooks)
 11. [XDG Base Directory Support](#11-xdg-base-directory-support)
-12. [CLI `_ref_` Shorthand](#12-cli-_ref_-shorthand)
+12. [✅ CLI `_ref_` Shorthand](#12-cli-_ref_-shorthand)
 13. [Extension-less `_ref_` Resolution](#13-extension-less-_ref_-resolution)
 14. [Multirun Support](#14-multirun-support)
+15. [✅ CLI Help Integration](#15-cli-help-integration)
 
 ---
 
@@ -1528,6 +1529,197 @@ rc.to_file(source=result, output_path=Path("out.yaml"))  # MultirunResult
 
 ---
 
+## 15. ✅ CLI Help Integration
+
+**Adopted by:** ConfigArgParse, Hydra, argparse
+
+**Status:** Implemented
+
+### Description
+
+CLI help integration provides built-in `--help` / `-h` support that displays all configurable entries from the config file. The system leverages the existing provenance system to extract type hints and descriptions, displaying them in a user-friendly format. Multiple output formats are supported through a pluggable integration system.
+
+### Why It Adds Value
+
+- **Self-Documenting Configs**: Users can see all options without reading config files
+- **Type Information**: Shows expected types for each parameter
+- **Default Values**: Displays current/default values
+- **Descriptions**: Extracts documentation from structured config schemas
+- **Framework Integration**: Works with argparse for combined CLI help
+
+### Usage Example
+
+```python
+import rconfig as rc
+from pathlib import Path
+
+# Basic usage - help is auto-enabled with cli_overrides=True (default)
+config = rc.instantiate(Path("config.yaml"))
+
+# Running: python main.py --help
+# Output:
+# Configuration options for config.yaml
+# =====================================
+#
+# model.lr              float       0.001      Learning rate
+# model.hidden_size     int         256        Hidden layer size
+# data.path             str         (required) Path to data
+```
+
+### Available Integrations
+
+```python
+import rconfig as rc
+from rconfig.help import (
+    FlatHelpIntegration,
+    GroupedHelpIntegration,
+    ArgparseHelpIntegration,
+)
+
+# Flat display (default) - paths as flat table
+rc.set_help_integration(FlatHelpIntegration())
+
+# Grouped display - entries grouped by top-level key
+rc.set_help_integration(GroupedHelpIntegration())
+# Output:
+# Configuration options for config.yaml
+# =====================================
+#
+# model:
+#   lr                  float       0.001      Learning rate
+#   hidden_size         int         256        Hidden layer size
+# data:
+#   path                str         (required) Path to data
+
+# Argparse integration - adds config entries to argparse help
+import argparse
+parser = argparse.ArgumentParser(description="Training script")
+parser.add_argument("--verbose", "-v", action="store_true")
+rc.set_help_integration(ArgparseHelpIntegration(parser))
+# Running: python main.py --help shows argparse help WITH config entries
+```
+
+### Custom Integration with Decorator
+
+```python
+import rconfig as rc
+import sys
+
+@rc.help_integration
+def my_integration(provenance, config_path):
+    """Custom help integration."""
+    print(f"# Config: {config_path}\n")
+    for path, entry in provenance.items():
+        type_name = getattr(entry.type_hint, "__name__", "Any")
+        desc = entry.description or "No description"
+        print(f"- {path} ({type_name}): {desc}")
+    sys.exit(0)
+
+# Now --help uses custom format
+config = rc.instantiate(Path("config.yaml"))
+```
+
+### Custom Integration with Class
+
+```python
+import rconfig as rc
+from rconfig.help import HelpIntegration
+import json
+import sys
+
+class JsonHelpIntegration(HelpIntegration):
+    """Output config entries as JSON."""
+
+    def integrate(self, provenance, config_path):
+        data = [
+            {
+                "path": path,
+                "type": str(entry.type_hint),
+                "value": entry.value,
+                "description": entry.description,
+            }
+            for path, entry in provenance.items()
+        ]
+        print(json.dumps(data, indent=2))
+        sys.exit(0)
+
+rc.set_help_integration(JsonHelpIntegration())
+```
+
+### Integration with Provenance Formatting
+
+```python
+import rconfig as rc
+
+# Get provenance and format with HELP preset
+prov = rc.get_provenance(Path("config.yaml"))
+print(prov.format().help())
+
+# Or use full formatting options
+print(prov.format()
+    .show_types()
+    .show_descriptions()
+    .hide_files()
+    .hide_lines()
+)
+```
+
+### Type and Description Extraction
+
+Types and descriptions are extracted from structured config schemas:
+
+```python
+from pydantic import BaseModel, Field
+
+class ModelConfig(BaseModel):
+    lr: float = Field(0.001, description="Learning rate")
+    hidden_size: int = Field(256, description="Hidden layer size")
+
+# Descriptions appear in --help output automatically
+```
+
+### Thread Safety
+
+The help integration storage is thread-safe:
+
+```python
+import rconfig as rc
+import threading
+
+# Safe to call from multiple threads
+def worker():
+    integration = rc.current_help_integration()
+    # ... use integration
+
+threads = [threading.Thread(target=worker) for _ in range(10)]
+for t in threads:
+    t.start()
+```
+
+### API Reference
+
+```python
+# Set integration (raises ValueError if None)
+rc.set_help_integration(integration: HelpIntegration) -> None
+
+# Get current integration (never None, defaults to FlatHelpIntegration)
+rc.current_help_integration() -> HelpIntegration
+
+# Decorator to register function as integration
+@rc.help_integration
+def my_func(provenance, config_path): ...
+```
+
+### Behavior Notes
+
+- Help is triggered when `--help` or `-h` is in `sys.argv` and `cli_overrides=True`
+- Built-in integrations (`FlatHelpIntegration`, `GroupedHelpIntegration`) call `sys.exit(0)`
+- `ArgparseHelpIntegration` does NOT exit - it lets argparse handle `--help`
+- Custom integrations are responsible for calling `sys.exit()` if needed
+- The `consume_help_flag` property controls whether `--help`/`-h` is removed from `sys.argv`
+
+---
+
 ## Summary
 
 This vision document outlines 14 features that would enhance rconfig based on proven patterns from the configuration library ecosystem. The features are prioritized by community adoption and general-purpose utility:
@@ -1554,5 +1746,6 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 12. ✅ CLI `_ref_` Shorthand
 13. Extension-less `_ref_` Resolution
 14. Multirun Support
+15. ✅ CLI Help Integration
 
 Each feature includes detailed usage examples showing how users would interact with the functionality, highlighting the key benefits and use cases.

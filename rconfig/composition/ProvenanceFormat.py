@@ -20,13 +20,15 @@ class ProvenancePreset(Enum):
     """Preset configurations for provenance formatting.
 
     :cvar MINIMAL: Show only paths, files, and lines.
-    :cvar COMPACT: Show paths, values, files, lines, and source type.
-    :cvar FULL: Show everything including chains and overrides.
+    :cvar COMPACT: Show paths, values, files, lines, source type, and types.
+    :cvar FULL: Show everything including chains, overrides, types, and descriptions.
+    :cvar HELP: Show paths, types, values, and descriptions for CLI help.
     """
 
     MINIMAL = "minimal"
     COMPACT = "compact"
     FULL = "full"
+    HELP = "help"
 
 
 class ProvenanceFormat:
@@ -87,6 +89,8 @@ class ProvenanceFormat:
             "show_overrides": None,
             "show_targets": None,
             "show_deprecations": None,
+            "show_types": None,
+            "show_descriptions": None,
             "deprecations_only": None,
         }
 
@@ -236,6 +240,38 @@ class ProvenanceFormat:
         self._overrides["show_deprecations"] = False
         return self
 
+    def show_types(self) -> Self:
+        """Show type hint information in the output.
+
+        :return: Self for method chaining.
+        """
+        self._overrides["show_types"] = True
+        return self
+
+    def hide_types(self) -> Self:
+        """Hide type hint information from the output.
+
+        :return: Self for method chaining.
+        """
+        self._overrides["show_types"] = False
+        return self
+
+    def show_descriptions(self) -> Self:
+        """Show description information in the output.
+
+        :return: Self for method chaining.
+        """
+        self._overrides["show_descriptions"] = True
+        return self
+
+    def hide_descriptions(self) -> Self:
+        """Hide description information from the output.
+
+        :return: Self for method chaining.
+        """
+        self._overrides["show_descriptions"] = False
+        return self
+
     # --- Presets ---
 
     def minimal(self) -> Self:
@@ -254,7 +290,7 @@ class ProvenanceFormat:
         return self
 
     def compact(self) -> Self:
-        """Apply compact preset: paths, values, files, lines, source type, targets.
+        """Apply compact preset: paths, values, files, lines, source type, targets, types.
 
         :return: Self for method chaining.
         """
@@ -266,10 +302,12 @@ class ProvenanceFormat:
         self._overrides["show_chain"] = False
         self._overrides["show_overrides"] = False
         self._overrides["show_targets"] = True
+        self._overrides["show_types"] = True
+        self._overrides["show_descriptions"] = False
         return self
 
     def full(self) -> Self:
-        """Apply full preset: show everything.
+        """Apply full preset: show everything including types and descriptions.
 
         :return: Self for method chaining.
         """
@@ -281,6 +319,8 @@ class ProvenanceFormat:
         self._overrides["show_chain"] = True
         self._overrides["show_overrides"] = True
         self._overrides["show_targets"] = True
+        self._overrides["show_types"] = True
+        self._overrides["show_descriptions"] = True
         return self
 
     def preset(self, preset: ProvenancePreset) -> Self:
@@ -295,8 +335,38 @@ class ProvenanceFormat:
             return self.compact()
         elif preset == ProvenancePreset.FULL:
             return self.full()
+        elif preset == ProvenancePreset.HELP:
+            return self.help()
         else:
             return self
+
+    def help(self) -> Self:
+        """Apply help preset: paths, types, values, and descriptions for CLI help.
+
+        Shows: paths, types, values, descriptions
+        Hides: files, lines, source_type, chain, overrides, targets, deprecations
+
+        :return: Self for method chaining.
+
+        Example::
+
+            # Format provenance for CLI help display
+            print(prov.format().help())
+            # model.lr              float       0.001      Learning rate
+            # model.hidden_size     int         256        Hidden layer size
+        """
+        self._overrides["show_paths"] = True
+        self._overrides["show_types"] = True
+        self._overrides["show_values"] = True
+        self._overrides["show_descriptions"] = True
+        self._overrides["show_files"] = False
+        self._overrides["show_lines"] = False
+        self._overrides["show_source_type"] = False
+        self._overrides["show_chain"] = False
+        self._overrides["show_overrides"] = False
+        self._overrides["show_targets"] = False
+        self._overrides["show_deprecations"] = False
+        return self
 
     def deprecations(self) -> Self:
         """Apply deprecations preset: show only deprecated keys.
@@ -396,6 +466,8 @@ class ProvenanceFormat:
             show_overrides=self._ctx.show_overrides,
             show_targets=self._ctx.show_targets,
             show_deprecations=self._ctx.show_deprecations,
+            show_types=self._ctx.show_types,
+            show_descriptions=self._ctx.show_descriptions,
             deprecations_only=self._ctx.deprecations_only,
             indent_size=self._ctx.indent_size,
             path_filters=list(self._ctx.path_filters),

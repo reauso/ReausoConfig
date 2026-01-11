@@ -31,12 +31,23 @@ Example::
 """
 
 import sys
+import threading
 from functools import singledispatch
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Callable, TypeVar, overload
 
 from .store import ConfigStore, ConfigReference
+from .help import (
+    HelpIntegration,
+    FunctionHelpIntegration,
+    FlatHelpIntegration,
+    GroupedHelpIntegration,
+    ArgparseHelpIntegration,
+)
+
+if TYPE_CHECKING:
+    from .composition import Provenance
 from .validation import ConfigValidator, ValidationResult
 from .instantiation import ConfigInstantiator, is_lazy_proxy, force_initialize
 from .composition import (
@@ -129,6 +140,79 @@ _resolver_registry = ResolverRegistry()
 _validator = ConfigValidator(_store)
 _instantiator = ConfigInstantiator(_store, _validator)
 
+# Help integration storage (thread-safe)
+_help_integration: HelpIntegration = FlatHelpIntegration()
+_help_integration_lock = threading.RLock()
+
+
+def set_help_integration(integration: HelpIntegration) -> None:
+    """Set a custom help integration.
+
+    Thread-safe: protected by internal lock.
+
+    :param integration: A HelpIntegration instance. Cannot be None.
+    :raises ValueError: If integration is None.
+
+    Example::
+
+        from rconfig.help import GroupedHelpIntegration
+
+        rc.set_help_integration(GroupedHelpIntegration())
+
+        # Or a custom integration
+        class CustomIntegration(HelpIntegration):
+            def integrate(self, provenance, config_path):
+                # Custom integration logic
+                ...
+
+        rc.set_help_integration(CustomIntegration())
+    """
+    if integration is None:
+        raise ValueError("integration cannot be None")
+
+    global _help_integration
+    with _help_integration_lock:
+        _help_integration = integration
+
+
+def current_help_integration() -> HelpIntegration:
+    """Return the current help integration.
+
+    Thread-safe: protected by internal lock.
+    Returns the default FlatHelpIntegration if none was explicitly set.
+
+    :return: The current HelpIntegration (never None).
+
+    Example::
+
+        integration = rc.current_help_integration()
+        print(f"Using: {integration.__class__.__name__}")
+    """
+    with _help_integration_lock:
+        return _help_integration
+
+
+def help_integration(func: Callable[["Provenance", str], None]) -> Callable[["Provenance", str], None]:
+    """Decorator to register a function as the help integration.
+
+    The decorated function is responsible for all behavior including
+    calling sys.exit() if needed. The framework only calls the function
+    when --help/-h is detected.
+
+    :param func: Integration function with signature (provenance, config_path) -> None.
+    :return: The same function (for use as decorator).
+
+    Example::
+
+        @rc.help_integration
+        def my_integration(provenance, config_path):
+            for path, entry in provenance.items():
+                print(f"{path}: {entry.type_hint}")
+            sys.exit(0)
+    """
+    set_help_integration(FunctionHelpIntegration(func))
+    return func
+
 
 def register(name: str, target: type) -> None:
     """Register a target class under a unique name.
@@ -188,6 +272,20 @@ def validate(
     """
     from rconfig.validation.required import find_required_markers
     from rconfig.errors import RequiredValueError
+
+    # Handle --help/-h when cli_overrides is enabled
+    if cli_overrides and ("--help" in sys.argv or "-h" in sys.argv):
+        integration = current_help_integration()
+
+        # Consume --help/-h from sys.argv if integration requests it
+        if integration.consume_help_flag:
+            sys.argv = [arg for arg in sys.argv if arg not in ("--help", "-h")]
+
+        # Get provenance with type hints and descriptions
+        provenance = get_provenance(path)
+
+        # Call the integration (it's responsible for sys.exit() if needed)
+        integration.integrate(provenance, str(path))
 
     composer = ConfigComposer()
     config = composer.compose(path)
@@ -335,7 +433,24 @@ def instantiate(
 
         # With lazy instantiation (all nested configs are lazy)
         model = rc.instantiate(Path("config.yaml"), lazy=True)
+
+        # CLI help (--help or -h) shows config entries and exits
+        # python main.py --help
     """
+    # Handle --help/-h when cli_overrides is enabled
+    if cli_overrides and ("--help" in sys.argv or "-h" in sys.argv):
+        integration = current_help_integration()
+
+        # Consume --help/-h from sys.argv if integration requests it
+        if integration.consume_help_flag:
+            sys.argv = [arg for arg in sys.argv if arg not in ("--help", "-h")]
+
+        # Get provenance with type hints and descriptions
+        provenance = get_provenance(path)
+
+        # Call the integration (it's responsible for sys.exit() if needed)
+        integration.integrate(provenance, str(path))
+
     # Compose config (resolve _ref_ and _instance_)
     composer = ConfigComposer()
     config = composer.compose(path)
@@ -681,6 +796,20 @@ def _resolved_config(
     """
     from rconfig.interpolation import resolve_interpolations
     from rconfig.validation.required import find_required_markers
+
+    # Handle --help/-h when cli_overrides is enabled
+    if cli_overrides and ("--help" in sys.argv or "-h" in sys.argv):
+        integration = current_help_integration()
+
+        # Consume --help/-h from sys.argv if integration requests it
+        if integration.consume_help_flag:
+            sys.argv = [arg for arg in sys.argv if arg not in ("--help", "-h")]
+
+        # Get provenance with type hints and descriptions
+        provenance = get_provenance(path)
+
+        # Call the integration (it's responsible for sys.exit() if needed)
+        integration.integrate(provenance, str(path))
 
     composer = ConfigComposer()
     config = composer.compose(path)
@@ -1043,6 +1172,14 @@ __all__ = [
     # Lazy instantiation utilities
     "is_lazy_proxy",
     "force_initialize",
+    # Help integration API
+    "set_help_integration",
+    "current_help_integration",
+    "help_integration",
+    "HelpIntegration",
+    "FlatHelpIntegration",
+    "GroupedHelpIntegration",
+    "ArgparseHelpIntegration",
     # Deprecation API
     "deprecate",
     "undeprecate",
