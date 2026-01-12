@@ -10,6 +10,7 @@ from rconfig.composition import clear_cache
 
 from rconfig_unittests.fixtures import MockFileSystem, mock_filesystem
 from rconfig import (
+    AmbiguousTargetError,
     ConfigError,
     ConfigFileError,
     ConfigInstantiator,
@@ -733,3 +734,1093 @@ service:
             self.assertIsInstance(result, Service)
             self.assertIsInstance(result.cache, Cache)
             self.assertEqual(result.cache.size, 100)
+
+
+class ValidateWithInnerPathTests(TestCase):
+    """Tests for rc.validate() with inner_path parameter."""
+
+    def setUp(self):
+        rc._store.clear()
+        clear_cache()
+
+    def test_validate__InnerPathToValidSection__ReturnsValidResult(self):
+        """Test that inner_path validates only the specified section."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        @dataclass
+        class Trainer:
+            model: Model
+            epochs: int
+
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+model:
+  _target_: model
+  size: 256
+epochs: 10
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act
+            result = rc.validate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertTrue(result.valid)
+            self.assertEqual(len(result.errors), 0)
+
+    def test_validate__InnerPathWithOverrides__AppliesOverridesBeforeExtraction(self):
+        """Test that overrides are applied before inner_path extraction."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        @dataclass
+        class Trainer:
+            model: Model
+
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+model:
+  _target_: model
+  size: 256
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - override model.size, then validate only model section
+            result = rc.validate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                overrides={"model.size": 512},
+                cli_overrides=False,
+            )
+
+            # Assert - validation should pass (no type errors)
+            self.assertTrue(result.valid)
+
+    def test_validate__InnerPathToInvalidSection__ReturnsInvalidResult(self):
+        """Test validation errors for invalid nested config."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int  # Expects int
+
+        @dataclass
+        class Trainer:
+            model: Model
+
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+model:
+  _target_: model
+  size: "not_an_int"
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act
+            result = rc.validate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                cli_overrides=False,
+            )
+
+            # Assert - should have type error
+            self.assertFalse(result.valid)
+            self.assertGreater(len(result.errors), 0)
+
+    def test_validate__InnerPathNotFound__RaisesInvalidInnerPathError(self):
+        """Test that non-existent inner_path raises error."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", "_target_: model\nsize: 256\n")
+
+        with mock_filesystem(fs):
+            # Act & Assert
+            with self.assertRaises(rc.InvalidInnerPathError):
+                rc.validate(
+                    Path("/configs/model.yaml"),
+                    inner_path="nonexistent",
+                    cli_overrides=False,
+                )
+
+    def test_validate__InnerPathToNonDict__RaisesInvalidInnerPathError(self):
+        """Test that inner_path pointing to scalar raises error."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", "_target_: model\nsize: 256\n")
+
+        with mock_filesystem(fs):
+            # Act & Assert
+            with self.assertRaises(rc.InvalidInnerPathError):
+                rc.validate(
+                    Path("/configs/model.yaml"),
+                    inner_path="size",
+                    cli_overrides=False,
+                )
+
+    def test_validate__InnerPathWithRequiredInSection__ChecksRequiredInSection(self):
+        """Test that _required_ markers in section are validated."""
+        # Arrange
+        @dataclass
+        class Model:
+            api_key: str
+
+        @dataclass
+        class Trainer:
+            model: Model
+
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+model:
+  _target_: model
+  api_key: _required_
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - validate model section with unsatisfied _required_
+            result = rc.validate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                cli_overrides=False,
+            )
+
+            # Assert - should fail due to _required_
+            self.assertFalse(result.valid)
+            self.assertGreater(len(result.errors), 0)
+
+    def test_validate__InnerPathWithRequiredOutsideSection__IgnoresOutsideRequired(self):
+        """Test that _required_ markers outside inner_path are ignored."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        @dataclass
+        class Trainer:
+            model: Model
+            api_key: str
+
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+model:
+  _target_: model
+  size: 256
+api_key: _required_
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - validate only model section, api_key is outside
+            result = rc.validate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                cli_overrides=False,
+            )
+
+            # Assert - should pass because _required_ is outside section
+            self.assertTrue(result.valid)
+
+
+class GetProvenanceWithOverridesTests(TestCase):
+    """Tests for rc.get_provenance() with overrides and cli_overrides parameters."""
+
+    def setUp(self):
+        rc._store.clear()
+        clear_cache()
+
+    def test_get_provenance__WithOverrides__ReflectsOverriddenValues(self):
+        """Test that provenance shows overridden values."""
+        # Arrange
+        @dataclass
+        class Model:
+            lr: float
+
+        rc.register("model", Model)
+
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", "_target_: model\nlr: 0.1\n")
+
+        with mock_filesystem(fs):
+            # Act
+            prov = rc.get_provenance(
+                Path("/configs/model.yaml"),
+                overrides={"lr": 0.01},
+                cli_overrides=False,
+            )
+
+            # Assert - provenance should show overridden value
+            entry = prov.get("lr")
+            self.assertIsNotNone(entry)
+            self.assertEqual(entry.value, 0.01)
+
+    def test_get_provenance__CliOverridesFalse__IgnoresCliArgs(self):
+        """Test that CLI overrides are ignored when disabled."""
+        import sys
+        from unittest.mock import patch as mock_patch
+
+        # Arrange
+        @dataclass
+        class Model:
+            lr: float
+
+        rc.register("model", Model)
+
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", "_target_: model\nlr: 0.1\n")
+
+        with mock_filesystem(fs):
+            # Mock sys.argv with overrides
+            with mock_patch.object(sys, "argv", ["script.py", "lr=999"]):
+                # Act
+                prov = rc.get_provenance(
+                    Path("/configs/model.yaml"),
+                    cli_overrides=False,
+                )
+
+                # Assert - original value should be used
+                entry = prov.get("lr")
+                self.assertIsNotNone(entry)
+                self.assertEqual(entry.value, 0.1)
+
+    def test_get_provenance__WithInnerPathAndOverrides__CombinesBoth(self):
+        """Test using both inner_path and overrides together."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        @dataclass
+        class Trainer:
+            model: Model
+
+        rc.register("model", Model)
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+_target_: trainer
+model:
+  _target_: model
+  size: 256
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - use both inner_path and overrides
+            # inner_path controls lazy loading, but provenance still has full paths
+            prov = rc.get_provenance(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                overrides={"model.size": 512},
+                cli_overrides=False,
+            )
+
+            # Assert - provenance should show overridden value
+            entry = prov.get("model.size")
+            self.assertIsNotNone(entry)
+            self.assertEqual(entry.value, 512)
+
+    def test_get_provenance__InvalidOverridePath__RaisesInvalidOverridePathError(self):
+        """Test that invalid override paths raise appropriate error."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/model.yaml", "_target_: model\nsize: 256\n")
+
+        with mock_filesystem(fs):
+            # Act & Assert
+            with self.assertRaises(InvalidOverridePathError):
+                rc.get_provenance(
+                    Path("/configs/model.yaml"),
+                    overrides={"nonexistent": 123},
+                    cli_overrides=False,
+                )
+
+
+class PartialInstantiationWithoutRootTargetTests(TestCase):
+    """Tests for partial instantiation when root _target_ is missing."""
+
+    def setUp(self):
+        rc._store.clear()
+        clear_cache()
+
+    def test_instantiate__InnerPathNoRootTarget__InnerHasTarget__Works(self):
+        """inner_path to section with _target_ works without root _target_."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        # Config without root _target_
+        yaml_content = """
+model:
+  _target_: model
+  size: 256
+data:
+  path: /data
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - instantiate only the model section
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"), inner_path="model", cli_overrides=False
+            )
+
+            # Assert
+            self.assertIsInstance(result, Model)
+            self.assertEqual(result.size, 256)
+
+    def test_instantiate__InnerPathNoRootTarget__NestedSectionHasTarget__Works(self):
+        """inner_path to nested section with explicit _target_ works."""
+        # Arrange
+        @dataclass
+        class Database:
+            port: int
+
+        @dataclass
+        class Model:
+            database: Database
+
+        rc.register("model", Model)
+        rc.register("database", Database)
+
+        # Config without root _target_, model has _target_, database has _target_
+        yaml_content = """
+model:
+  _target_: model
+  database:
+    _target_: database
+    port: 5432
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - instantiate database section
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model.database",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertIsInstance(result, Database)
+            self.assertEqual(result.port, 5432)
+
+    def test_instantiate__InnerPathNoRootTarget__InnerNoTarget__RaisesAmbiguousTargetError(
+        self,
+    ):
+        """inner_path to section without _target_ and no parent raises AmbiguousTargetError."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        # Config without root _target_, data section also has no _target_
+        yaml_content = """
+model:
+  _target_: model
+  size: 256
+data:
+  path: /data
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act & Assert - data has no _target_ and no parent to infer from
+            with self.assertRaises(rc.AmbiguousTargetError):
+                rc.instantiate(
+                    Path("/configs/trainer.yaml"),
+                    inner_path="data",
+                    cli_overrides=False,
+                )
+
+    def test_instantiate__InnerPathNoRootTarget__EmptySection__RaisesAmbiguousTargetError(
+        self,
+    ):
+        """inner_path to empty dict raises AmbiguousTargetError."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        # Config with empty section
+        yaml_content = """
+model:
+  _target_: model
+  size: 256
+empty_section: {}
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act & Assert
+            with self.assertRaises(rc.AmbiguousTargetError):
+                rc.instantiate(
+                    Path("/configs/trainer.yaml"),
+                    inner_path="empty_section",
+                    cli_overrides=False,
+                )
+
+    def test_instantiate__NoInnerPathNoRootTarget__RaisesAmbiguousTargetError(self):
+        """Without inner_path, missing root _target_ raises AmbiguousTargetError."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        # Config without root _target_
+        yaml_content = """
+model:
+  _target_: model
+  size: 256
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act & Assert - no inner_path means root needs _target_
+            with self.assertRaises(rc.AmbiguousTargetError):
+                rc.instantiate(
+                    Path("/configs/trainer.yaml"),
+                    cli_overrides=False,
+                )
+
+    def test_validate__InnerPathNoRootTarget__InnerHasTarget__Works(self):
+        """validate() with inner_path to section with _target_ works."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        # Config without root _target_
+        yaml_content = """
+model:
+  _target_: model
+  size: 256
+data:
+  path: /data
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act
+            result = rc.validate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertTrue(result.valid)
+
+    def test_validate__InnerPathNoRootTarget__NestedSectionHasTarget__Works(self):
+        """validate() with inner_path to nested section with _target_ works."""
+        # Arrange
+        @dataclass
+        class Database:
+            port: int
+
+        @dataclass
+        class Model:
+            database: Database
+
+        rc.register("model", Model)
+        rc.register("database", Database)
+
+        yaml_content = """
+model:
+  _target_: model
+  database:
+    _target_: database
+    port: 5432
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act
+            result = rc.validate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model.database",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertTrue(result.valid)
+
+    def test_validate__InnerPathNoRootTarget__InnerNoTarget__ReturnsInvalid(self):
+        """validate() returns invalid for section without _target_ and no parent."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        yaml_content = """
+model:
+  _target_: model
+  size: 256
+data:
+  path: /data
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act
+            result = rc.validate(
+                Path("/configs/trainer.yaml"),
+                inner_path="data",
+                cli_overrides=False,
+            )
+
+            # Assert - validation should fail (no _target_ to validate)
+            self.assertFalse(result.valid)
+
+    def test_instantiate__InnerPathNoRootTarget__WithInterpolation__Works(self):
+        """Config without root _target_ with interpolations resolved from full config."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+            actual_size: int
+
+        rc.register("model", Model)
+
+        yaml_content = """
+defaults:
+  hidden_size: 512
+model:
+  _target_: model
+  size: 256
+  actual_size: ${/defaults.hidden_size}
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                cli_overrides=False,
+            )
+
+            # Assert - interpolation should resolve from full config
+            self.assertIsInstance(result, Model)
+            self.assertEqual(result.size, 256)
+            self.assertEqual(result.actual_size, 512)
+
+    def test_instantiate__InnerPathNoRootTarget__WithOverrides__Works(self):
+        """Config without root _target_ with overrides applied to inner section."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        yaml_content = """
+model:
+  _target_: model
+  size: 256
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                overrides={"model.size": 512},
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertEqual(result.size, 512)
+
+    def test_getProvenance__InnerPathNoRootTarget__Works(self):
+        """get_provenance() with inner_path works without root _target_."""
+        # Arrange
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        yaml_content = """
+model:
+  _target_: model
+  size: 256
+data:
+  path: /data
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - get provenance for model section only
+            prov = rc.get_provenance(
+                Path("/configs/trainer.yaml"),
+                inner_path="model",
+                cli_overrides=False,
+            )
+
+            # Assert - should have provenance for model section
+            self.assertIsNotNone(prov.get("model.size"))
+            entry = prov.get("model.size")
+            self.assertEqual(entry.value, 256)
+
+    def test_getProvenance__NoInnerPathNoRootTarget__Works(self):
+        """get_provenance() without inner_path works even without root _target_."""
+        # Arrange - provenance doesn't require instantiation, just composition
+        @dataclass
+        class Model:
+            size: int
+
+        rc.register("model", Model)
+
+        yaml_content = """
+model:
+  _target_: model
+  size: 256
+data:
+  path: /data
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - get provenance for full config (no instantiation)
+            prov = rc.get_provenance(
+                Path("/configs/trainer.yaml"),
+                cli_overrides=False,
+            )
+
+            # Assert - should have provenance for all values
+            self.assertIsNotNone(prov.get("model.size"))
+            self.assertIsNotNone(prov.get("data.path"))
+
+
+class TypeInferenceFromParentApiTests(TestCase):
+    """Tests for type inference from parent's type hints at API level."""
+
+    def setUp(self):
+        rc._store.clear()
+        clear_cache()
+
+    def test_instantiate__InnerPathNoTarget__TypeInferredFromParent__Works(self):
+        """inner_path to section without _target_ works when type inferred from parent."""
+        # Arrange
+        @dataclass
+        class Database:
+            port: int
+
+        @dataclass
+        class Model:
+            database: Database  # Concrete type hint
+
+        rc.register("model", Model)
+        rc.register("database", Database)
+
+        # Config without _target_ on database
+        yaml_content = """
+model:
+  _target_: model
+  database:
+    port: 5432
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - instantiate database section (type inferred from Model.database)
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model.database",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertIsInstance(result, Database)
+            self.assertEqual(result.port, 5432)
+
+    def test_validate__InnerPathNoTarget__TypeInferredFromParent__Works(self):
+        """validate() with inner_path works when type inferred from parent."""
+        # Arrange
+        @dataclass
+        class Database:
+            port: int
+
+        @dataclass
+        class Model:
+            database: Database
+
+        rc.register("model", Model)
+        rc.register("database", Database)
+
+        yaml_content = """
+model:
+  _target_: model
+  database:
+    port: 5432
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act
+            result = rc.validate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model.database",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertTrue(result.valid)
+
+    def test_instantiate__InnerPathNoTarget__DeeplyNested__Works(self):
+        """Type inference works for deeply nested paths."""
+        # Arrange
+        @dataclass
+        class Cache:
+            size: int
+
+        @dataclass
+        class Database:
+            cache: Cache
+
+        @dataclass
+        class Model:
+            database: Database
+
+        rc.register("model", Model)
+        rc.register("database", Database)
+        rc.register("cache", Cache)
+
+        yaml_content = """
+model:
+  _target_: model
+  database:
+    _target_: database
+    cache:
+      size: 100
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - type inference from Database.cache
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model.database.cache",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertIsInstance(result, Cache)
+            self.assertEqual(result.size, 100)
+
+    def test_instantiate__InnerPathNoTarget__ParentNoTarget__RaisesError(self):
+        """Cannot infer type if parent has no _target_."""
+        # Arrange
+        @dataclass
+        class Database:
+            port: int
+
+        rc.register("database", Database)
+
+        yaml_content = """
+model:
+  database:
+    port: 5432
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act & Assert - model has no _target_, can't infer database type
+            with self.assertRaises(rc.AmbiguousTargetError):
+                rc.instantiate(
+                    Path("/configs/trainer.yaml"),
+                    inner_path="model.database",
+                    cli_overrides=False,
+                )
+
+    def test_instantiate__InnerPathNoTarget__AutoRegisters__Works(self):
+        """Type inference auto-registers the class if not registered."""
+        # Arrange
+        @dataclass
+        class Database:
+            port: int
+
+        @dataclass
+        class Model:
+            database: Database
+
+        rc.register("model", Model)
+        # Note: Database is NOT registered
+
+        yaml_content = """
+model:
+  _target_: model
+  database:
+    port: 5432
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - should auto-register Database
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model.database",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertIsInstance(result, Database)
+            self.assertEqual(result.port, 5432)
+
+    def test_instantiate__ListIndex__TypeInferredFromListHint__Works(self):
+        """inner_path to list element infers type from list[X] hint."""
+        # Arrange
+        @dataclass
+        class Callback:
+            name: str
+
+        @dataclass
+        class Trainer:
+            callbacks: list[Callback]
+
+        rc.register("trainer", Trainer)
+        rc.register("callback", Callback)
+
+        yaml_content = """
+trainer:
+  _target_: trainer
+  callbacks:
+    - name: first
+    - name: second
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - type inference from list[Callback]
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="trainer.callbacks[0]",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertIsInstance(result, Callback)
+            self.assertEqual(result.name, "first")
+
+    def test_instantiate__ListIndexSecondElement__TypeInferred__Works(self):
+        """inner_path to second list element also infers type correctly."""
+        # Arrange
+        @dataclass
+        class Callback:
+            name: str
+
+        @dataclass
+        class Trainer:
+            callbacks: list[Callback]
+
+        rc.register("trainer", Trainer)
+        rc.register("callback", Callback)
+
+        yaml_content = """
+trainer:
+  _target_: trainer
+  callbacks:
+    - name: first
+    - name: second
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - type inference for callbacks[1]
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="trainer.callbacks[1]",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertIsInstance(result, Callback)
+            self.assertEqual(result.name, "second")
+
+    def test_instantiate__ListIndexDeeplyNested__TypeInferred__Works(self):
+        """inner_path to deeply nested list element infers type correctly."""
+        # Arrange
+        @dataclass
+        class Layer:
+            size: int
+
+        @dataclass
+        class Encoder:
+            layers: list[Layer]
+
+        @dataclass
+        class Model:
+            encoder: Encoder
+
+        rc.register("model", Model)
+        rc.register("encoder", Encoder)
+        rc.register("layer", Layer)
+
+        yaml_content = """
+model:
+  _target_: model
+  encoder:
+    _target_: encoder
+    layers:
+      - size: 256
+      - size: 512
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - deeply nested list element
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="model.encoder.layers[0]",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertIsInstance(result, Layer)
+            self.assertEqual(result.size, 256)
+
+    def test_instantiate__ListIndexAutoRegisters__Works(self):
+        """List element type inference auto-registers the class if not registered."""
+        # Arrange
+        @dataclass
+        class Callback:
+            name: str
+
+        @dataclass
+        class Trainer:
+            callbacks: list[Callback]
+
+        rc.register("trainer", Trainer)
+        # Note: Callback is NOT registered
+
+        yaml_content = """
+trainer:
+  _target_: trainer
+  callbacks:
+    - name: first
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act - should auto-register Callback
+            result = rc.instantiate(
+                Path("/configs/trainer.yaml"),
+                inner_path="trainer.callbacks[0]",
+                cli_overrides=False,
+            )
+
+            # Assert
+            self.assertIsInstance(result, Callback)
+            self.assertEqual(result.name, "first")
+
+    def test_instantiate__ListIndexUnparameterizedList__RaisesError(self):
+        """Cannot infer type from unparameterized list."""
+        # Arrange
+        @dataclass
+        class Trainer:
+            callbacks: list  # No type parameter
+
+        rc.register("trainer", Trainer)
+
+        yaml_content = """
+trainer:
+  _target_: trainer
+  callbacks:
+    - name: first
+"""
+        fs = MockFileSystem("/configs")
+        fs.add_file("/configs/trainer.yaml", yaml_content)
+
+        with mock_filesystem(fs):
+            # Act & Assert - unparameterized list, can't infer type
+            with self.assertRaises(rc.AmbiguousTargetError):
+                rc.instantiate(
+                    Path("/configs/trainer.yaml"),
+                    inner_path="trainer.callbacks[0]",
+                    cli_overrides=False,
+                )

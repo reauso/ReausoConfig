@@ -15,7 +15,7 @@ from rconfig._internal.singleton import Singleton
 from rconfig.store import ConfigStore
 from rconfig.loaders import register_loader, unregister_loader, get_loader, PositionMap
 from rconfig.loaders.base import ConfigFileLoader
-from rconfig.composition.Walker import set_cache_size, clear_cache
+from rconfig.composition.IncrementalComposer import set_cache_size, clear_cache
 from rconfig.interpolation.parser import InterpolationParser
 
 

@@ -631,12 +631,12 @@ class ConfigComposerInternalTests(TestCase):
 
     def test_resolve_file_path__AbsolutePathWithoutConfigRoot__RaisesRefResolutionError(self):
         # Arrange
-        from rconfig.composition import CompositionWalker
-        from rconfig.composition import Provenance
+        from rconfig.composition import IncrementalComposer
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
         # Create walker with config_root=None
-        provenance = Provenance()
-        walker = CompositionWalker(config_root=None, provenance=provenance)
+        provenance = ProvenanceBuilder()
+        walker = IncrementalComposer(config_root=None, provenance=provenance)
 
         # Act & Assert
         with self.assertRaises(RefResolutionError) as ctx_err:
@@ -1923,11 +1923,11 @@ class ConfigComposerInternalMethodTests(TestCase):
     def test_get_line_number__RegularDict__ReturnsNone(self):
         """Test _get_line_number with a regular dict (no CommentedMap)."""
         # Arrange
-        from rconfig.composition import CompositionWalker
-        from rconfig.composition import Provenance
+        from rconfig.composition import IncrementalComposer
+        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 
-        provenance = Provenance()
-        walker = CompositionWalker(config_root=Path("/configs"), provenance=provenance)
+        provenance = ProvenanceBuilder()
+        walker = IncrementalComposer(config_root=Path("/configs"), provenance=provenance)
         regular_dict = {"key": "value"}
 
         # Act

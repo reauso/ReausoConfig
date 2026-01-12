@@ -1,10 +1,10 @@
-"""Tests for extension-less _ref_ resolution in CompositionWalker."""
+"""Tests for extension-less _ref_ resolution in IncrementalComposer."""
 
 import tempfile
 from pathlib import Path
 from unittest import TestCase
 
-from rconfig.composition import CompositionWalker, clear_cache
+from rconfig.composition import IncrementalComposer, clear_cache
 from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 from rconfig.errors import AmbiguousRefError, RefResolutionError
 
@@ -14,7 +14,7 @@ class HasExtensionTests(TestCase):
 
     def setUp(self):
         self.builder = ProvenanceBuilder()
-        self.walker = CompositionWalker(None, self.builder)
+        self.walker = IncrementalComposer(None, self.builder)
 
     def test_hasExtension__WithYamlExtension__ReturnsTrue(self):
         # Act & Assert
@@ -75,10 +75,10 @@ class ExtensionlessResolutionTests(TestCase):
         path.write_text(content)
         return path
 
-    def _create_walker(self) -> CompositionWalker:
+    def _create_walker(self) -> IncrementalComposer:
         """Create a walker with the temp directory as root."""
         builder = ProvenanceBuilder()
-        return CompositionWalker(self.config_root, builder)
+        return IncrementalComposer(self.config_root, builder)
 
     # === Single file resolution ===
 

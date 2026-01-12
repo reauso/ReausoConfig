@@ -49,7 +49,7 @@ class ConfigValidatorTests(TestCase):
         self.assertTrue(result.valid)
         self.assertEqual(len(result.errors), 0)
 
-    def test_validate__MissingTarget__ReturnsError(self):
+    def test_validate__MissingTarget__ReturnsAmbiguousTargetError(self):
         # Arrange
         store = self._empty_store()
         validator = ConfigValidator(store)
@@ -61,8 +61,8 @@ class ConfigValidatorTests(TestCase):
         # Assert
         self.assertFalse(result.valid)
         self.assertEqual(len(result.errors), 1)
-        self.assertIsInstance(result.errors[0], MissingFieldError)
-        self.assertEqual(result.errors[0].field, "_target_")
+        self.assertIsInstance(result.errors[0], AmbiguousTargetError)
+        self.assertEqual(result.errors[0].field, "(root)")
 
     def test_validate__UnknownTarget__ReturnsTargetNotFoundError(self):
         # Arrange
@@ -285,6 +285,105 @@ class ConfigValidatorTests(TestCase):
         self.assertFalse(result.valid)
         # Should have 2 missing field errors (a, b) and 1 type error (c)
         self.assertEqual(len(result.errors), 3)
+
+
+class ValidatorAmbiguousTargetErrorTests(TestCase):
+    """Tests for AmbiguousTargetError when root _target_ is missing."""
+
+    def _empty_store(self) -> ConfigStore:
+        store = ConfigStore()
+        store.clear()
+        return store
+
+    def test_validate__MissingRootTarget__RaisesAmbiguousTargetError(self):
+        """Missing root _target_ raises AmbiguousTargetError (not MissingFieldError)."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            size: int
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {"size": 256}  # No _target_ at root
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        self.assertEqual(len(result.errors), 1)
+        error = result.errors[0]
+        self.assertIsInstance(error, AmbiguousTargetError)
+        self.assertEqual(error.field, "(root)")
+        self.assertTrue(error.is_abstract)
+        self.assertIn("model", error.available_targets)
+
+    def test_validate__EmptyDict__RaisesAmbiguousTargetError(self):
+        """Empty dict raises AmbiguousTargetError."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class Model:
+            size: int
+
+        store.register("model", Model)
+        validator = ConfigValidator(store)
+        config = {}  # Empty dict
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        self.assertFalse(result.valid)
+        self.assertEqual(len(result.errors), 1)
+        error = result.errors[0]
+        self.assertIsInstance(error, AmbiguousTargetError)
+        self.assertEqual(error.field, "(root)")
+
+    def test_validate__MissingRootTarget__IncludesAllRegisteredTargets(self):
+        """AmbiguousTargetError includes all registered targets in available_targets."""
+        # Arrange
+        store = self._empty_store()
+
+        @dataclass
+        class ModelA:
+            size: int
+
+        @dataclass
+        class ModelB:
+            name: str
+
+        store.register("model_a", ModelA)
+        store.register("model_b", ModelB)
+        validator = ConfigValidator(store)
+        config = {"size": 256}
+
+        # Act
+        result = validator.validate(config)
+
+        # Assert
+        error = result.errors[0]
+        self.assertIsInstance(error, AmbiguousTargetError)
+        self.assertIn("model_a", error.available_targets)
+        self.assertIn("model_b", error.available_targets)
+
+    def test_validate__MissingRootTarget__WithConfigPath__IncludesPath(self):
+        """AmbiguousTargetError includes config_path when provided."""
+        # Arrange
+        store = self._empty_store()
+        validator = ConfigValidator(store)
+        config = {"value": 42}
+
+        # Act
+        result = validator.validate(config, config_path="nested.section")
+
+        # Assert
+        error = result.errors[0]
+        self.assertIsInstance(error, AmbiguousTargetError)
+        self.assertEqual(error.config_path, "nested.section")
 
 
 class ValidationResultTests(TestCase):
