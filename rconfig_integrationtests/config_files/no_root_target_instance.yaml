@@ -1,0 +1,9 @@
+# Config without root _target_ using _instance_
+shared_cache:
+  _target_: cache
+  size: 100
+
+service:
+  _target_: service
+  cache:
+    _instance_: /shared_cache

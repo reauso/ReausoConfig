@@ -1,0 +1,3 @@
+# Config without root _target_ using _ref_
+model:
+  _ref_: models/base_model.yaml

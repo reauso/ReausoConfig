@@ -458,3 +458,104 @@ class ProvenanceTargetIntegrationTests(TestCase):
         # Assert
         self.assertIn("Target:", output)
         self.assertIn("TrainerConfig", output)
+
+
+class GetProvenanceWithOverridesIntegrationTests(TestCase):
+    """Integration tests for rc.get_provenance() with overrides and cli_overrides."""
+
+    def setUp(self):
+        rc._store._known_references.clear()
+        rc.register("model", ModelConfig)
+        rc.register("trainer", TrainerConfig)
+
+    def test_getProvenance__WithOverrides__ReflectsOverriddenValues(self):
+        """Test that provenance shows overridden values."""
+        # Arrange
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Act
+        prov = rc.get_provenance(
+            config_path,
+            overrides={"epochs": 100},
+            cli_overrides=False,
+        )
+
+        # Assert
+        entry = prov.get("epochs")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.value, 100)
+
+    def test_getProvenance__WithNestedOverrides__AppliesNestedOverride(self):
+        """Test that nested path overrides work in provenance."""
+        # Arrange
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Act
+        prov = rc.get_provenance(
+            config_path,
+            overrides={"model.hidden_size": 1024},
+            cli_overrides=False,
+        )
+
+        # Assert
+        entry = prov.get("model.hidden_size")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.value, 1024)
+
+    def test_getProvenance__WithInnerPathAndOverrides__CombinesBoth(self):
+        """Test using both inner_path and overrides together."""
+        # Arrange
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Act - inner_path controls lazy loading, but provenance still has full paths
+        prov = rc.get_provenance(
+            config_path,
+            inner_path="model",
+            overrides={"model.hidden_size": 512},
+            cli_overrides=False,
+        )
+
+        # Assert - provenance should show overridden value
+        entry = prov.get("model.hidden_size")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.value, 512)
+
+
+class ValidateWithInnerPathIntegrationTests(TestCase):
+    """Integration tests for rc.validate() with inner_path parameter."""
+
+    def setUp(self):
+        rc._store._known_references.clear()
+        rc.register("model", ModelConfig)
+        rc.register("trainer", TrainerConfig)
+
+    def test_validate__InnerPathWithRef__ValidatesReferencedSection(self):
+        """Test validate with inner_path on a config that uses _ref_."""
+        # Arrange
+        config_path = CONFIG_DIR / "trainer_with_ref.yaml"
+
+        # Act
+        result = rc.validate(
+            config_path,
+            inner_path="model",
+            cli_overrides=False,
+        )
+
+        # Assert
+        self.assertTrue(result.valid)
+
+    def test_validate__InnerPathWithOverrides__AppliesOverridesFirst(self):
+        """Test that overrides are applied before inner_path extraction."""
+        # Arrange
+        config_path = CONFIG_DIR / "trainer_config.yaml"
+
+        # Act
+        result = rc.validate(
+            config_path,
+            inner_path="model",
+            overrides={"model.hidden_size": 2048},
+            cli_overrides=False,
+        )
+
+        # Assert - validation should pass (override is valid)
+        self.assertTrue(result.valid)

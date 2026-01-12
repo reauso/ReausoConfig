@@ -1,0 +1,9 @@
+# Config without root _target_ with interpolations
+defaults:
+  hidden_size: 512
+
+model:
+  _target_: model
+  size: ${/defaults.hidden_size}
+  database:
+    port: 5432

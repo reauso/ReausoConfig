@@ -228,16 +228,16 @@ class ConfigFileErrorTests(ErrorIntegrationTestBase):
         # Invalid YAML leads to incomplete/invalid config
         self.assertFalse(result.valid)
 
-    def test_validate__EmptyFile__ReturnsMissingTargetError(self):
-        """Empty config file results in MissingFieldError for _target_."""
+    def test_validate__EmptyFile__ReturnsAmbiguousTargetError(self):
+        """Empty config file results in AmbiguousTargetError for missing root _target_."""
         config_path = ERROR_CONFIG_DIR / "file_errors" / "empty_file.yaml"
 
         result = rc.validate(config_path)
 
         self.assertFalse(result.valid)
-        # Empty file means no _target_ specified
-        self.assertIsInstance(result.errors[0], MissingFieldError)
-        self.assertEqual(result.errors[0].field, "_target_")
+        # Empty file means no _target_ specified at root
+        self.assertIsInstance(result.errors[0], AmbiguousTargetError)
+        self.assertEqual(result.errors[0].field, "(root)")
 
     def test_compose__RefToNonexistentFile__RaisesRefResolutionError(self):
         """_ref_ pointing to missing file raises RefResolutionError during composition."""

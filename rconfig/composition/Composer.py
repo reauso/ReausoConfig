@@ -3,12 +3,15 @@
 This module provides functionality for loading config files that reference
 other config files via `_ref_`, merging them together with deep merge semantics.
 It also handles `_instance_` references for shared object instances.
+
+The composition now uses an incremental algorithm that only loads files
+needed for the requested inner_path (lazy composition optimization).
 """
 
 from pathlib import Path
 from typing import Any
 
-from .Walker import CompositionWalker, clear_cache, set_cache_size
+from .IncrementalComposer import IncrementalComposer, clear_cache, set_cache_size
 from .InstanceResolver import InstanceResolver
 from .Provenance import Provenance
 from .ProvenanceBuilder import ProvenanceBuilder
@@ -34,10 +37,18 @@ class ConfigComposer:
     After `_ref_` resolution, `_instance_` references are resolved to
     enable object sharing during instantiation.
 
+    When an inner_path is specified, the composer uses incremental loading
+    to only load the files needed to reach and resolve that path.
+
     Example::
 
         composer = ConfigComposer(Path("/project/configs"))
+
+        # Full composition
         config = composer.compose(Path("/project/configs/app.yaml"))
+
+        # Partial composition - only loads needed files
+        config = composer.compose(Path("/project/configs/app.yaml"), inner_path="model")
     """
 
     def __init__(self, config_root: Path | None = None) -> None:
@@ -51,11 +62,23 @@ class ConfigComposer:
         self._provenance_builder: ProvenanceBuilder | None = None
         self._instance_resolver: InstanceResolver | None = None
         self._ref_graph: dict[str, list[str]] = {}
+        self._loaded_files: set[Path] = set()
+        self._dependency_closure: set[str] = set()
 
-    def compose(self, path: Path) -> dict[str, Any]:
+    def compose(
+        self,
+        path: Path,
+        inner_path: str | None = None,
+    ) -> dict[str, Any]:
         """Compose a config file by resolving all _ref_ references.
 
+        Uses the unified incremental algorithm that only loads files needed
+        to reach and resolve the specified inner_path. When inner_path is
+        None or empty, all files are loaded (full composition).
+
         :param path: Path to the entry-point config file.
+        :param inner_path: Optional path to target subtree. If provided,
+                          only files needed for this path are loaded.
         :return: Fully composed config dictionary.
         :raises ConfigFileError: If a file cannot be loaded.
         :raises CircularRefError: If circular references are detected.
@@ -63,16 +86,19 @@ class ConfigComposer:
         :raises RefResolutionError: If a _ref_ cannot be resolved.
         :raises InstanceResolutionError: If an _instance_ path cannot be resolved.
         :raises CircularInstanceError: If circular _instance_ references detected.
+        :raises InvalidInnerPathError: If inner_path doesn't exist.
         """
         # Create builder for accumulating provenance during composition
         self._provenance_builder = ProvenanceBuilder()
 
-        # Compose the config tree, resolving _ref_ and collecting _instance_ markers
-        walker = CompositionWalker(self._config_root, self._provenance_builder)
-        result = walker.compose(path)
+        # Compose the config tree using incremental algorithm
+        composer = IncrementalComposer(self._config_root, self._provenance_builder)
+        result = composer.compose(path, inner_path=inner_path)
 
-        # Store ref graph from walker
-        self._ref_graph = walker.ref_graph
+        # Store ref graph and loaded files from composer
+        self._ref_graph = composer.ref_graph
+        self._loaded_files = result.loaded_files
+        self._dependency_closure = result.dependency_closure
 
         # Resolve all _instance_ references
         self._instance_resolver = InstanceResolver(self._provenance_builder)
@@ -123,6 +149,36 @@ class ConfigComposer:
         """
         return self._provenance
 
+    @property
+    def loaded_files(self) -> set[Path]:
+        """Get the set of files loaded during the last composition.
+
+        This is useful for understanding what files were actually needed
+        for a partial composition with inner_path.
+
+        Example::
+
+            composer = ConfigComposer()
+            config = composer.compose(Path("trainer.yaml"), inner_path="model")
+            print(f"Loaded {len(composer.loaded_files)} files")
+        """
+        return self._loaded_files
+
+    @property
+    def dependency_closure(self) -> set[str]:
+        """Get the dependency closure from the last composition.
+
+        Returns the set of config paths that were identified as dependencies
+        of the target inner_path (or all paths for full composition).
+
+        Example::
+
+            composer = ConfigComposer()
+            config = composer.compose(Path("trainer.yaml"), inner_path="model")
+            print(f"Dependencies: {composer.dependency_closure}")
+        """
+        return self._dependency_closure
+
     def ref_graph(self) -> dict[str, list[str]]:
         """Get the graph of _ref_ relationships from the last composition.
 
@@ -144,10 +200,15 @@ class ConfigComposer:
         """
         return self._ref_graph
 
-    def compose_with_provenance(self, path: Path) -> Provenance:
+    def compose_with_provenance(
+        self,
+        path: Path,
+        inner_path: str | None = None,
+    ) -> Provenance:
         """Compose a config file and track the origin of each value.
 
         :param path: Path to the entry-point config file.
+        :param inner_path: Optional path to target subtree.
         :return: Provenance object with origin information.
         :raises ConfigFileError: If a file cannot be loaded.
         :raises CircularRefError: If circular references are detected.
@@ -155,6 +216,7 @@ class ConfigComposer:
         :raises RefResolutionError: If a _ref_ cannot be resolved.
         :raises InstanceResolutionError: If an _instance_ path cannot be resolved.
         :raises CircularInstanceError: If circular _instance_ references detected.
+        :raises InvalidInnerPathError: If inner_path doesn't exist.
 
         Example::
 
@@ -162,32 +224,36 @@ class ConfigComposer:
             print(prov)  # Shows config with file:line annotations
             entry = prov.get("model.layers")  # Get specific origin info
         """
-        self.compose(path)
+        self.compose(path, inner_path=inner_path)
         assert self._provenance is not None
         return self._provenance
 
 
-def compose(path: Path) -> dict[str, Any]:
+def compose(path: Path, inner_path: str | None = None) -> dict[str, Any]:
     """Compose a config file by resolving all _ref_ references.
 
     This is a convenience function that creates a ConfigComposer and
     composes the given file.
 
     :param path: Path to the entry-point config file.
+    :param inner_path: Optional path to target subtree for lazy loading.
     :return: Fully composed config dictionary.
     """
     composer = ConfigComposer()
-    return composer.compose(path)
+    return composer.compose(path, inner_path=inner_path)
 
 
-def compose_with_provenance(path: Path) -> Provenance:
+def compose_with_provenance(
+    path: Path, inner_path: str | None = None
+) -> Provenance:
     """Compose a config file and track the origin of each value.
 
     This is a convenience function that creates a ConfigComposer and
     composes the given file with provenance tracking.
 
     :param path: Path to the entry-point config file.
+    :param inner_path: Optional path to target subtree.
     :return: Provenance object with origin information.
     """
     composer = ConfigComposer()
-    return composer.compose_with_provenance(path)
+    return composer.compose_with_provenance(path, inner_path=inner_path)

@@ -1,0 +1,8 @@
+# Config without root _target_ with nested section having explicit _target_
+model:
+  _target_: model
+  size: 256
+  database:
+    _target_: database
+    port: 5432
+    host: localhost

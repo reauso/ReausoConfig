@@ -72,7 +72,13 @@ class ConfigValidator:
         # Check _target_ exists in config
         if TARGET_KEY not in config:
             errors.append(
-                MissingFieldError(TARGET_KEY, "(root)", config_path)
+                AmbiguousTargetError(
+                    field="(root)",
+                    expected_type=object,
+                    available_targets=list(self._store.known_references.keys()),
+                    is_abstract=True,
+                    config_path=config_path,
+                )
             )
             return ValidationResult(valid=False, errors=errors)
 
