@@ -548,6 +548,7 @@ def instantiate_multirun(
     path: Path,
     *,
     sweep: dict[str, list[Any]],
+    inner_path: str | None = ...,
     cli_overrides: bool = ...,
     lazy: bool = ...,
 ) -> MultirunIterator[Any]: ...
@@ -557,6 +558,7 @@ def instantiate_multirun(
     expected_type: type[T],
     *,
     sweep: dict[str, list[Any]],
+    inner_path: str | None = ...,
     cli_overrides: bool = ...,
     lazy: bool = ...,
 ) -> MultirunIterator[T]: ...
@@ -565,6 +567,7 @@ def instantiate_multirun(
     path: Path,
     *,
     experiments: list[dict[str, Any]],
+    inner_path: str | None = ...,
     cli_overrides: bool = ...,
     lazy: bool = ...,
 ) -> MultirunIterator[Any]: ...
@@ -574,6 +577,7 @@ def instantiate_multirun(
     expected_type: type[T],
     *,
     experiments: list[dict[str, Any]],
+    inner_path: str | None = ...,
     cli_overrides: bool = ...,
     lazy: bool = ...,
 ) -> MultirunIterator[T]: ...
@@ -583,6 +587,7 @@ def instantiate_multirun(
     *,
     sweep: dict[str, list[Any]],
     experiments: list[dict[str, Any]],
+    inner_path: str | None = ...,
     cli_overrides: bool = ...,
     lazy: bool = ...,
 ) -> MultirunIterator[Any]: ...
@@ -593,6 +598,7 @@ def instantiate_multirun(
     *,
     sweep: dict[str, list[Any]],
     experiments: list[dict[str, Any]],
+    inner_path: str | None = ...,
     cli_overrides: bool = ...,
     lazy: bool = ...,
 ) -> MultirunIterator[T]: ...
@@ -603,6 +609,7 @@ def instantiate_multirun(
     sweep: dict[str, list[Any]] | None = ...,
     experiments: list[dict[str, Any]] | None = ...,
     overrides: dict[str, Any] | None = ...,
+    inner_path: str | None = ...,
     cli_overrides: bool = ...,
     lazy: bool = ...,
 ) -> MultirunIterator[Any]: ...
@@ -614,6 +621,7 @@ def instantiate_multirun(
     sweep: dict[str, list[Any]] | None = ...,
     experiments: list[dict[str, Any]] | None = ...,
     overrides: dict[str, Any] | None = ...,
+    inner_path: str | None = ...,
     cli_overrides: bool = ...,
     lazy: bool = ...,
 ) -> MultirunIterator[T]: ...
@@ -626,6 +634,7 @@ def instantiate_multirun(
     sweep: dict[str, list[Any]] | None = None,
     experiments: list[dict[str, Any]] | None = None,
     overrides: dict[str, Any] | None = None,
+    inner_path: str | None = None,
     cli_overrides: bool = True,
     lazy: bool = False,
 ) -> MultirunIterator[T] | MultirunIterator[Any]:
@@ -640,10 +649,14 @@ def instantiate_multirun(
     :param sweep: Dict of parameter paths to lists of values (cartesian product).
     :param experiments: List of explicit experiment override dicts.
     :param overrides: Constant overrides applied to all runs (lowest priority).
+    :param inner_path: Optional path to instantiate only a section of the config.
+                       Interpolations are resolved from the full config before
+                       extraction. External _instance_ refs are auto-instantiated.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv (default True).
     :param lazy: If True, nested configs delay __init__ until first access.
     :return: MultirunIterator with length, slicing, and reversal support.
     :raises NoRunConfigurationError: If neither sweep nor experiments provided.
+    :raises InvalidInnerPathError: If inner_path doesn't exist or is invalid.
     :raises ValueError: If sweep values are not lists.
 
     **Override Priority:** CLI > experiment/sweep > constant overrides
@@ -684,6 +697,14 @@ def instantiate_multirun(
         results[50:]           # Resume from index 50
         reversed(results)      # Reverse order
         results[3]             # Single run at index 3
+
+        # Partial instantiation with inner_path
+        for result in rc.instantiate_multirun(
+            path=Path("trainer.yaml"),
+            inner_path="model",  # Only instantiate the model section
+            sweep={"lr": [0.01, 0.001]},
+        ):
+            model = result.instance  # Only the model section
 
         # Error handling
         for result in rc.instantiate_multirun(...):
@@ -804,10 +825,40 @@ def instantiate_multirun(
             # Resolve interpolations
             config = resolve_interpolations(config)
 
-            # Instantiate
-            instance = _instantiator.instantiate(
-                config, instance_targets=instance_targets, lazy=lazy
-            )
+            # Handle partial instantiation
+            if inner_path is not None:
+                from rconfig._internal.partial import extract_partial_config
+                from rconfig._internal.path_utils import get_value_at_path
+
+                # Extract sub-config (interpolations already resolved from full config)
+                sub_config, processed_targets, external_targets = extract_partial_config(
+                    config=config,
+                    inner_path=inner_path,
+                    instance_targets=instance_targets,
+                )
+
+                # Pre-instantiate external targets
+                external_instances: dict[str, Any] = {}
+                for ext_path in external_targets:
+                    ext_config = get_value_at_path(config, ext_path)
+                    if isinstance(ext_config, dict) and "_target_" in ext_config:
+                        external_instances[f"__external__:{ext_path}"] = (
+                            _instantiator.instantiate(
+                                ext_config, instance_targets={}, config_path=ext_path
+                            )
+                        )
+
+                instance = _instantiator.instantiate(
+                    sub_config,
+                    instance_targets=processed_targets,
+                    external_instances=external_instances,
+                    lazy=lazy,
+                )
+            else:
+                # Instantiate full config
+                instance = _instantiator.instantiate(
+                    config, instance_targets=instance_targets, lazy=lazy
+                )
 
             # Wrap config in MappingProxyType for immutability
             immutable_config = MappingProxyType(config)
