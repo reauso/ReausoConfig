@@ -1810,6 +1810,39 @@ for result in rc.instantiate_multirun(...):
         continue
 ```
 
+#### Partial Instantiation with inner_path
+
+Focus multirun sweeps on a specific section of your config using `inner_path`:
+
+```python
+# trainer.yaml contains: model, optimizer, data sections
+# Only sweep over the model configuration
+for result in rc.instantiate_multirun(
+    path=Path("trainer.yaml"),
+    inner_path="model",
+    sweep={"lr": [0.01, 0.001]},
+):
+    model = result.instance  # Only the model section
+    train_with_model(model)
+```
+
+This is useful when:
+
+- You want to sweep hyperparameters for one component
+- Testing different model configurations independently
+- The full config is expensive to instantiate
+
+Nested paths are supported:
+
+```python
+for result in rc.instantiate_multirun(
+    path=Path("trainer.yaml"),
+    inner_path="model.encoder",
+    sweep={"hidden_dim": [256, 512]},
+):
+    encoder = result.instance
+```
+
 #### Iterator Features
 
 The returned `MultirunIterator` supports length, slicing, and reversal:
@@ -1980,6 +2013,53 @@ model = rc.instantiate(
 
 # Lazy instantiation
 app = rc.instantiate(path=Path("app.yaml"), lazy=True)
+```
+
+### `rc.instantiate_multirun(path, expected_type=None, *, sweep=None, experiments=None, overrides=None, inner_path=None, cli_overrides=True, lazy=False)`
+
+Generate and instantiate multiple config combinations from sweep parameters and experiments. See [Multirun Support](#multirun-support) for detailed usage examples.
+
+**Parameters:**
+
+| Parameter         | Type                              | Default   | Description                                                                                                                                     |
+| ----------------- | --------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `path`          | `Path`                          | required  | Path to the base configuration file.                                                                                                            |
+| `expected_type` | `type[T] \| None`                | `None`  | Optional type for type-safe returns.                                                                                                            |
+| `sweep`         | `dict[str, list[Any]] \| None`  | `None`  | Dict of parameter paths to lists of values. All combinations (cartesian product) are generated.                                                |
+| `experiments`   | `list[dict[str, Any]] \| None`  | `None`  | List of explicit experiment override dicts.                                                                                                     |
+| `overrides`     | `dict[str, Any] \| None`         | `None`  | Constant overrides applied to all runs (lowest priority).                                                                                       |
+| `inner_path`    | `str \| None`                    | `None`  | Dot-notation path to instantiate only a section (e.g., `"model"`). Interpolations are resolved from the full config before extraction.       |
+| `cli_overrides` | `bool`                          | `True`  | Whether to parse CLI overrides from `sys.argv`.                                                                                               |
+| `lazy`          | `bool`                          | `False` | If `True`, nested configs delay `__init__` until first attribute access.                                                                    |
+
+**Returns:** `MultirunIterator[T]` if `expected_type` provided, otherwise `MultirunIterator[Any]`
+
+**Raises:**
+
+| Exception                 | Condition                                            |
+| ------------------------- | ---------------------------------------------------- |
+| `NoRunConfigurationError` | Neither `sweep` nor `experiments` provided         |
+| `InvalidSweepValueError`  | Sweep values are not lists                           |
+| `InvalidInnerPathError`   | `inner_path` doesn't exist in config (when accessed) |
+
+**Examples:**
+
+```python
+# Sweep with partial instantiation
+for result in rc.instantiate_multirun(
+    path=Path("trainer.yaml"),
+    inner_path="model",
+    sweep={"lr": [0.01, 0.001]},
+):
+    model = result.instance  # Only the model section
+
+# Combined sweep and experiments
+for result in rc.instantiate_multirun(
+    path=Path("config.yaml"),
+    experiments=[{"model": "resnet"}, {"model": "vit"}],
+    sweep={"lr": [0.01, 0.001]},
+):
+    train(result.instance)  # 4 runs total
 ```
 
 ### `rc.known_references()`
