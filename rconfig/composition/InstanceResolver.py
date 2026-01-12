@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .Walker import InstanceMarker
+from .IncrementalComposer import InstanceMarker
 from rconfig.errors import CircularInstanceError, InstanceResolutionError
 from rconfig._internal.path_utils import build_child_path, get_value_at_path
 from .Provenance import InstanceRef
@@ -22,7 +22,7 @@ _INSTANCE_KEY = "_instance_"
 class InstanceResolver:
     """Resolves _instance_ references for object sharing.
 
-    This class takes collected instance markers from CompositionWalker
+    This class takes collected instance markers from IncrementalComposer
     and resolves them to actual values, handling chains, cycles, and
     null instances. Provenance is always tracked.
 

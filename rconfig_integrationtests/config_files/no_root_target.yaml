@@ -1,0 +1,11 @@
+# Config without root _target_ - for partial instantiation tests
+model:
+  _target_: model
+  size: 256
+  database:
+    port: 5432
+    host: localhost
+
+raw_data:
+  path: /data
+  batch_size: 32

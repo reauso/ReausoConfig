@@ -1,4 +1,4 @@
-"""Tests for CompositionWalker module."""
+"""Tests for IncrementalComposer module."""
 
 from unittest import TestCase
 
@@ -9,8 +9,9 @@ from rconfig.composition import (
     InstanceMarker,
     clear_cache,
     set_cache_size,
-    Provenance,
+    IncrementalComposer,
 )
+from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 from rconfig.loaders.position_map import PositionMap
 
 
@@ -120,10 +121,8 @@ class LineNumberExtractionTests(TestCase):
 
     def test_getLineNumber__PositionMapWithLineInfo__ReturnsLine(self):
         # Arrange
-        from rconfig.composition import CompositionWalker
-
-        provenance = Provenance()
-        walker = CompositionWalker(None, provenance)
+        provenance = ProvenanceBuilder()
+        walker = IncrementalComposer(None, provenance)
 
         # Create a PositionMap with line info
         config = PositionMap({"key": "value"})
@@ -137,10 +136,8 @@ class LineNumberExtractionTests(TestCase):
 
     def test_getLineNumber__RegularDict__ReturnsNone(self):
         # Arrange
-        from rconfig.composition import CompositionWalker
-
-        provenance = Provenance()
-        walker = CompositionWalker(None, provenance)
+        provenance = ProvenanceBuilder()
+        walker = IncrementalComposer(None, provenance)
         config = {"key": "value"}
 
         # Act
@@ -151,10 +148,8 @@ class LineNumberExtractionTests(TestCase):
 
     def test_getLineNumber__KeyNotInPositionMap__ReturnsNone(self):
         # Arrange
-        from rconfig.composition import CompositionWalker
-
-        provenance = Provenance()
-        walker = CompositionWalker(None, provenance)
+        provenance = ProvenanceBuilder()
+        walker = IncrementalComposer(None, provenance)
         config = PositionMap({"key": "value"})
         # No position info added
 

@@ -702,9 +702,9 @@ first_callback = rc.instantiate(path=Path("trainer.yaml"), inner_path="callbacks
 
 **How it works:**
 
-1. The full config is composed (all `_ref_` resolved)
-2. Overrides are applied to the full config
-3. Interpolations (`${...}`) are resolved from the full config
+1. Incremental composition: Only files needed for `inner_path` and its dependencies are loaded
+2. Overrides are applied to the relevant portions of the config
+3. Interpolations (`${...}`) are resolved - dependencies outside `inner_path` are loaded as needed
 4. The sub-config at `inner_path` is extracted and instantiated
 
 This means interpolations can reference values outside the partial:
@@ -746,6 +746,138 @@ services:
 service = rc.instantiate(path=Path("app.yaml"), inner_path="services.api")
 print(service.cache.size)  # 100
 ```
+
+#### Lazy Composition Optimization
+
+When using `inner_path`, ReausoConfig automatically optimizes the composition process by only loading the files needed to resolve the requested section:
+
+```yaml
+# trainer.yaml - Large config with many sections
+_target_: trainer
+model:
+  _ref_: ./models/resnet.yaml
+  lr: ${/defaults.learning_rate}
+data:
+  _ref_: ./data/imagenet.yaml      # NOT loaded if inner_path="model"
+callbacks:
+  _ref_: ./callbacks/all.yaml       # NOT loaded if inner_path="model"
+defaults:
+  learning_rate: 0.01
+```
+
+```python
+# Only loads: trainer.yaml, models/resnet.yaml
+# Skips: data/imagenet.yaml, callbacks/all.yaml
+model = rc.instantiate(path=Path("trainer.yaml"), inner_path="model")
+```
+
+The incremental composition algorithm:
+1. Loads only the files needed to reach `inner_path`
+2. Analyzes dependencies (interpolations like `${/defaults.learning_rate}`)
+3. Loads additional files only for paths in the dependency closure
+4. Skips all other `_ref_` markers entirely
+
+This optimization is automatic and transparent - you get the same results with better performance for partial instantiation of large configs.
+
+#### Optional Root `_target_` with `inner_path`
+
+When using `inner_path`, the root-level `_target_` is optional. This allows organizing configs as collections of components without requiring the root to be instantiable.
+
+**When is `_target_` optional?**
+
+A `_target_` is optional when rconfig can determine the type unambiguously:
+- The section has an explicit `_target_`, OR
+- The type can be inferred from the parent's field type hint (concrete type, not abstract, not a Union with multiple implementations)
+
+```yaml
+# experiment.yaml - No _target_ at root level
+model:
+  _target_: transformer
+  encoder:           # No _target_, but Transformer.encoder has concrete type hint
+    layers: 12
+    hidden_size: 768
+
+training:
+  _target_: trainer
+  epochs: 100
+
+data:  # No _target_ - just raw config values
+  path: "/datasets/train"
+  batch_size: 32
+```
+
+```python
+# Works - model section has _target_
+model = rc.instantiate(Path("experiment.yaml"), inner_path="model")
+
+# Works - encoder type inferred from Transformer.encoder type hint
+encoder = rc.instantiate(Path("experiment.yaml"), inner_path="model.encoder")
+
+# Works - training section has _target_
+trainer = rc.instantiate(Path("experiment.yaml"), inner_path="training")
+
+# Raises AmbiguousTargetError - data has no _target_ and no parent to infer from
+rc.instantiate(Path("experiment.yaml"), inner_path="data")
+
+# Raises AmbiguousTargetError - root has no _target_
+rc.instantiate(Path("experiment.yaml"))
+```
+
+**Type inference from parent:**
+
+When extracting a nested path like `model.encoder`, rconfig checks if the parent (`model`) has a `_target_` and whether that class has a concrete type hint for the field (`encoder`). If so, the type is automatically inferred.
+
+```python
+@dataclass
+class Encoder:
+    layers: int
+
+@dataclass
+class Transformer:
+    encoder: Encoder  # Concrete type hint - can be inferred
+
+rc.register("transformer", Transformer)
+rc.register("encoder", Encoder)
+
+# Config without _target_ on encoder
+# model:
+#   _target_: transformer
+#   encoder:
+#     layers: 12
+
+# Type is inferred from Transformer.encoder type hint
+encoder = rc.instantiate(Path("model.yaml"), inner_path="model.encoder")
+```
+
+**List element type inference:**
+
+Type inference also works for list indices by extracting the element type from `list[X]` type hints:
+
+```python
+@dataclass
+class Callback:
+    name: str
+
+@dataclass
+class Trainer:
+    callbacks: list[Callback]  # list[X] type hint
+
+rc.register("trainer", Trainer)
+rc.register("callback", Callback)
+
+# Config with list of callbacks (no _target_ on elements)
+# trainer:
+#   _target_: trainer
+#   callbacks:
+#     - name: early_stopping
+#     - name: checkpointing
+
+# Type is inferred from list[Callback] element type
+callback = rc.instantiate(Path("trainer.yaml"), inner_path="trainer.callbacks[0]")
+assert isinstance(callback, Callback)
+```
+
+**Note:** `inner_path=None` is equivalent to `inner_path="/"` (root). The root always requires `_target_` because there's no parent to infer the type from.
 
 ### Lazy Instantiation
 
@@ -1918,17 +2050,18 @@ Remove a previously registered configuration reference.
 rc.unregister(name="model")
 ```
 
-### `rc.validate(path, *, overrides=None, cli_overrides=True)`
+### `rc.validate(path, *, inner_path=None, overrides=None, cli_overrides=True)`
 
 Validate a config file without instantiating (dry-run). Checks all `_required_` values have been satisfied.
 
 **Parameters:**
 
-| Parameter         | Type                      | Default  | Description                                             |
-| ----------------- | ------------------------- | -------- | ------------------------------------------------------- |
-| `path`          | `Path`                  | required | Path to the configuration file.                         |
-| `overrides`     | `dict[str, Any] \| None` | `None` | Dictionary of config overrides using dot notation keys. |
-| `cli_overrides` | `bool`                  | `True` | Whether to parse CLI overrides from `sys.argv`.       |
+| Parameter         | Type                      | Default  | Description                                                                     |
+| ----------------- | ------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `path`          | `Path`                  | required | Path to the configuration file.                                                 |
+| `inner_path`    | `str \| None`            | `None` | Dot-notation path to validate only a section (e.g., `"model"` or `"trainer.callbacks[0]"`). `_required_` markers outside this section are ignored. When specified, the root-level `_target_` is optional and types can be inferred from parent's type hints (including list element types from `list[X]`). |
+| `overrides`     | `dict[str, Any] \| None` | `None` | Dictionary of config overrides using dot notation keys.                         |
+| `cli_overrides` | `bool`                  | `True` | Whether to parse CLI overrides from `sys.argv`.                               |
 
 **Returns:** `ValidationResult` with fields:
 
@@ -1937,9 +2070,10 @@ Validate a config file without instantiating (dry-run). Checks all `_required_` 
 
 **Raises:**
 
-| Exception           | Condition                          |
-| ------------------- | ---------------------------------- |
-| `ConfigFileError` | If file cannot be loaded or parsed |
+| Exception               | Condition                                          |
+| ----------------------- | -------------------------------------------------- |
+| `ConfigFileError`     | If file cannot be loaded or parsed                 |
+| `InvalidInnerPathError` | If `inner_path` doesn't exist or points to a scalar |
 
 **Examples:**
 
@@ -1956,6 +2090,9 @@ result = rc.validate(
     path=Path("config.yaml"),
     overrides={"api_key": "secret123"},
 )
+
+# Validate only a section
+result = rc.validate(path=Path("trainer.yaml"), inner_path="model")
 ```
 
 ### `rc.instantiate(path, expected_type=None, *, inner_path=None, overrides=None, cli_overrides=True, lazy=False)`
@@ -1968,7 +2105,7 @@ Load, compose, validate, and instantiate a configuration file into Python object
 | ----------------- | ------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `path`          | `Path`                  | required  | Path to the configuration file. Supports `.yaml`, `.yml`, `.json`, `.toml`.                                                             |
 | `expected_type` | `type[T] \| None`        | `None`  | Optional type for type-safe returns. Enables IDE autocompletion and type checking.                                                              |
-| `inner_path`    | `str \| None`            | `None`  | Dot-notation path to instantiate only a section (e.g.,`"model.encoder"`). Interpolations are resolved from the full config before extraction. |
+| `inner_path`    | `str \| None`            | `None`  | Dot-notation path to instantiate only a section (e.g.,`"model.encoder"` or `"trainer.callbacks[0]"`). Interpolations are resolved from the full config before extraction. When specified, the root-level `_target_` is optional and types can be inferred from parent's type hints (including list element types from `list[X]`). |
 | `overrides`     | `dict[str, Any] \| None` | `None`  | Config overrides using dot notation keys. Applied before CLI overrides.                                                                         |
 | `cli_overrides` | `bool`                  | `True`  | Whether to parse CLI overrides from `sys.argv`. Set to `False` for tests or library usage.                                                  |
 | `lazy`          | `bool`                  | `False` | If `True`, all nested configs delay `__init__` until first attribute access.                                                                |
@@ -2086,15 +2223,18 @@ for name, ref in refs.items():
         print(f"  {param_name}: {param.annotation}")
 ```
 
-### `rc.get_provenance(path)`
+### `rc.get_provenance(path, *, inner_path=None, overrides=None, cli_overrides=True)`
 
 Compose a config file and track the origin of each value.
 
 **Parameters:**
 
-| Parameter | Type     | Default  | Description                          |
-| --------- | -------- | -------- | ------------------------------------ |
-| `path`  | `Path` | required | Path to the entry-point config file. |
+| Parameter       | Type                      | Default  | Description                                                                         |
+| --------------- | ------------------------- | -------- | ----------------------------------------------------------------------------------- |
+| `path`          | `Path`                  | required | Path to the entry-point config file.                                                |
+| `inner_path`    | `str \| None`            | `None` | If specified, returns provenance only for this section. Uses lazy loading.          |
+| `overrides`     | `dict[str, Any] \| None` | `None` | Dictionary of config overrides using dot notation keys.                             |
+| `cli_overrides` | `bool`                  | `True` | Whether to parse CLI overrides from `sys.argv`. Set to `False` for tests or library usage. |
 
 **Returns:** `Provenance` object with methods:
 
@@ -2116,6 +2256,18 @@ print(f"Defined at: {entry.file}:{entry.line}")
 # Custom formatting
 print(prov.format().minimal())
 print(prov.format().for_path("/model.*"))
+
+# Partial provenance - only loads files needed for model section
+prov = rc.get_provenance(path=Path("trainer.yaml"), inner_path="model")
+
+# With overrides
+prov = rc.get_provenance(
+    path=Path("config.yaml"),
+    overrides={"model.lr": 0.01}
+)
+
+# Disable CLI parsing (for tests/library usage)
+prov = rc.get_provenance(path=Path("config.yaml"), cli_overrides=False)
 ```
 
 ### `rc.set_cache_size(size)`

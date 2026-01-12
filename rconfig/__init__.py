@@ -259,6 +259,7 @@ def unregister(name: str) -> None:
 def validate(
     path: Path,
     *,
+    inner_path: str | None = None,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
 ) -> ValidationResult:
@@ -269,9 +270,13 @@ def validate(
     all _required_ values have been satisfied.
 
     :param path: Path to config file.
+    :param inner_path: Optional path to validate only a section of the config.
+                       When specified, only the sub-config at this path is validated
+                       and _required_ markers outside this section are ignored.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv (default True).
     :return: ValidationResult with any errors found.
+    :raises InvalidInnerPathError: If inner_path doesn't exist or is invalid.
 
     Example::
 
@@ -285,6 +290,9 @@ def validate(
             Path("config.yaml"),
             overrides={"api_key": "secret123"},
         )
+
+        # Validate only a section
+        result = rc.validate(Path("trainer.yaml"), inner_path="model")
     """
     from rconfig.validation.required import find_required_markers
     from rconfig.errors import RequiredValueError
@@ -326,6 +334,30 @@ def validate(
     # Apply overrides
     if all_overrides:
         config = apply_overrides(config, all_overrides)
+
+    # Handle partial validation with inner_path
+    if inner_path is not None:
+        from rconfig._internal.path_utils import get_value_at_path
+        from rconfig._internal.type_inference import infer_target_from_parent
+
+        try:
+            sub_config = get_value_at_path(config, inner_path)
+        except (KeyError, IndexError, TypeError) as e:
+            raise InvalidInnerPathError(inner_path, str(e))
+
+        if not isinstance(sub_config, dict):
+            raise InvalidInnerPathError(
+                inner_path,
+                f"Expected dict at path, got {type(sub_config).__name__}",
+            )
+
+        # If sub-config has no _target_, try to infer from parent's type hint
+        if "_target_" not in sub_config:
+            inferred_target = infer_target_from_parent(config, inner_path, _store)
+            if inferred_target:
+                sub_config = {"_target_": inferred_target, **sub_config}
+
+        config = sub_config
 
     # Check for unsatisfied _required_ values
     required_markers = find_required_markers(config)
@@ -493,16 +525,7 @@ def instantiate(
     if all_overrides:
         config = apply_overrides(config, all_overrides)
 
-    # Check for unsatisfied _required_ values (after overrides, before interpolation)
-    from rconfig.validation.required import find_required_markers
-    from rconfig.errors import RequiredValueError
-
-    required_markers = find_required_markers(config)
-    if required_markers:
-        missing = [(m.path, m.expected_type) for m in required_markers]
-        raise RequiredValueError(missing)
-
-    # Resolve interpolations (${...} expressions)
+    # Resolve interpolations (${...} expressions) - always on full config
     from rconfig.interpolation import resolve_interpolations
 
     config = resolve_interpolations(config)
@@ -511,6 +534,7 @@ def instantiate(
     if inner_path is not None:
         from rconfig._internal.partial import extract_partial_config
         from rconfig._internal.path_utils import get_value_at_path
+        from rconfig._internal.type_inference import infer_target_from_parent
 
         # Extract sub-config (interpolations already resolved from full config)
         sub_config, processed_targets, external_targets = extract_partial_config(
@@ -518,6 +542,21 @@ def instantiate(
             inner_path=inner_path,
             instance_targets=instance_targets,
         )
+
+        # If sub-config has no _target_, try to infer from parent's type hint
+        if "_target_" not in sub_config:
+            inferred_target = infer_target_from_parent(config, inner_path, _store)
+            if inferred_target:
+                sub_config = {"_target_": inferred_target, **sub_config}
+
+        # Check for unsatisfied _required_ values in extracted sub-config only
+        from rconfig.validation.required import find_required_markers
+        from rconfig.errors import RequiredValueError
+
+        required_markers = find_required_markers(sub_config)
+        if required_markers:
+            missing = [(m.path, m.expected_type) for m in required_markers]
+            raise RequiredValueError(missing)
 
         # Pre-instantiate external targets
         external_instances: dict[str, Any] = {}
@@ -536,6 +575,15 @@ def instantiate(
             external_instances=external_instances,
             lazy=lazy,
         )
+
+    # Check for unsatisfied _required_ values on full config
+    from rconfig.validation.required import find_required_markers
+    from rconfig.errors import RequiredValueError
+
+    required_markers = find_required_markers(config)
+    if required_markers:
+        missing = [(m.path, m.expected_type) for m in required_markers]
+        raise RequiredValueError(missing)
 
     return _instantiator.instantiate(config, instance_targets=instance_targets, lazy=lazy)
 
@@ -829,6 +877,7 @@ def instantiate_multirun(
             if inner_path is not None:
                 from rconfig._internal.partial import extract_partial_config
                 from rconfig._internal.path_utils import get_value_at_path
+                from rconfig._internal.type_inference import infer_target_from_parent
 
                 # Extract sub-config (interpolations already resolved from full config)
                 sub_config, processed_targets, external_targets = extract_partial_config(
@@ -836,6 +885,12 @@ def instantiate_multirun(
                     inner_path=inner_path,
                     instance_targets=instance_targets,
                 )
+
+                # If sub-config has no _target_, try to infer from parent's type hint
+                if "_target_" not in sub_config:
+                    inferred_target = infer_target_from_parent(config, inner_path, _store)
+                    if inferred_target:
+                        sub_config = {"_target_": inferred_target, **sub_config}
 
                 # Pre-instantiate external targets
                 external_instances: dict[str, Any] = {}
@@ -975,10 +1030,20 @@ def resolver(*path: str) -> Callable[[F], F]:
     return decorator
 
 
-def get_provenance(path: Path) -> "Provenance":
+def get_provenance(
+    path: Path,
+    *,
+    inner_path: str | None = None,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+) -> "Provenance":
     """Compose a config file and track the origin of each value.
 
     :param path: Path to the entry-point config file.
+    :param inner_path: If specified, returns provenance only for this section.
+                      Also uses lazy loading to only load needed files.
+    :param overrides: Dictionary of config overrides using dot notation keys.
+    :param cli_overrides: Whether to parse CLI overrides from sys.argv (default True).
     :return: Provenance object with origin information for each config value.
 
     Example::
@@ -988,22 +1053,69 @@ def get_provenance(path: Path) -> "Provenance":
         entry = prov.get("model.layers")  # Get specific origin info
         for path, entry in prov.items():
             print(f"{path}: {entry.file}:{entry.line}")
+
+        # Partial provenance (lazy loading)
+        prov = rc.get_provenance(Path("trainer.yaml"), inner_path="model")
+        # Returns provenance only for model section and its dependencies
+
+        # With overrides
+        prov = rc.get_provenance(
+            Path("config.yaml"),
+            overrides={"model.lr": 0.01}
+        )
+
+        # Disable CLI parsing (for tests/library usage)
+        prov = rc.get_provenance(Path("config.yaml"), cli_overrides=False)
     """
     from rconfig.interpolation import resolve_interpolations
     from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
-    from rconfig.composition.Walker import CompositionWalker
+    from rconfig.composition.IncrementalComposer import IncrementalComposer
     from rconfig.composition.InstanceResolver import InstanceResolver
+
+    # Handle --help/-h when cli_overrides is enabled
+    if cli_overrides and ("--help" in sys.argv or "-h" in sys.argv):
+        integration = current_help_integration()
+
+        # Consume --help/-h from sys.argv if integration requests it
+        if integration.consume_help_flag:
+            sys.argv = [arg for arg in sys.argv if arg not in ("--help", "-h")]
+
+        # Recursively call get_provenance without help handling to avoid infinite loop
+        # The help integration will get provenance data and handle display
+        prov = get_provenance(path, inner_path=inner_path, overrides=overrides, cli_overrides=False)
+        integration.integrate(prov, str(path))
 
     # Create builder for accumulating provenance during composition
     builder = ProvenanceBuilder()
 
-    # Compose the config tree, resolving _ref_ and collecting _instance_ markers
-    walker = CompositionWalker(None, builder)
-    result = walker.compose(path)
+    # Compose the config tree using incremental algorithm
+    composer = IncrementalComposer(None, builder)
+    result = composer.compose(path, inner_path=inner_path)
 
     # Resolve all _instance_ references
     instance_resolver = InstanceResolver(builder)
     config = instance_resolver.resolve(result.instances, result.config)
+
+    # Collect all overrides
+    all_overrides: list[Override] = []
+
+    # Programmatic overrides first
+    if overrides:
+        all_overrides.extend(parse_dict_overrides(overrides))
+
+    # CLI overrides second (wins on conflict)
+    if cli_overrides:
+        all_overrides.extend(extract_cli_overrides(sys.argv[1:]))
+
+    # Validate paths and coerce values
+    for override in all_overrides:
+        expected_type_hint = _validator.validate_override_path(override.path, config)
+        if override.operation == "set" and isinstance(override.value, str):
+            override.value = parse_override_value(override.value, expected_type_hint)
+
+    # Apply overrides
+    if all_overrides:
+        config = apply_overrides(config, all_overrides)
 
     # Set initial config
     builder.set_config(config)

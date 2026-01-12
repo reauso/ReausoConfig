@@ -185,7 +185,7 @@ def mock_filesystem(fs: MockFileSystem) -> Generator[None, None, None]:
         fs.add_file("/configs/app.yaml", {"_target_": "App"})
 
         with mock_filesystem(fs):
-            walker = CompositionWalker(Path("/configs"), Provenance())
+            walker = IncrementalComposer(Path("/configs"), ProvenanceBuilder())
             result = walker.compose(Path("/configs/app.yaml"))
 
     :param fs: The MockFileSystem instance to use.
