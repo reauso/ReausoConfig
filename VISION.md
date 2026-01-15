@@ -13,7 +13,7 @@ This document outlines potential features for rconfig based on analysis of state
 5. [✅ Structured Config Schemas](#5-structured-config-schemas)
 6. [✅ Deprecation Warnings](#6-deprecation-warnings)
 7. [:x: Defaults List / Composition Groups](#7-x-defaults-list--composition-groups)
-8. [:x: Multi-Environment Profiles](#8-x-multi-environment-profiles)
+8. [✅ Multi-Environment Profiles](#8-multi-environment-profiles)
 9. [Config Diffing](#9-config-diffing)
 10. [Callbacks and Hooks](#10-callbacks-and-hooks)
 11. [XDG Base Directory Support](#11-xdg-base-directory-support)
@@ -688,28 +688,56 @@ num_layers: 50
 
 ---
 
-## 8. :x: Multi-Environment Profiles
+## 8. ✅ Multi-Environment Profiles
 
 **Adopted by:** Dynaconf, Spring Boot, Rails
 
-**Status:** Not Implemented
+**Status:** Implemented via `inner_path`
 
-### Why Not Implemented
+### Implementation
 
-ReausoConfig's existing features already provide equivalent multi-environment capabilities:
+Multi-environment profiles are supported through ReausoConfig's `inner_path` parameter, which allows selecting environment-specific sections from a single config file:
 
-- **Dynamic `_ref_` with env interpolation**: `_ref_: envs/${env:APP_ENV ?: "dev"}.yaml`
-- **CLI `_ref_` shorthand**: `python main.py config=envs/prod.yaml`
-- **File-per-environment pattern**: Each environment has its own file that references a shared base via `_ref_`
-- **Deep merge**: Environment-specific overrides are naturally handled
+```yaml
+# environments.yaml
+development:
+  _target_: app_config
+  database:
+    host: localhost
+    port: 5432
+  debug: true
 
-The single-file multi-environment pattern would add a second composition system with marginal benefits:
-- New `env=` parameter and `RCONFIG_ENV` detection overlapping with existing `_ref_` + env interpolation
-- New `_inherits_:` directive adding complexity alongside `_ref_`
-- Single large file vs. modular per-environment files (team collaboration concerns)
-- Production secrets in same file as dev defaults (security concern)
+staging:
+  _target_: app_config
+  database:
+    host: staging-db.internal
+    port: 5432
+  debug: false
 
-**Recommended approach**: Use `_ref_` + environment variable interpolation for multi-environment setups. See documentation for patterns.
+production:
+  _target_: app_config
+  database:
+    host: ${env:DATABASE_HOST}
+    port: ${env:DATABASE_PORT ?: 5432}
+  debug: false
+```
+
+```python
+import os
+import rconfig as rc
+from pathlib import Path
+
+env = os.getenv("APP_ENV", "development")
+config = rc.instantiate(Path("environments.yaml"), inner_path=env)
+```
+
+This approach is simpler than a dedicated `env=` parameter while providing equivalent functionality:
+- **Single file**: All environments visible in one place for easy comparison
+- **Environment variable selection**: `APP_ENV=production python main.py`
+- **Dynamic values**: Use `${env:...}` interpolation for production secrets
+- **No new API**: Uses existing `inner_path` parameter
+
+See the README "Multi-Environment Configuration" section for full documentation.
 
 ### Description
 
@@ -1739,6 +1767,53 @@ def my_func(provenance, config_path): ...
 
 ---
 
+## Future Type Inference Enhancements
+
+These enhancements build on the existing type inference system for `inner_path`.
+
+### Dict Element Type Inference
+
+Similar to list elements, paths like `models["resnet"]` could infer types from `dict[str, Model]` hints. This would follow the same pattern as list element inference.
+
+**Example:**
+```python
+@dataclass
+class Config:
+    models: dict[str, Model]  # dict[str, X] hint
+
+# Future: Type inferred from dict value type
+model = rc.instantiate(path, inner_path='config.models["resnet"]')
+```
+
+**Implementation approach:**
+- Extend `_infer_list_element_type()` pattern to handle dict key access
+- Parse dict key syntax (e.g., `["resnet"]` or `["key with spaces"]`)
+- Extract value type from `dict[K, V]` using `get_args()`
+
+### Union Type Handling
+
+Currently, union types like `Encoder | Decoder` are rejected as ambiguous. Future enhancements could allow inference in specific cases:
+
+1. **Single registered member**: If only one union member is registered in the store, use it
+2. **Discriminator field**: Use a field like `_type_` to select the correct union member
+
+**Example:**
+```python
+@dataclass
+class Config:
+    component: Encoder | Decoder  # Union type
+
+# Future option 1: Only Encoder is registered → use Encoder
+# Future option 2: Config has _type_: encoder → use Encoder
+```
+
+**Considerations:**
+- Single-member inference is straightforward but may mask registration errors
+- Discriminator fields require convention agreement (`_type_`, `type`, `kind`?)
+- May conflict with explicit `_target_` which already serves as discriminator
+
+---
+
 ## Summary
 
 This vision document outlines 14 features that would enhance rconfig based on proven patterns from the configuration library ecosystem. The features are prioritized by community adoption and general-purpose utility:
@@ -1755,7 +1830,7 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 
 ### Medium Priority (Common Patterns)
 
-8. :x: Multi-Environment Profiles (see rationale in section)
+8. ✅ Multi-Environment Profiles (via `inner_path`)
 9. Config Diffing
 10. Callbacks and Hooks
 11. XDG Base Directory Support
