@@ -2054,7 +2054,11 @@ single_result = results[3]
 
 ## API Reference
 
-### `rc.register(name, target)`
+### Common API
+
+Core functions for everyday use. These are the primary interfaces most users will interact with.
+
+#### `rc.register(name, target)`
 
 Register a target class under a unique name for use in config files.
 
@@ -2080,7 +2084,7 @@ rc.register(name="model", target=ModelConfig)
 rc.register(name="my_dataset", target=MyDataset)
 ```
 
-### `rc.unregister(name)`
+#### `rc.unregister(name)`
 
 Remove a previously registered configuration reference.
 
@@ -2104,7 +2108,7 @@ Remove a previously registered configuration reference.
 rc.unregister(name="model")
 ```
 
-### `rc.validate(path, *, inner_path=None, overrides=None, cli_overrides=True)`
+#### `rc.validate(path, *, inner_path=None, overrides=None, cli_overrides=True)`
 
 Validate a config file without instantiating (dry-run). Checks all `_required_` values have been satisfied.
 
@@ -2149,7 +2153,7 @@ result = rc.validate(
 result = rc.validate(path=Path("trainer.yaml"), inner_path="model")
 ```
 
-### `rc.instantiate(path, expected_type=None, *, inner_path=None, overrides=None, cli_overrides=True, lazy=False)`
+#### `rc.instantiate(path, expected_type=None, *, inner_path=None, overrides=None, cli_overrides=True, lazy=False)`
 
 Load, compose, validate, and instantiate a configuration file into Python objects.
 
@@ -2206,7 +2210,7 @@ model = rc.instantiate(
 app = rc.instantiate(path=Path("app.yaml"), lazy=True)
 ```
 
-### `rc.instantiate_multirun(path, expected_type=None, *, sweep=None, experiments=None, overrides=None, inner_path=None, cli_overrides=True, lazy=False)`
+#### `rc.instantiate_multirun(path, expected_type=None, *, sweep=None, experiments=None, overrides=None, inner_path=None, cli_overrides=True, lazy=False)`
 
 Generate and instantiate multiple config combinations from sweep parameters and experiments. See [Multirun Support](#multirun-support) for detailed usage examples.
 
@@ -2253,7 +2257,7 @@ for result in rc.instantiate_multirun(
     train(result.instance)  # 4 runs total
 ```
 
-### `rc.known_references()`
+#### `rc.known_references()`
 
 Get a read-only view of all registered configuration references.
 
@@ -2277,7 +2281,7 @@ for name, ref in refs.items():
         print(f"  {param_name}: {param.annotation}")
 ```
 
-### `rc.get_provenance(path, *, inner_path=None, overrides=None, cli_overrides=True)`
+#### `rc.get_provenance(path, *, inner_path=None, overrides=None, cli_overrides=True)`
 
 Compose a config file and track the origin of each value.
 
@@ -2324,7 +2328,7 @@ prov = rc.get_provenance(
 prov = rc.get_provenance(path=Path("config.yaml"), cli_overrides=False)
 ```
 
-### `rc.set_cache_size(size)`
+#### `rc.set_cache_size(size)`
 
 Configure the LRU cache for loaded config files.
 
@@ -2343,7 +2347,7 @@ rc.set_cache_size(size=100)  # Cache up to 100 files
 rc.set_cache_size(size=0)    # Unlimited (default)
 ```
 
-### `rc.clear_cache()`
+#### `rc.clear_cache()`
 
 Clear the config file cache.
 
@@ -2357,7 +2361,7 @@ Clear the config file cache.
 rc.clear_cache()
 ```
 
-### `rc.is_lazy_proxy(obj)`
+#### `rc.is_lazy_proxy(obj)`
 
 Check if an object is an uninitialized lazy proxy.
 
@@ -2378,7 +2382,7 @@ _ = model.hidden_size  # Triggers initialization
 print(rc.is_lazy_proxy(obj=model))  # False
 ```
 
-### `rc.force_initialize(obj)`
+#### `rc.force_initialize(obj)`
 
 Force initialization of a lazy proxy without accessing attributes. No-op for regular objects.
 
@@ -2398,7 +2402,7 @@ rc.force_initialize(obj=model)  # model.__init__ called now
 print(rc.is_lazy_proxy(obj=model))  # False
 ```
 
-### `rc.to_dict(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+#### `rc.to_dict(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
 Export resolved config as a Python dictionary.
 
@@ -2420,7 +2424,7 @@ config = rc.to_dict(path=Path("config.yaml"))
 clean = rc.to_dict(path=Path("config.yaml"), exclude_markers=True)
 ```
 
-### `rc.to_yaml(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+#### `rc.to_yaml(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
 Export resolved config as a YAML string.
 
@@ -2441,7 +2445,7 @@ Export resolved config as a YAML string.
 yaml_str = rc.to_yaml(path=Path("config.yaml"))
 ```
 
-### `rc.to_json(path, *, overrides=None, cli_overrides=True, exclude_markers=False, indent=2)`
+#### `rc.to_json(path, *, overrides=None, cli_overrides=True, exclude_markers=False, indent=2)`
 
 Export resolved config as a JSON string.
 
@@ -2464,7 +2468,7 @@ json_str = rc.to_json(path=Path("config.yaml"))
 compact = rc.to_json(path=Path("config.yaml"), indent=None)
 ```
 
-### `rc.to_toml(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+#### `rc.to_toml(path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
 Export resolved config as a TOML string.
 
@@ -2485,7 +2489,7 @@ Export resolved config as a TOML string.
 toml_str = rc.to_toml(path=Path("config.yaml"))
 ```
 
-### `rc.to_file(source, output_path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+#### `rc.to_file(source, output_path, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
 Export config to a single file with format auto-detected from output path extension.
 
@@ -2518,7 +2522,7 @@ config = {"model": {"lr": 0.01}, "epochs": 10}
 rc.to_file(source=config, output_path=Path("output.yaml"))
 ```
 
-### `rc.to_files(source, config_root_file, *, overrides=None, cli_overrides=True, exclude_markers=False)`
+#### `rc.to_files(source, config_root_file, *, overrides=None, cli_overrides=True, exclude_markers=False)`
 
 Export config preserving file structure (with `_ref_` relationships).
 
@@ -2549,7 +2553,7 @@ rc.to_files(source=Path("trainer.yaml"), config_root_file=Path("output/trainer.j
 #   output/models/resnet.yaml (preserves YAML)
 ```
 
-### `rc.export(path, exporter, *, overrides=None, cli_overrides=True)`
+#### `rc.export(path, exporter, *, overrides=None, cli_overrides=True)`
 
 Export resolved config using a custom exporter.
 
@@ -2574,136 +2578,7 @@ class MyExporter(Exporter):
 result = rc.export(path=Path("config.yaml"), exporter=MyExporter())
 ```
 
-### `rc.register_exporter(exporter, *extensions)`
-
-Register an exporter for specific file extensions.
-
-**Parameters:**
-
-| Parameter       | Type         | Default  | Description                                                |
-| --------------- | ------------ | -------- | ---------------------------------------------------------- |
-| `exporter`    | `Exporter` | required | Exporter instance to register.                             |
-| `*extensions` | `str`      | required | Extensions to register (e.g.,`".xml"`, `".protobuf"`). |
-
-**Returns:** `None`
-
-**Examples:**
-
-```python
-class XmlExporter(Exporter):
-    def export(self, config: dict) -> str:
-        return dict_to_xml(config)
-
-rc.register_exporter(XmlExporter(), ".xml")
-```
-
-### `rc.unregister_exporter(extension)`
-
-Unregister an exporter by extension.
-
-**Parameters:**
-
-| Parameter     | Type    | Default  | Description                  |
-| ------------- | ------- | -------- | ---------------------------- |
-| `extension` | `str` | required | The extension to unregister. |
-
-**Returns:** `None`
-
-**Raises:**
-
-| Exception    | Condition                |
-| ------------ | ------------------------ |
-| `KeyError` | Extension not registered |
-
-**Examples:**
-
-```python
-rc.unregister_exporter(extension=".xml")
-```
-
-### `rc.supported_exporter_extensions()`
-
-Get all supported export file extensions.
-
-**Parameters:** None
-
-**Returns:** `frozenset[str]` - Supported extensions (lowercase, e.g., `{'.yaml', '.json', '.toml'}`)
-
-**Examples:**
-
-```python
-extensions = rc.supported_exporter_extensions()
-# frozenset({'.yaml', '.yml', '.json', '.toml'})
-```
-
-### `rc.register_loader(loader, *extensions)`
-
-Register a config file loader for specific extensions.
-
-**Parameters:**
-
-| Parameter       | Type                 | Default  | Description                                            |
-| --------------- | -------------------- | -------- | ------------------------------------------------------ |
-| `loader`      | `ConfigFileLoader` | required | A `ConfigFileLoader` instance to register.           |
-| `*extensions` | `str`              | required | Extensions to register (e.g.,`".ini"`, `".conf"`). |
-
-**Returns:** `None`
-
-**Examples:**
-
-```python
-class IniConfigLoader(ConfigFileLoader):
-    def load(self, path: Path) -> dict[str, Any]:
-        import configparser
-        parser = configparser.ConfigParser()
-        parser.read(path)
-        return {s: dict(parser[s]) for s in parser.sections()}
-
-    def load_with_positions(self, path: Path) -> PositionMap:
-        return PositionMap(self.load(path))
-
-rc.register_loader(IniConfigLoader(), ".ini")
-```
-
-### `rc.unregister_loader(extension)`
-
-Unregister a config file loader by extension.
-
-**Parameters:**
-
-| Parameter     | Type    | Default  | Description                  |
-| ------------- | ------- | -------- | ---------------------------- |
-| `extension` | `str` | required | The extension to unregister. |
-
-**Returns:** `None`
-
-**Raises:**
-
-| Exception    | Condition                |
-| ------------ | ------------------------ |
-| `KeyError` | Extension not registered |
-
-**Examples:**
-
-```python
-rc.unregister_loader(extension=".ini")
-```
-
-### `rc.supported_loader_extensions()`
-
-Get all supported loader file extensions.
-
-**Parameters:** None
-
-**Returns:** `frozenset[str]` - Supported extensions (lowercase, e.g., `{'.yaml', '.yml', '.json', '.toml'}`)
-
-**Examples:**
-
-```python
-extensions = rc.supported_loader_extensions()
-```
-
-### `@rc.resolver(*path)`
+#### `@rc.resolver(*path)`
 
 Decorator to register a resolver function for use in interpolation expressions.
 
@@ -2747,7 +2622,7 @@ def derive(path: str, *, _config_: dict) -> Any:
     return _config_.get(path)
 ```
 
-### `rc.register_resolver(*path, func)`
+#### `rc.register_resolver(*path, func)`
 
 Register a custom resolver function for use in interpolation expressions.
 
@@ -2780,7 +2655,7 @@ rc.register_resolver("db:lookup", func=my_lookup)
 rc.register_resolver("db.lookup", func=my_lookup)
 ```
 
-### `rc.unregister_resolver(*path)`
+#### `rc.unregister_resolver(*path)`
 
 Unregister a previously registered resolver.
 
@@ -2808,6 +2683,647 @@ rc.unregister_resolver("db", "lookup")
 rc.unregister_resolver("db:lookup")
 rc.unregister_resolver("db.lookup")
 ```
+
+#### `rc.set_help_integration(integration)`
+
+Set a custom help integration for CLI help display.
+
+**Parameters:**
+
+| Parameter     | Type              | Default  | Description                        |
+| ------------- | ----------------- | -------- | ---------------------------------- |
+| `integration` | `HelpIntegration` | required | A HelpIntegration instance to use. |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception      | Condition               |
+| -------------- | ----------------------- |
+| `ValueError` | If integration is None. |
+
+**Examples:**
+
+```python
+from rconfig import GroupedHelpIntegration
+
+rc.set_help_integration(GroupedHelpIntegration())
+```
+
+#### `rc.current_help_integration()`
+
+Get the current help integration.
+
+**Parameters:** None
+
+**Returns:** `HelpIntegration` - The current integration (default: `FlatHelpIntegration`)
+
+**Examples:**
+
+```python
+integration = rc.current_help_integration()
+print(type(integration))  # <class 'rconfig.help.FlatHelpIntegration'>
+```
+
+#### `@rc.help_integration`
+
+Decorator to register a function as the help integration.
+
+The decorated function receives `(provenance, config_path)` and is responsible for all behavior including calling `sys.exit()` if needed.
+
+**Parameters:**
+
+| Parameter | Type                                | Default  | Description                      |
+| --------- | ----------------------------------- | -------- | -------------------------------- |
+| `func`  | `Callable[[Provenance, str], None]` | required | Function to handle help display. |
+
+**Returns:** The same function (for use as decorator)
+
+**Examples:**
+
+```python
+@rc.help_integration
+def my_help(provenance, config_path):
+    print(f"Help for {config_path}")
+    for path, entry in provenance.items():
+        print(f"  {path}: {entry.type_hint}")
+    sys.exit(0)
+```
+
+---
+
+### Advanced API
+
+Classes and types for extending and customizing rconfig. Use these when you need to create custom loaders, exporters, or help integrations.
+
+#### Multirun Types
+
+##### `MultirunResult`
+
+Result of a single multirun instantiation. Contains the immutable resolved config, the specific overrides applied for this run, and the instantiated object (or stored error).
+
+**Attributes:**
+
+| Attribute   | Type                         | Description                           |
+| ----------- | ---------------------------- | ------------------------------------- |
+| `config`  | `MappingProxyType[str, Any]` | Immutable view of the resolved config |
+| `overrides` | `MappingProxyType[str, Any]` | The specific overrides for this run   |
+| `instance` | `T`                          | The instantiated object (property)    |
+
+**Notes:**
+
+- `instance` is a property that raises any stored error when accessed
+- Use try/except for graceful error handling per run
+
+**Examples:**
+
+```python
+for result in rc.instantiate_multirun(...):
+    # Fail fast - raises if this run failed
+    train(result.instance)
+
+    # Or handle errors individually
+    try:
+        train(result.instance)
+    except (ValidationError, InstantiationError) as e:
+        log_failure(result.overrides, e)
+```
+
+##### `MultirunIterator`
+
+Lazy iterator with length and slicing support for multirun results. Enables efficient iteration with progress tracking.
+
+**Methods:**
+
+| Method            | Returns               | Description                   |
+| ----------------- | --------------------- | ----------------------------- |
+| `__len__()`     | `int`               | Total number of runs          |
+| `__iter__()`    | `MultirunIterator[T]` | Fresh iterator from beginning |
+| `__reversed__()` | `MultirunIterator[T]` | Iterator in reverse order     |
+| `__getitem__(i)` | `MultirunResult[T]`  | Access single run by index    |
+| `__getitem__(s)` | `MultirunIterator[T]` | Slice to get subset iterator  |
+
+**Examples:**
+
+```python
+results = rc.instantiate_multirun(...)
+
+# Progress tracking with tqdm
+for result in tqdm(results):
+    train(result.instance)
+
+# Resume from crash point
+for result in results[50:]:
+    train(result.instance)
+
+# Distribute across workers
+worker1_results = results[0:25]
+worker2_results = results[25:50]
+
+# Debug specific run
+single_result = results[3]
+```
+
+##### `MULTIRUN_HELP`
+
+Help text constant for multirun CLI options. Use this to include multirun documentation in your CLI help.
+
+**Type:** `str`
+
+**Example:**
+
+```python
+import argparse
+from rconfig import MULTIRUN_HELP
+
+parser = argparse.ArgumentParser(
+    epilog=MULTIRUN_HELP,
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+```
+
+##### `MultirunError`
+
+Base exception for multirun-related errors.
+
+##### `InvalidSweepValueError`
+
+Raised when sweep values are not lists.
+
+##### `NoRunConfigurationError`
+
+Raised when neither `sweep` nor `experiments` is provided to `instantiate_multirun()`.
+
+#### Help Integration Classes
+
+##### `HelpIntegration`
+
+Abstract base class for CLI help integrations. Subclass this to customize how config help is integrated into CLI.
+
+**Constructor:**
+
+| Parameter            | Type   | Default | Description                               |
+| -------------------- | ------ | ------- | ----------------------------------------- |
+| `consume_help_flag` | `bool` | `True` | If True, remove --help/-h from sys.argv. |
+
+**Abstract Methods:**
+
+| Method                                   | Description                          |
+| ---------------------------------------- | ------------------------------------ |
+| `integrate(provenance, config_path)` | Called when --help/-h is detected. |
+
+**Examples:**
+
+```python
+from rconfig import HelpIntegration
+
+class CustomHelpIntegration(HelpIntegration):
+    def integrate(self, provenance, config_path):
+        print(f"Custom help for {config_path}")
+        for path, entry in provenance.items():
+            print(f"  {path}: {entry.value}")
+        sys.exit(0)
+
+rc.set_help_integration(CustomHelpIntegration())
+```
+
+##### `FlatHelpIntegration`
+
+Displays config entries as a flat aligned table. This is the default integration.
+
+**Constructor:**
+
+| Parameter | Type             | Default      | Description       |
+| --------- | ---------------- | ------------ | ----------------- |
+| `output` | `TextIO \| None` | `sys.stdout` | Output stream.    |
+
+**Output format:**
+
+```
+Configuration options for config.yaml
+=====================================
+
+model.lr              float       0.001      Learning rate
+model.hidden_size     int         256        Hidden layer size
+data.path             str         (required) Path to data
+```
+
+##### `GroupedHelpIntegration`
+
+Displays config entries grouped by top-level key with indentation.
+
+**Constructor:**
+
+| Parameter | Type             | Default      | Description    |
+| --------- | ---------------- | ------------ | -------------- |
+| `output` | `TextIO \| None` | `sys.stdout` | Output stream. |
+
+**Output format:**
+
+```
+Configuration options for config.yaml
+=====================================
+
+model:
+  lr                  float       0.001      Learning rate
+  hidden_size         int         256        Hidden layer size
+data:
+  path                str         (required) Path to data
+```
+
+**Examples:**
+
+```python
+from rconfig import GroupedHelpIntegration
+
+rc.set_help_integration(GroupedHelpIntegration())
+```
+
+##### `ArgparseHelpIntegration`
+
+Integrates config entries into argparse help output. Adds config entries to the parser's epilog.
+
+**Constructor:**
+
+| Parameter | Type                       | Default  | Description                       |
+| --------- | -------------------------- | -------- | --------------------------------- |
+| `parser` | `argparse.ArgumentParser` | required | The argparse parser to integrate. |
+
+**Notes:**
+
+- Uses `consume_help_flag=False` because argparse handles --help itself
+
+**Examples:**
+
+```python
+import argparse
+from rconfig import ArgparseHelpIntegration
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--verbose", action="store_true")
+
+rc.set_help_integration(ArgparseHelpIntegration(parser))
+args = parser.parse_args()
+config = rc.instantiate(Path("config.yaml"))
+```
+
+#### Exporter Registry
+
+##### `rc.register_exporter(exporter, *extensions)`
+
+Register an exporter for specific file extensions.
+
+**Parameters:**
+
+| Parameter       | Type       | Default  | Description                                              |
+| --------------- | ---------- | -------- | -------------------------------------------------------- |
+| `exporter`    | `Exporter` | required | Exporter instance to register.                           |
+| `*extensions` | `str`    | required | Extensions to register (e.g., `".xml"`, `".protobuf"`). |
+
+**Returns:** `None`
+
+**Examples:**
+
+```python
+class XmlExporter(Exporter):
+    def export(self, config: dict) -> str:
+        return dict_to_xml(config)
+
+rc.register_exporter(XmlExporter(), ".xml")
+```
+
+##### `rc.unregister_exporter(extension)`
+
+Unregister an exporter by extension.
+
+**Parameters:**
+
+| Parameter   | Type  | Default  | Description                  |
+| ----------- | ----- | -------- | ---------------------------- |
+| `extension` | `str` | required | The extension to unregister. |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception  | Condition                |
+| ---------- | ------------------------ |
+| `KeyError` | Extension not registered |
+
+**Examples:**
+
+```python
+rc.unregister_exporter(extension=".xml")
+```
+
+##### `rc.get_exporter(path)`
+
+Get the appropriate exporter for a config file based on its extension.
+
+**Parameters:**
+
+| Parameter | Type   | Default  | Description              |
+| --------- | ------ | -------- | ------------------------ |
+| `path`  | `Path` | required | Path to the config file. |
+
+**Returns:** `Exporter` - An exporter instance for the file format
+
+**Raises:**
+
+| Exception         | Condition                                |
+| ----------------- | ---------------------------------------- |
+| `ConfigFileError` | If no exporter supports the file format. |
+
+**Examples:**
+
+```python
+exporter = rc.get_exporter(Path("config.yaml"))
+result = exporter.export(config_dict)
+```
+
+##### `rc.supported_exporter_extensions()`
+
+Get all supported export file extensions.
+
+**Parameters:** None
+
+**Returns:** `frozenset[str]` - Supported extensions (lowercase, e.g., `{'.yaml', '.json', '.toml'}`)
+
+**Examples:**
+
+```python
+extensions = rc.supported_exporter_extensions()
+# frozenset({'.yaml', '.yml', '.json', '.toml'})
+```
+
+#### Exporter Classes
+
+##### `Exporter`
+
+Abstract base class for config exporters. Subclass this to create custom exporters.
+
+**Abstract Methods:**
+
+| Method                       | Returns | Description                        |
+| ---------------------------- | ------- | ---------------------------------- |
+| `export(config: dict)` | `Any` | Export config to the target format |
+
+**Examples:**
+
+```python
+from rconfig import Exporter
+
+class XmlExporter(Exporter):
+    def export(self, config: dict) -> str:
+        return dict_to_xml(config)
+
+rc.register_exporter(XmlExporter(), ".xml")
+```
+
+##### `YamlExporter`
+
+Export config as a YAML string.
+
+**Constructor:**
+
+| Parameter            | Type               | Default   | Description                       |
+| -------------------- | ------------------ | --------- | --------------------------------- |
+| `default_flow_style` | `bool \| None`      | `False` | None=block, True=flow, False=mixed |
+| `indent`           | `int`              | `2`     | Indentation spaces                |
+| `exclude_markers`  | `bool`             | `False` | Remove internal markers           |
+| `markers`          | `tuple[str, ...]` | (default) | Marker keys to exclude            |
+
+##### `JsonExporter`
+
+Export config as a JSON string.
+
+**Constructor:**
+
+| Parameter           | Type               | Default   | Description                     |
+| ------------------- | ------------------ | --------- | ------------------------------- |
+| `indent`          | `int \| None`       | `2`     | Indentation (None for compact)  |
+| `ensure_ascii`    | `bool`             | `False` | Escape non-ASCII characters     |
+| `sort_keys`       | `bool`             | `False` | Sort dictionary keys            |
+| `exclude_markers` | `bool`             | `False` | Remove internal markers         |
+| `markers`         | `tuple[str, ...]` | (default) | Marker keys to exclude          |
+
+##### `TomlExporter`
+
+Export config as a TOML string.
+
+**Constructor:**
+
+| Parameter             | Type               | Default   | Description               |
+| --------------------- | ------------------ | --------- | ------------------------- |
+| `multiline_strings` | `bool`             | `False` | Use multiline for strings |
+| `exclude_markers`   | `bool`             | `False` | Remove internal markers   |
+| `markers`           | `tuple[str, ...]` | (default) | Marker keys to exclude    |
+
+##### `DictExporter`
+
+Export config as a Python dictionary. This is the base exporter used internally.
+
+##### `FileExporter`
+
+Base class for file-based exporters. Subclass this to create exporters that write to files.
+
+##### `SingleFileExporter`
+
+Export config to a single file. Used by `rc.to_file()`.
+
+##### `MultiFileExporter`
+
+Export config preserving `_ref_` structure across multiple files. Used by `rc.to_files()`.
+
+#### Loader Registry
+
+##### `rc.register_loader(loader, *extensions)`
+
+Register a config file loader for specific extensions.
+
+**Parameters:**
+
+| Parameter       | Type               | Default  | Description                                          |
+| --------------- | ------------------ | -------- | ---------------------------------------------------- |
+| `loader`      | `ConfigFileLoader` | required | A `ConfigFileLoader` instance to register.           |
+| `*extensions` | `str`            | required | Extensions to register (e.g., `".ini"`, `".conf"`). |
+
+**Returns:** `None`
+
+**Examples:**
+
+```python
+class IniConfigLoader(ConfigFileLoader):
+    def load(self, path: Path) -> dict[str, Any]:
+        import configparser
+        parser = configparser.ConfigParser()
+        parser.read(path)
+        return {s: dict(parser[s]) for s in parser.sections()}
+
+    def load_with_positions(self, path: Path) -> PositionMap:
+        return PositionMap(self.load(path))
+
+rc.register_loader(IniConfigLoader(), ".ini")
+```
+
+##### `rc.unregister_loader(extension)`
+
+Unregister a config file loader by extension.
+
+**Parameters:**
+
+| Parameter   | Type  | Default  | Description                  |
+| ----------- | ----- | -------- | ---------------------------- |
+| `extension` | `str` | required | The extension to unregister. |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception  | Condition                |
+| ---------- | ------------------------ |
+| `KeyError` | Extension not registered |
+
+**Examples:**
+
+```python
+rc.unregister_loader(extension=".ini")
+```
+
+##### `rc.get_loader(path)`
+
+Get the appropriate loader for a config file based on its extension.
+
+**Parameters:**
+
+| Parameter | Type   | Default  | Description              |
+| --------- | ------ | -------- | ------------------------ |
+| `path`  | `Path` | required | Path to the config file. |
+
+**Returns:** `ConfigFileLoader` - A loader instance for the file format
+
+**Raises:**
+
+| Exception         | Condition                              |
+| ----------------- | -------------------------------------- |
+| `ConfigFileError` | If no loader supports the file format. |
+
+**Examples:**
+
+```python
+loader = rc.get_loader(Path("config.yaml"))
+config_dict = loader.load(Path("config.yaml"))
+```
+
+##### `rc.supported_loader_extensions()`
+
+Get all supported loader file extensions.
+
+**Parameters:** None
+
+**Returns:** `frozenset[str]` - Supported extensions (lowercase, e.g., `{'.yaml', '.yml', '.json', '.toml'}`)
+
+**Examples:**
+
+```python
+extensions = rc.supported_loader_extensions()
+```
+
+#### Loader Classes
+
+##### `ConfigFileLoader`
+
+Abstract base class for config file loaders. Subclass this to support additional file formats.
+
+**Abstract Methods:**
+
+| Method                          | Returns       | Description                            |
+| ------------------------------- | ------------- | -------------------------------------- |
+| `load(path: Path)`            | `dict`      | Load config as dictionary              |
+| `load_with_positions(path)` | `PositionMap` | Load with line/column position info    |
+
+**Examples:**
+
+```python
+from rconfig import ConfigFileLoader
+
+class IniConfigLoader(ConfigFileLoader):
+    def load(self, path: Path) -> dict:
+        import configparser
+        parser = configparser.ConfigParser()
+        parser.read(path)
+        return {s: dict(parser[s]) for s in parser.sections()}
+
+    def load_with_positions(self, path: Path) -> PositionMap:
+        return PositionMap(self.load(path))
+
+rc.register_loader(IniConfigLoader(), ".ini")
+```
+
+##### `YamlConfigLoader`
+
+Load YAML config files using ruamel.yaml.
+
+**Supported Extensions:** `.yaml`, `.yml`
+
+##### `JsonConfigLoader`
+
+Load JSON config files using Python's standard library.
+
+**Supported Extensions:** `.json`
+
+##### `TomlConfigLoader`
+
+Load TOML config files using Python 3.11+ tomllib.
+
+**Supported Extensions:** `.toml`
+
+#### Deprecation Classes
+
+##### `DeprecationInfo`
+
+Information about a deprecated key.
+
+**Attributes:**
+
+| Attribute    | Type           | Description                           |
+| ------------ | -------------- | ------------------------------------- |
+| `old_key`  | `str`        | The deprecated key path               |
+| `new_key`  | `str \| None` | Migration target (if any)             |
+| `message`  | `str \| None` | Custom deprecation message            |
+| `remove_in` | `str \| None` | Version when key will be removed      |
+| `policy`   | `str \| None` | Override policy (warn/error/ignore) |
+
+##### `DeprecationHandler`
+
+Abstract base class for custom deprecation warning handlers.
+
+**Abstract Methods:**
+
+| Method                                        | Description                     |
+| --------------------------------------------- | ------------------------------- |
+| `handle(info, path, file, line)` | Called when deprecated key used |
+
+**Examples:**
+
+```python
+from rconfig import DeprecationHandler, DeprecationInfo
+
+class LoggingHandler(DeprecationHandler):
+    def handle(self, info: DeprecationInfo, path: str, file: str, line: int) -> None:
+        import logging
+        logging.warning(f"Deprecated key '{path}' at {file}:{line}")
+
+rc.set_deprecation_handler(LoggingHandler())
+```
+
+##### `DeprecatedKeyError`
+
+Exception raised when a deprecated key is used and the deprecation policy is set to `"error"`.
+
+##### `RconfigDeprecationWarning`
+
+Warning class used by the default deprecation handler. Integrates with Python's `warnings` filter system.
 
 ## Advanced Usage
 
