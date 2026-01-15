@@ -879,6 +879,60 @@ assert isinstance(callback, Callback)
 
 **Note:** `inner_path=None` is equivalent to `inner_path="/"` (root). The root always requires `_target_` because there's no parent to infer the type from.
 
+#### Multi-Environment Configuration
+
+Use `inner_path` to select environment-specific sections from a single config file:
+
+```yaml
+# environments.yaml
+development:
+  _target_: app_config
+  database:
+    host: localhost
+    port: 5432
+  debug: true
+  log_level: DEBUG
+
+staging:
+  _target_: app_config
+  database:
+    host: staging-db.internal
+    port: 5432
+  debug: false
+  log_level: INFO
+
+production:
+  _target_: app_config
+  database:
+    host: ${env:DATABASE_HOST}
+    port: ${env:DATABASE_PORT ?: 5432}
+  debug: false
+  log_level: WARNING
+```
+
+```python
+import os
+import rconfig as rc
+from pathlib import Path
+
+# Select environment from env var (defaults to "development")
+env = os.getenv("APP_ENV", "development")
+
+config = rc.instantiate(
+    path=Path("environments.yaml"),
+    inner_path=env,
+)
+
+print(config.database.host)  # "localhost" in dev, env var in prod
+print(config.debug)          # True in dev, False in prod
+```
+
+This approach provides:
+- **Single file**: All environments visible in one place for easy comparison
+- **Environment variable selection**: `APP_ENV=production python main.py`
+- **CLI override**: `python main.py inner_path=staging`
+- **Dynamic values**: Use `${env:...}` interpolation for production secrets
+
 ### Lazy Instantiation
 
 Delay object creation until first attribute access. Useful for expensive initialization (loading models, database connections) that may not always be used.
