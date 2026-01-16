@@ -1,7 +1,7 @@
 """Provenance layout system for customizable formatting.
 
 This module provides the base class for provenance layouts and the
-FormatContext dataclass that holds runtime formatting settings.
+ProvenanceFormatContext dataclass that holds runtime formatting settings.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class FormatContext:
+class ProvenanceFormatContext:
     """Runtime settings passed from the builder to the layout.
 
     These settings control what information is displayed. The layout
@@ -59,7 +59,7 @@ class ProvenanceLayout(ABC):
     """Base class for provenance formatting layouts.
 
     A layout defines HOW to format provenance information, not WHAT to show.
-    The WHAT is controlled by FormatContext flags set via the builder.
+    The WHAT is controlled by ProvenanceFormatContext flags set via the builder.
 
     Subclass this to create custom layouts (table, HTML, etc.).
     Override the methods you want to customize; the base implementations
@@ -78,18 +78,18 @@ class ProvenanceLayout(ABC):
                 return f"| {path} | {entry.file}:{entry.line} |"
     """
 
-    def get_default_context(self) -> FormatContext:
+    def get_default_context(self) -> ProvenanceFormatContext:
         """Return default show/hide settings for this layout.
 
         Override this to change what's shown by default for this layout.
         Builder methods will override these settings.
 
-        :return: FormatContext with default settings.
+        :return: ProvenanceFormatContext with default settings.
         """
-        return FormatContext()
+        return ProvenanceFormatContext()
 
     @abstractmethod
-    def format_provenance(self, provenance: Provenance, ctx: FormatContext) -> str:
+    def format_provenance(self, provenance: Provenance, ctx: ProvenanceFormatContext) -> str:
         """Format the entire provenance object.
 
         This is the main entry point called by ProvenanceFormat.__str__().
@@ -102,7 +102,7 @@ class ProvenanceLayout(ABC):
 
     @abstractmethod
     def format_entry(
-        self, entry: ProvenanceEntry, path: str, ctx: FormatContext
+        self, entry: ProvenanceEntry, path: str, ctx: ProvenanceFormatContext
     ) -> str:
         """Format a single provenance entry.
 
@@ -113,7 +113,7 @@ class ProvenanceLayout(ABC):
         """
         ...
 
-    def format_path(self, path: str, ctx: FormatContext) -> str:
+    def format_path(self, path: str, ctx: ProvenanceFormatContext) -> str:
         """Format a config path.
 
         :param path: The config path (e.g., "/model.lr").
@@ -122,7 +122,7 @@ class ProvenanceLayout(ABC):
         """
         return path
 
-    def format_value(self, value: Any, ctx: FormatContext) -> str:
+    def format_value(self, value: Any, ctx: ProvenanceFormatContext) -> str:
         """Format a resolved value.
 
         Override this to customize value display (truncation, colors, etc.).
@@ -140,7 +140,7 @@ class ProvenanceLayout(ABC):
         else:
             return str(value)
 
-    def format_location(self, file: str, line: int, ctx: FormatContext) -> str:
+    def format_location(self, file: str, line: int, ctx: ProvenanceFormatContext) -> str:
         """Format file:line location.
 
         :param file: Source file name.
@@ -158,7 +158,7 @@ class ProvenanceLayout(ABC):
                 parts.append(str(line))
         return "".join(parts)
 
-    def format_source_type(self, source_type: str, ctx: FormatContext) -> str:
+    def format_source_type(self, source_type: str, ctx: ProvenanceFormatContext) -> str:
         """Format source type marker (CLI/env/file/programmatic).
 
         :param source_type: The source type.
@@ -175,7 +175,7 @@ class ProvenanceLayout(ABC):
             return ""
 
     def format_chain(
-        self, node: ProvenanceNode, depth: int, ctx: FormatContext
+        self, node: ProvenanceNode, depth: int, ctx: ProvenanceFormatContext
     ) -> str:
         """Format a single node in the provenance chain/tree.
 
@@ -186,7 +186,7 @@ class ProvenanceLayout(ABC):
         """
         return str(node)
 
-    def format_tree(self, root: ProvenanceNode, ctx: FormatContext) -> str:
+    def format_tree(self, root: ProvenanceNode, ctx: ProvenanceFormatContext) -> str:
         """Format the full provenance tree structure.
 
         :param root: Root node of the provenance tree.
@@ -202,7 +202,7 @@ class ProvenanceLayout(ABC):
         node: ProvenanceNode,
         depth: int,
         lines: list[str],
-        ctx: FormatContext,
+        ctx: ProvenanceFormatContext,
     ) -> None:
         """Recursively format tree nodes.
 
@@ -216,7 +216,7 @@ class ProvenanceLayout(ABC):
             self._format_tree_recursive(child, depth + 1, lines, ctx)
 
     def format_override(
-        self, overrode: str, ctx: FormatContext
+        self, overrode: str, ctx: ProvenanceFormatContext
     ) -> str:
         """Format override information.
 
@@ -226,7 +226,7 @@ class ProvenanceLayout(ABC):
         """
         return f"Overrode: {overrode}"
 
-    def format_type_hint(self, type_hint: type | None, ctx: FormatContext) -> str:
+    def format_type_hint(self, type_hint: type | None, ctx: ProvenanceFormatContext) -> str:
         """Format a type hint.
 
         :param type_hint: The type hint (e.g., float, list[int]).
@@ -239,7 +239,7 @@ class ProvenanceLayout(ABC):
             return type_hint.__name__
         return str(type_hint)
 
-    def format_description(self, description: str | None, ctx: FormatContext) -> str:
+    def format_description(self, description: str | None, ctx: ProvenanceFormatContext) -> str:
         """Format a description.
 
         :param description: The description from structured config.
@@ -250,7 +250,7 @@ class ProvenanceLayout(ABC):
             return ""
         return description
 
-    def join_entries(self, entries: list[str], ctx: FormatContext) -> str:
+    def join_entries(self, entries: list[str], ctx: ProvenanceFormatContext) -> str:
         """Join all formatted entries into final output.
 
         :param entries: List of formatted entry strings.
@@ -259,7 +259,7 @@ class ProvenanceLayout(ABC):
         """
         return "\n".join(entries)
 
-    def indent(self, text: str, depth: int, ctx: FormatContext) -> str:
+    def indent(self, text: str, depth: int, ctx: ProvenanceFormatContext) -> str:
         """Apply indentation to text.
 
         :param text: Text to indent.

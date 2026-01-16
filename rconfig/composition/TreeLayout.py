@@ -9,7 +9,7 @@ from __future__ import annotations
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Any
 
-from .ProvenanceLayout import FormatContext, ProvenanceLayout
+from .ProvenanceLayout import ProvenanceFormatContext, ProvenanceLayout
 
 if TYPE_CHECKING:
     from .Provenance import Provenance, ProvenanceEntry, ProvenanceNode
@@ -33,12 +33,12 @@ class TreeLayout(ProvenanceLayout):
           Overrode: base.yaml:10
     """
 
-    def get_default_context(self) -> FormatContext:
+    def get_default_context(self) -> ProvenanceFormatContext:
         """Return default settings for TreeLayout (show everything).
 
-        :return: FormatContext with all options enabled.
+        :return: ProvenanceFormatContext with all options enabled.
         """
-        return FormatContext(
+        return ProvenanceFormatContext(
             show_paths=True,
             show_values=True,
             show_files=True,
@@ -54,7 +54,7 @@ class TreeLayout(ProvenanceLayout):
             indent_size=2,
         )
 
-    def format_provenance(self, provenance: Provenance, ctx: FormatContext) -> str:
+    def format_provenance(self, provenance: Provenance, ctx: ProvenanceFormatContext) -> str:
         """Format the entire provenance object.
 
         :param provenance: The provenance to format.
@@ -89,7 +89,7 @@ class TreeLayout(ProvenanceLayout):
         return result
 
     def format_entry(
-        self, entry: ProvenanceEntry, path: str, ctx: FormatContext
+        self, entry: ProvenanceEntry, path: str, ctx: ProvenanceFormatContext
     ) -> str:
         """Format a single provenance entry.
 
@@ -185,7 +185,7 @@ class TreeLayout(ProvenanceLayout):
     def _format_target(
         self,
         entry: ProvenanceEntry,
-        ctx: FormatContext,
+        ctx: ProvenanceFormatContext,
     ) -> str:
         """Format target class information.
 
@@ -212,7 +212,7 @@ class TreeLayout(ProvenanceLayout):
     def _format_deprecation(
         self,
         deprecation: Any,  # DeprecationInfo
-        ctx: FormatContext,
+        ctx: ProvenanceFormatContext,
     ) -> list[str]:
         """Format deprecation information.
 
@@ -241,7 +241,7 @@ class TreeLayout(ProvenanceLayout):
         self,
         source: Any,  # InterpolationSource
         depth: int,
-        ctx: FormatContext,
+        ctx: ProvenanceFormatContext,
     ) -> list[str]:
         """Format an interpolation source tree recursively.
 
@@ -297,7 +297,7 @@ class TreeLayout(ProvenanceLayout):
         source: Any,  # InterpolationSource
         depth: int,
         is_last: bool,
-        ctx: FormatContext,
+        ctx: ProvenanceFormatContext,
     ) -> list[str]:
         """Format a child source with proper tree connectors.
 
@@ -349,7 +349,7 @@ class TreeLayout(ProvenanceLayout):
         return lines
 
     def _matches_filters(
-        self, path: str, entry: ProvenanceEntry, ctx: FormatContext
+        self, path: str, entry: ProvenanceEntry, ctx: ProvenanceFormatContext
     ) -> bool:
         """Check if an entry matches the configured filters.
 
@@ -381,7 +381,7 @@ class TreeLayout(ProvenanceLayout):
 
         return True
 
-    def format_value(self, value: Any, ctx: FormatContext) -> str:
+    def format_value(self, value: Any, ctx: ProvenanceFormatContext) -> str:
         """Format a value for display.
 
         :param value: The value to format.
@@ -404,7 +404,7 @@ class TreeLayout(ProvenanceLayout):
         else:
             return str(value)
 
-    def join_entries(self, entries: list[str], ctx: FormatContext) -> str:
+    def join_entries(self, entries: list[str], ctx: ProvenanceFormatContext) -> str:
         """Join formatted entries with blank lines between them.
 
         :param entries: List of formatted entry strings.

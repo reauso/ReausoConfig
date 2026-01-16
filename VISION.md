@@ -14,13 +14,14 @@ This document outlines potential features for rconfig based on analysis of state
 6. [✅ Deprecation Warnings](#6-deprecation-warnings)
 7. [:x: Defaults List / Composition Groups](#7-x-defaults-list--composition-groups)
 8. [✅ Multi-Environment Profiles](#8-multi-environment-profiles)
-9. [Config Diffing](#9-config-diffing)
+9. [✅ Config Diffing](#9--config-diffing)
 10. [Callbacks and Hooks](#10-callbacks-and-hooks)
 11. [XDG Base Directory Support](#11-xdg-base-directory-support)
 12. [✅ CLI `_ref_` Shorthand](#12-cli-_ref_-shorthand)
 13. [✅ Extension-less `_ref_` Resolution](#13-extension-less-_ref_-resolution)
 14. [✅ Multirun Support](#14-multirun-support)
 15. [✅ CLI Help Integration](#15-cli-help-integration)
+16. [Future Type Inference Enhancements](#16-future-type-inference-enhancements)
 
 ---
 
@@ -874,7 +875,7 @@ config = rconfig.instantiate("config.yaml", env="production")
 
 ---
 
-## 9. Config Diffing
+## 9. ✅ Config Diffing
 
 **Adopted by:** General DevOps best practice, Terraform, Kubernetes
 
@@ -1767,7 +1768,7 @@ def my_func(provenance, config_path): ...
 
 ---
 
-## Future Type Inference Enhancements
+## 16. Future Type Inference Enhancements
 
 These enhancements build on the existing type inference system for `inner_path`.
 
@@ -1831,7 +1832,7 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 ### Medium Priority (Common Patterns)
 
 8. ✅ Multi-Environment Profiles (via `inner_path`)
-9. Config Diffing
+9. ✅ Config Diffing
 10. Callbacks and Hooks
 11. XDG Base Directory Support
 
@@ -1841,5 +1842,6 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 13. ✅ Extension-less `_ref_` Resolution
 14. ✅ Multirun Support
 15. ✅ CLI Help Integration
+16. Future Type Inference Enhancements
 
 Each feature includes detailed usage examples showing how users would interact with the functionality, highlighting the key benefits and use cases.

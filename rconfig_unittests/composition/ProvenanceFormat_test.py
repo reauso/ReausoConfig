@@ -9,7 +9,7 @@ from rconfig.composition import (
     ProvenanceFormat,
     ProvenancePreset,
     ProvenanceLayout,
-    FormatContext,
+    ProvenanceFormatContext,
     TreeLayout,
     EntrySourceType,
     NodeSourceType,
@@ -36,88 +36,88 @@ class ProvenanceFormatBuilderTests(TestCase):
         fmt = self.provenance.format()
 
         fmt.show_paths()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertTrue(ctx.show_paths)
 
         fmt.hide_paths()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertFalse(ctx.show_paths)
 
     def test_format__ShowHideValues__SetsOverride(self) -> None:
         fmt = self.provenance.format()
 
         fmt.show_values()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertTrue(ctx.show_values)
 
         fmt.hide_values()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertFalse(ctx.show_values)
 
     def test_format__ShowHideFiles__SetsOverride(self) -> None:
         fmt = self.provenance.format()
 
         fmt.show_files()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertTrue(ctx.show_files)
 
         fmt.hide_files()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertFalse(ctx.show_files)
 
     def test_format__ShowHideLines__SetsOverride(self) -> None:
         fmt = self.provenance.format()
 
         fmt.show_lines()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertTrue(ctx.show_lines)
 
         fmt.hide_lines()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertFalse(ctx.show_lines)
 
     def test_format__ShowHideSourceType__SetsOverride(self) -> None:
         fmt = self.provenance.format()
 
         fmt.show_source_type()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertTrue(ctx.show_source_type)
 
         fmt.hide_source_type()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertFalse(ctx.show_source_type)
 
     def test_format__ShowHideChain__SetsOverride(self) -> None:
         fmt = self.provenance.format()
 
         fmt.show_chain()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertTrue(ctx.show_chain)
 
         fmt.hide_chain()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertFalse(ctx.show_chain)
 
     def test_format__ShowHideOverrides__SetsOverride(self) -> None:
         fmt = self.provenance.format()
 
         fmt.show_overrides()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertTrue(ctx.show_overrides)
 
         fmt.hide_overrides()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertFalse(ctx.show_overrides)
 
     def test_format__ShowHideTargets__SetsOverride(self) -> None:
         fmt = self.provenance.format()
 
         fmt.show_targets()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertTrue(ctx.show_targets)
 
         fmt.hide_targets()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertFalse(ctx.show_targets)
 
     def test_format__MethodChaining__ReturnsSelf(self) -> None:
@@ -139,7 +139,7 @@ class ProvenanceFormatPresetTests(TestCase):
 
     def test_format__MinimalPreset__HidesValuesAndChain(self) -> None:
         fmt = self.provenance.format().minimal()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         self.assertTrue(ctx.show_paths)
         self.assertFalse(ctx.show_values)
@@ -152,7 +152,7 @@ class ProvenanceFormatPresetTests(TestCase):
 
     def test_format__CompactPreset__HidesChainAndOverrides(self) -> None:
         fmt = self.provenance.format().compact()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         self.assertTrue(ctx.show_paths)
         self.assertTrue(ctx.show_values)
@@ -165,7 +165,7 @@ class ProvenanceFormatPresetTests(TestCase):
 
     def test_format__FullPreset__ShowsEverything(self) -> None:
         fmt = self.provenance.format().full()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         self.assertTrue(ctx.show_paths)
         self.assertTrue(ctx.show_values)
@@ -180,15 +180,15 @@ class ProvenanceFormatPresetTests(TestCase):
         fmt_method = self.provenance.format().minimal()
         fmt_enum = self.provenance.format().preset(ProvenancePreset.MINIMAL)
 
-        ctx_method = fmt_method._build_context()
-        ctx_enum = fmt_enum._build_context()
+        ctx_method = fmt_method._ctx
+        ctx_enum = fmt_enum._ctx
 
         self.assertEqual(ctx_method.show_values, ctx_enum.show_values)
         self.assertEqual(ctx_method.show_chain, ctx_enum.show_chain)
 
     def test_format__PresetWithOverride__OverrideWins(self) -> None:
         fmt = self.provenance.format().minimal().show_values()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         # Minimal sets show_values=False, but explicit override sets True
         self.assertTrue(ctx.show_values)
@@ -207,25 +207,25 @@ class ProvenanceFormatFilterTests(TestCase):
 
     def test_format__ForPath__AddsFilter(self) -> None:
         fmt = self.provenance.format().for_path("/model.*")
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         self.assertEqual(["/model.*"], ctx.path_filters)
 
     def test_format__ForPathMultiple__AddsAllFilters(self) -> None:
         fmt = self.provenance.format().for_path("/model.*").for_path("/data.*")
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         self.assertEqual(["/model.*", "/data.*"], ctx.path_filters)
 
     def test_format__FromFile__AddsFilter(self) -> None:
         fmt = self.provenance.format().from_file("config.yaml")
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         self.assertEqual(["config.yaml"], ctx.file_filters)
 
     def test_format__FromFileMultiple__AddsAllFilters(self) -> None:
         fmt = self.provenance.format().from_file("*.yaml").from_file("*.json")
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         self.assertEqual(["*.yaml", "*.json"], ctx.file_filters)
 
@@ -255,7 +255,7 @@ class ProvenanceFormatLayoutTests(TestCase):
     def test_format__LayoutWithDefaults__UsesLayoutDefaults(self) -> None:
         class NoValuesLayout(ProvenanceLayout):
             def get_default_context(self):
-                ctx = FormatContext()
+                ctx = ProvenanceFormatContext()
                 ctx.show_values = False
                 return ctx
 
@@ -273,7 +273,7 @@ class ProvenanceFormatLayoutTests(TestCase):
     def test_format__LayoutWithBuilderOverride__OverrideWins(self) -> None:
         class NoValuesLayout(ProvenanceLayout):
             def get_default_context(self):
-                ctx = FormatContext()
+                ctx = ProvenanceFormatContext()
                 ctx.show_values = False
                 return ctx
 
@@ -298,7 +298,7 @@ class TreeLayoutTests(TestCase):
         self._builder = ProvenanceBuilder()  # For building provenance in tests
 
     def test_formatProvenance__EmptyProvenance__ReturnsEmpty(self) -> None:
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
         result = self.layout.format_provenance(self.provenance, ctx)
 
         self.assertEqual("", result)
@@ -308,7 +308,7 @@ class TreeLayoutTests(TestCase):
         builder.add("model.lr", file="config.yaml", line=5)
         builder.set_config({"model": {"lr": 0.01}})
         prov = builder.build()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -323,7 +323,7 @@ class TreeLayoutTests(TestCase):
         builder.add("b", file="b.yaml", line=2)
         builder.set_config({"a": 1, "b": 2})
         prov = builder.build()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -335,7 +335,7 @@ class TreeLayoutTests(TestCase):
         builder.add("test", file="test.yaml", line=1)
         builder.set_config({"test": 42})
         prov = builder.build()
-        ctx = FormatContext(show_values=False)
+        ctx = ProvenanceFormatContext(show_values=False)
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -347,7 +347,7 @@ class TreeLayoutTests(TestCase):
         builder.add("test", file="test.yaml", line=1)
         builder.set_config({"test": 42})
         prov = builder.build()
-        ctx = FormatContext(show_paths=False)
+        ctx = ProvenanceFormatContext(show_paths=False)
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -360,7 +360,7 @@ class TreeLayoutTests(TestCase):
         builder.add("data.path", file="config.yaml", line=2)
         builder.set_config({"model": {"lr": 0.01}, "data": {"path": "/data"}})
         prov = builder.build()
-        ctx = FormatContext(path_filters=["/model.*"])
+        ctx = ProvenanceFormatContext(path_filters=["/model.*"])
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -373,7 +373,7 @@ class TreeLayoutTests(TestCase):
         builder.add("b", file="other.json", line=2)
         builder.set_config({"a": 1, "b": 2})
         prov = builder.build()
-        ctx = FormatContext(file_filters=["*.yaml"])
+        ctx = ProvenanceFormatContext(file_filters=["*.yaml"])
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -385,7 +385,7 @@ class TreeLayoutTests(TestCase):
         builder.add("test", file="config.yaml", line=1, source_type=EntrySourceType.CLI, cli_arg="--test=42")
         builder.set_config({"test": 42})
         prov = builder.build()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -397,7 +397,7 @@ class TreeLayoutTests(TestCase):
         builder.add("test", file="config.yaml", line=1, source_type=EntrySourceType.ENV, env_var="DATA_PATH")
         builder.set_config({"test": "/data"})
         prov = builder.build()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -409,7 +409,7 @@ class TreeLayoutTests(TestCase):
         builder.add("test", file="override.yaml", line=5, overrode="base.yaml:10")
         builder.set_config({"test": 42})
         prov = builder.build()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -725,7 +725,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         fmt = self.provenance.format().indent(4)
 
         # Act
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         # Assert
         self.assertEqual(4, ctx.indent_size)
@@ -742,7 +742,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         )
 
         # Act
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         # Assert
         self.assertEqual(["/model.*", "/data.*"], ctx.path_filters)
@@ -754,7 +754,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         fmt = self.provenance.format().preset(ProvenancePreset.COMPACT)
 
         # Act
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         # Assert
         self.assertTrue(ctx.show_paths)
@@ -769,7 +769,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         fmt = self.provenance.format().preset(ProvenancePreset.FULL)
 
         # Act
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         # Assert
         self.assertTrue(ctx.show_paths)
@@ -778,25 +778,24 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         self.assertTrue(ctx.show_chain)
         self.assertTrue(ctx.show_overrides)
 
-    def test_format__BuildContext__CopiesListFilters(self) -> None:
-        """Test that _build_context creates copies of filter lists."""
+    def test_format__ForPath__MutatesContext(self) -> None:
+        """Test that for_path mutates the context directly."""
         # Arrange
-        fmt = self.provenance.format().for_path("/test")
-        ctx1 = fmt._build_context()
+        fmt = self.provenance.format()
 
-        # Act - modify first context's filters
-        ctx1.path_filters.append("/modified")
-        ctx2 = fmt._build_context()
+        # Act
+        fmt.for_path("/test")
+        fmt.for_path("/test2")
 
-        # Assert - second context should not see modification
-        self.assertEqual(["/test"], ctx2.path_filters)
+        # Assert - filters are accumulated
+        self.assertEqual(["/test", "/test2"], fmt._ctx.path_filters)
 
     def test_format__LayoutSwitch__GetsNewDefaults(self) -> None:
         """Test that switching layout gets new default context."""
         # Arrange
         class CustomLayout(ProvenanceLayout):
             def get_default_context(self):
-                return FormatContext(show_values=False, indent_size=8)
+                return ProvenanceFormatContext(show_values=False, indent_size=8)
 
             def format_provenance(self, prov, ctx):
                 return f"custom: indent={ctx.indent_size}"
@@ -818,7 +817,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         fmt = self.provenance.format().minimal().show_values()
 
         # Act
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         # Assert - minimal sets show_values=False, but override sets True
         self.assertTrue(ctx.show_values)
@@ -829,7 +828,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         fmt = self.provenance.format().show_values().minimal()
 
         # Act
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         # Assert - minimal is applied after show_values, so minimal wins
         self.assertFalse(ctx.show_values)
@@ -846,18 +845,17 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         # Assert
         self.assertEqual("", result)
 
-    def test_format__MultipleBuildContext__IndependentResults(self) -> None:
-        """Test that multiple _build_context calls are independent."""
-        # Arrange
-        fmt = self.provenance.format()
+    def test_format__MultipleFormatCalls__IndependentBuilders(self) -> None:
+        """Test that each format() call creates an independent builder."""
+        # Arrange & Act
+        fmt1 = self.provenance.format()
+        fmt1.hide_paths()
 
-        # Act
-        ctx1 = fmt._build_context()
-        ctx1.show_paths = False  # Modify first
-        ctx2 = fmt._build_context()
+        fmt2 = self.provenance.format()
 
-        # Assert - second should have default value
-        self.assertTrue(ctx2.show_paths)
+        # Assert - second builder should have default values
+        self.assertFalse(fmt1._ctx.show_paths)
+        self.assertTrue(fmt2._ctx.show_paths)
 
 
 class ProvenanceFormatDeprecationTests(TestCase):
@@ -895,16 +893,16 @@ class ProvenanceFormatDeprecationTests(TestCase):
         fmt = self.provenance.format()
 
         fmt.show_deprecations()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertTrue(ctx.show_deprecations)
 
         fmt.hide_deprecations()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
         self.assertFalse(ctx.show_deprecations)
 
     def test_format__DeprecationsPreset__SetsDeprecationsOnly(self) -> None:
         fmt = self.provenance.format().deprecations()
-        ctx = fmt._build_context()
+        ctx = fmt._ctx
 
         self.assertTrue(ctx.deprecations_only)
         self.assertTrue(ctx.show_deprecations)
@@ -1015,7 +1013,7 @@ class TreeLayoutDeprecationTests(TestCase):
 
     def test_formatEntry__WithDeprecation__ShowsDeprecatedMarker(self) -> None:
         entry = self.provenance.get("old_key")
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_entry(entry, "old_key", ctx)
 
@@ -1023,7 +1021,7 @@ class TreeLayoutDeprecationTests(TestCase):
 
     def test_formatEntry__WithNewKey__ShowsNewKeyInArrow(self) -> None:
         entry = self.provenance.get("old_key")
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_entry(entry, "old_key", ctx)
 
@@ -1031,7 +1029,7 @@ class TreeLayoutDeprecationTests(TestCase):
 
     def test_formatEntry__WithRemoveIn__ShowsVersion(self) -> None:
         entry = self.provenance.get("old_key")
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_entry(entry, "old_key", ctx)
 
@@ -1039,7 +1037,7 @@ class TreeLayoutDeprecationTests(TestCase):
 
     def test_formatEntry__WithMessage__ShowsMessage(self) -> None:
         entry = self.provenance.get("old_key")
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_entry(entry, "old_key", ctx)
 
@@ -1047,7 +1045,7 @@ class TreeLayoutDeprecationTests(TestCase):
 
     def test_formatEntry__HideDeprecations__OmitsDeprecationInfo(self) -> None:
         entry = self.provenance.get("old_key")
-        ctx = FormatContext(show_deprecations=False)
+        ctx = ProvenanceFormatContext(show_deprecations=False)
 
         result = self.layout.format_entry(entry, "old_key", ctx)
 
@@ -1064,7 +1062,7 @@ class TreeLayoutDeprecationTests(TestCase):
             value="val",
             deprecation=DeprecationInfo(pattern="simple"),
         )
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         result = self.layout.format_entry(entry, "simple", ctx)
 
@@ -1092,7 +1090,7 @@ class TreeLayoutDeprecationTests(TestCase):
         builder.add("normal", file="config.yaml", line=20)
         builder.set_config({"old_key": 42, "normal": "normal_value"})
         prov = builder.build()
-        ctx = FormatContext(deprecations_only=True)
+        ctx = ProvenanceFormatContext(deprecations_only=True)
 
         result = self.layout.format_provenance(prov, ctx)
 
@@ -1100,7 +1098,7 @@ class TreeLayoutDeprecationTests(TestCase):
         self.assertNotIn("normal", result)
 
     def test_formatProvenance__DeprecationsOnly__AddsHeader(self) -> None:
-        ctx = FormatContext(deprecations_only=True)
+        ctx = ProvenanceFormatContext(deprecations_only=True)
 
         result = self.layout.format_provenance(self.provenance, ctx)
 
@@ -1111,7 +1109,7 @@ class TreeLayoutDeprecationTests(TestCase):
         builder.add("normal", file="config.yaml", line=1)
         builder.set_config({"normal": 42})
         empty_prov = builder.build()
-        ctx = FormatContext(deprecations_only=True)
+        ctx = ProvenanceFormatContext(deprecations_only=True)
 
         result = self.layout.format_provenance(empty_prov, ctx)
 
