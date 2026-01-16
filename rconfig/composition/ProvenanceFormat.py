@@ -9,7 +9,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Self
 
-from .ProvenanceLayout import FormatContext
+from .ProvenanceLayout import ProvenanceFormatContext
 
 if TYPE_CHECKING:
     from .Provenance import Provenance
@@ -78,22 +78,6 @@ class ProvenanceFormat:
         self._layout = layout
         self._ctx = layout.get_default_context()
 
-        # Track explicit overrides (None = use default from context)
-        self._overrides: dict[str, bool | None] = {
-            "show_paths": None,
-            "show_values": None,
-            "show_files": None,
-            "show_lines": None,
-            "show_source_type": None,
-            "show_chain": None,
-            "show_overrides": None,
-            "show_targets": None,
-            "show_deprecations": None,
-            "show_types": None,
-            "show_descriptions": None,
-            "deprecations_only": None,
-        }
-
     # --- Show/Hide Toggles ---
 
     def show_paths(self) -> Self:
@@ -101,7 +85,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_paths"] = True
+        self._ctx.show_paths = True
         return self
 
     def hide_paths(self) -> Self:
@@ -109,7 +93,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_paths"] = False
+        self._ctx.show_paths = False
         return self
 
     def show_values(self) -> Self:
@@ -117,7 +101,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_values"] = True
+        self._ctx.show_values = True
         return self
 
     def hide_values(self) -> Self:
@@ -125,7 +109,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_values"] = False
+        self._ctx.show_values = False
         return self
 
     def show_files(self) -> Self:
@@ -133,7 +117,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_files"] = True
+        self._ctx.show_files = True
         return self
 
     def hide_files(self) -> Self:
@@ -141,7 +125,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_files"] = False
+        self._ctx.show_files = False
         return self
 
     def show_lines(self) -> Self:
@@ -149,7 +133,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_lines"] = True
+        self._ctx.show_lines = True
         return self
 
     def hide_lines(self) -> Self:
@@ -157,7 +141,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_lines"] = False
+        self._ctx.show_lines = False
         return self
 
     def show_source_type(self) -> Self:
@@ -165,7 +149,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_source_type"] = True
+        self._ctx.show_source_type = True
         return self
 
     def hide_source_type(self) -> Self:
@@ -173,7 +157,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_source_type"] = False
+        self._ctx.show_source_type = False
         return self
 
     def show_chain(self) -> Self:
@@ -181,7 +165,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_chain"] = True
+        self._ctx.show_chain = True
         return self
 
     def hide_chain(self) -> Self:
@@ -189,7 +173,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_chain"] = False
+        self._ctx.show_chain = False
         return self
 
     def show_overrides(self) -> Self:
@@ -197,7 +181,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_overrides"] = True
+        self._ctx.show_overrides = True
         return self
 
     def hide_overrides(self) -> Self:
@@ -205,7 +189,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_overrides"] = False
+        self._ctx.show_overrides = False
         return self
 
     def show_targets(self) -> Self:
@@ -213,7 +197,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_targets"] = True
+        self._ctx.show_targets = True
         return self
 
     def hide_targets(self) -> Self:
@@ -221,7 +205,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_targets"] = False
+        self._ctx.show_targets = False
         return self
 
     def show_deprecations(self) -> Self:
@@ -229,7 +213,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_deprecations"] = True
+        self._ctx.show_deprecations = True
         return self
 
     def hide_deprecations(self) -> Self:
@@ -237,7 +221,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_deprecations"] = False
+        self._ctx.show_deprecations = False
         return self
 
     def show_types(self) -> Self:
@@ -245,7 +229,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_types"] = True
+        self._ctx.show_types = True
         return self
 
     def hide_types(self) -> Self:
@@ -253,7 +237,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_types"] = False
+        self._ctx.show_types = False
         return self
 
     def show_descriptions(self) -> Self:
@@ -261,7 +245,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_descriptions"] = True
+        self._ctx.show_descriptions = True
         return self
 
     def hide_descriptions(self) -> Self:
@@ -269,7 +253,7 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_descriptions"] = False
+        self._ctx.show_descriptions = False
         return self
 
     # --- Presets ---
@@ -279,14 +263,14 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_paths"] = True
-        self._overrides["show_values"] = False
-        self._overrides["show_files"] = True
-        self._overrides["show_lines"] = True
-        self._overrides["show_source_type"] = False
-        self._overrides["show_chain"] = False
-        self._overrides["show_overrides"] = False
-        self._overrides["show_targets"] = False
+        self._ctx.show_paths = True
+        self._ctx.show_values = False
+        self._ctx.show_files = True
+        self._ctx.show_lines = True
+        self._ctx.show_source_type = False
+        self._ctx.show_chain = False
+        self._ctx.show_overrides = False
+        self._ctx.show_targets = False
         return self
 
     def compact(self) -> Self:
@@ -294,16 +278,16 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_paths"] = True
-        self._overrides["show_values"] = True
-        self._overrides["show_files"] = True
-        self._overrides["show_lines"] = True
-        self._overrides["show_source_type"] = True
-        self._overrides["show_chain"] = False
-        self._overrides["show_overrides"] = False
-        self._overrides["show_targets"] = True
-        self._overrides["show_types"] = True
-        self._overrides["show_descriptions"] = False
+        self._ctx.show_paths = True
+        self._ctx.show_values = True
+        self._ctx.show_files = True
+        self._ctx.show_lines = True
+        self._ctx.show_source_type = True
+        self._ctx.show_chain = False
+        self._ctx.show_overrides = False
+        self._ctx.show_targets = True
+        self._ctx.show_types = True
+        self._ctx.show_descriptions = False
         return self
 
     def full(self) -> Self:
@@ -311,16 +295,16 @@ class ProvenanceFormat:
 
         :return: Self for method chaining.
         """
-        self._overrides["show_paths"] = True
-        self._overrides["show_values"] = True
-        self._overrides["show_files"] = True
-        self._overrides["show_lines"] = True
-        self._overrides["show_source_type"] = True
-        self._overrides["show_chain"] = True
-        self._overrides["show_overrides"] = True
-        self._overrides["show_targets"] = True
-        self._overrides["show_types"] = True
-        self._overrides["show_descriptions"] = True
+        self._ctx.show_paths = True
+        self._ctx.show_values = True
+        self._ctx.show_files = True
+        self._ctx.show_lines = True
+        self._ctx.show_source_type = True
+        self._ctx.show_chain = True
+        self._ctx.show_overrides = True
+        self._ctx.show_targets = True
+        self._ctx.show_types = True
+        self._ctx.show_descriptions = True
         return self
 
     def preset(self, preset: ProvenancePreset) -> Self:
@@ -355,17 +339,17 @@ class ProvenanceFormat:
             # model.lr              float       0.001      Learning rate
             # model.hidden_size     int         256        Hidden layer size
         """
-        self._overrides["show_paths"] = True
-        self._overrides["show_types"] = True
-        self._overrides["show_values"] = True
-        self._overrides["show_descriptions"] = True
-        self._overrides["show_files"] = False
-        self._overrides["show_lines"] = False
-        self._overrides["show_source_type"] = False
-        self._overrides["show_chain"] = False
-        self._overrides["show_overrides"] = False
-        self._overrides["show_targets"] = False
-        self._overrides["show_deprecations"] = False
+        self._ctx.show_paths = True
+        self._ctx.show_types = True
+        self._ctx.show_values = True
+        self._ctx.show_descriptions = True
+        self._ctx.show_files = False
+        self._ctx.show_lines = False
+        self._ctx.show_source_type = False
+        self._ctx.show_chain = False
+        self._ctx.show_overrides = False
+        self._ctx.show_targets = False
+        self._ctx.show_deprecations = False
         return self
 
     def deprecations(self) -> Self:
@@ -387,16 +371,16 @@ class ProvenanceFormat:
             #   DEPRECATED -> model.optimizer.lr (remove in 2.0.0)
             #   Message: Use 'model.optimizer.lr' instead
         """
-        self._overrides["show_paths"] = True
-        self._overrides["show_values"] = True
-        self._overrides["show_files"] = True
-        self._overrides["show_lines"] = True
-        self._overrides["show_source_type"] = False
-        self._overrides["show_chain"] = False
-        self._overrides["show_overrides"] = False
-        self._overrides["show_targets"] = False
-        self._overrides["show_deprecations"] = True
-        self._overrides["deprecations_only"] = True
+        self._ctx.show_paths = True
+        self._ctx.show_values = True
+        self._ctx.show_files = True
+        self._ctx.show_lines = True
+        self._ctx.show_source_type = False
+        self._ctx.show_chain = False
+        self._ctx.show_overrides = False
+        self._ctx.show_targets = False
+        self._ctx.show_deprecations = True
+        self._ctx.deprecations_only = True
         return self
 
     # --- Layout ---
@@ -450,44 +434,12 @@ class ProvenanceFormat:
 
     # --- Output ---
 
-    def _build_context(self) -> FormatContext:
-        """Build the final FormatContext with overrides applied.
-
-        :return: FormatContext with all settings resolved.
-        """
-        # Start with a copy of the base context
-        ctx = FormatContext(
-            show_paths=self._ctx.show_paths,
-            show_values=self._ctx.show_values,
-            show_files=self._ctx.show_files,
-            show_lines=self._ctx.show_lines,
-            show_source_type=self._ctx.show_source_type,
-            show_chain=self._ctx.show_chain,
-            show_overrides=self._ctx.show_overrides,
-            show_targets=self._ctx.show_targets,
-            show_deprecations=self._ctx.show_deprecations,
-            show_types=self._ctx.show_types,
-            show_descriptions=self._ctx.show_descriptions,
-            deprecations_only=self._ctx.deprecations_only,
-            indent_size=self._ctx.indent_size,
-            path_filters=list(self._ctx.path_filters),
-            file_filters=list(self._ctx.file_filters),
-        )
-
-        # Apply explicit overrides
-        for key, value in self._overrides.items():
-            if value is not None:
-                setattr(ctx, key, value)
-
-        return ctx
-
     def __str__(self) -> str:
         """Format the provenance using the configured layout and options.
 
         :return: Formatted provenance string.
         """
-        ctx = self._build_context()
-        return self._layout.format_provenance(self._provenance, ctx)
+        return self._layout.format_provenance(self._provenance, self._ctx)
 
     def __repr__(self) -> str:
         """Return a representation of this format builder.

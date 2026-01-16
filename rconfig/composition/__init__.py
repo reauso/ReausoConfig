@@ -35,7 +35,7 @@ from .Provenance import (
     EntrySourceType,
     NodeSourceType,
 )
-from .ProvenanceLayout import ProvenanceLayout, FormatContext
+from .ProvenanceLayout import ProvenanceLayout, ProvenanceFormatContext
 from .ProvenanceFormat import ProvenanceFormat, ProvenancePreset
 from .TreeLayout import TreeLayout
 
@@ -75,7 +75,7 @@ __all__ = [
     "EntrySourceType",
     "NodeSourceType",
     "ProvenanceLayout",
-    "FormatContext",
+    "ProvenanceFormatContext",
     "ProvenanceFormat",
     "ProvenancePreset",
     "TreeLayout",

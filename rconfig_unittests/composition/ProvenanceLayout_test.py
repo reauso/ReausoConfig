@@ -1,21 +1,21 @@
-"""Tests for ProvenanceLayout base class and FormatContext dataclass."""
+"""Tests for ProvenanceLayout base class and ProvenanceFormatContext dataclass."""
 
 from unittest import TestCase
 
 from rconfig.composition import (
-    FormatContext,
+    ProvenanceFormatContext,
     ProvenanceLayout,
     ProvenanceNode,
 )
 
 
-class FormatContextDefaultTests(TestCase):
-    """Tests for FormatContext default initialization."""
+class ProvenanceFormatContextDefaultTests(TestCase):
+    """Tests for ProvenanceFormatContext default initialization."""
 
-    def test_FormatContext__DefaultInit__AllBoolFieldsTrue(self) -> None:
-        """Test that default FormatContext has all boolean fields True."""
+    def test_ProvenanceFormatContext__DefaultInit__AllBoolFieldsTrue(self) -> None:
+        """Test that default ProvenanceFormatContext has all boolean fields True."""
         # Act
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Assert
         self.assertTrue(ctx.show_paths)
@@ -27,31 +27,31 @@ class FormatContextDefaultTests(TestCase):
         self.assertTrue(ctx.show_overrides)
         self.assertTrue(ctx.show_targets)
 
-    def test_FormatContext__DefaultInit__IndentSizeIsTwo(self) -> None:
+    def test_ProvenanceFormatContext__DefaultInit__IndentSizeIsTwo(self) -> None:
         """Test that default indent size is 2."""
         # Act
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Assert
         self.assertEqual(2, ctx.indent_size)
 
-    def test_FormatContext__DefaultInit__FiltersAreEmptyLists(self) -> None:
+    def test_ProvenanceFormatContext__DefaultInit__FiltersAreEmptyLists(self) -> None:
         """Test that default filters are empty lists."""
         # Act
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Assert
         self.assertEqual([], ctx.path_filters)
         self.assertEqual([], ctx.file_filters)
 
 
-class FormatContextCustomValuesTests(TestCase):
-    """Tests for FormatContext with custom values."""
+class ProvenanceFormatContextCustomValuesTests(TestCase):
+    """Tests for ProvenanceFormatContext with custom values."""
 
-    def test_FormatContext__CustomBoolValues__StoresCorrectly(self) -> None:
+    def test_ProvenanceFormatContext__CustomBoolValues__StoresCorrectly(self) -> None:
         """Test that custom boolean values are stored."""
         # Act
-        ctx = FormatContext(
+        ctx = ProvenanceFormatContext(
             show_paths=False,
             show_values=False,
             show_files=False,
@@ -70,52 +70,52 @@ class FormatContextCustomValuesTests(TestCase):
         self.assertFalse(ctx.show_chain)
         self.assertFalse(ctx.show_overrides)
 
-    def test_FormatContext__CustomIndentSize__StoresCorrectly(self) -> None:
+    def test_ProvenanceFormatContext__CustomIndentSize__StoresCorrectly(self) -> None:
         """Test that custom indent size is stored."""
         # Act
-        ctx = FormatContext(indent_size=4)
+        ctx = ProvenanceFormatContext(indent_size=4)
 
         # Assert
         self.assertEqual(4, ctx.indent_size)
 
-    def test_FormatContext__ZeroIndentSize__StoredAsIs(self) -> None:
+    def test_ProvenanceFormatContext__ZeroIndentSize__StoredAsIs(self) -> None:
         """Test that zero indent size is stored without modification."""
         # Act
-        ctx = FormatContext(indent_size=0)
+        ctx = ProvenanceFormatContext(indent_size=0)
 
         # Assert
         self.assertEqual(0, ctx.indent_size)
 
-    def test_FormatContext__NegativeIndentSize__StoredAsIs(self) -> None:
+    def test_ProvenanceFormatContext__NegativeIndentSize__StoredAsIs(self) -> None:
         """Test that negative indent size is stored without validation."""
         # Act
-        ctx = FormatContext(indent_size=-1)
+        ctx = ProvenanceFormatContext(indent_size=-1)
 
         # Assert
         self.assertEqual(-1, ctx.indent_size)
 
-    def test_FormatContext__CustomFilters__StoresCorrectly(self) -> None:
+    def test_ProvenanceFormatContext__CustomFilters__StoresCorrectly(self) -> None:
         """Test that custom filter lists are stored."""
         # Arrange
         path_filters = ["/model.*", "/data.*"]
         file_filters = ["*.yaml", "*.json"]
 
         # Act
-        ctx = FormatContext(path_filters=path_filters, file_filters=file_filters)
+        ctx = ProvenanceFormatContext(path_filters=path_filters, file_filters=file_filters)
 
         # Assert
         self.assertEqual(path_filters, ctx.path_filters)
         self.assertEqual(file_filters, ctx.file_filters)
 
 
-class FormatContextIndependenceTests(TestCase):
-    """Tests to verify FormatContext instances are independent."""
+class ProvenanceFormatContextIndependenceTests(TestCase):
+    """Tests to verify ProvenanceFormatContext instances are independent."""
 
-    def test_FormatContext__MultipleInstances__ListsAreIndependent(self) -> None:
+    def test_ProvenanceFormatContext__MultipleInstances__ListsAreIndependent(self) -> None:
         """Test that filter lists are not shared between instances."""
         # Arrange
-        ctx1 = FormatContext()
-        ctx2 = FormatContext()
+        ctx1 = ProvenanceFormatContext()
+        ctx2 = ProvenanceFormatContext()
 
         # Act
         ctx1.path_filters.append("/test")
@@ -139,7 +139,7 @@ class ProvenanceLayoutDefaultContextTests(TestCase):
     """Tests for ProvenanceLayout.get_default_context()."""
 
     def test_getDefaultContext__BaseImplementation__ReturnsDefaultContext(self) -> None:
-        """Test that base implementation returns default FormatContext."""
+        """Test that base implementation returns default ProvenanceFormatContext."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
 
@@ -147,7 +147,7 @@ class ProvenanceLayoutDefaultContextTests(TestCase):
         ctx = layout.get_default_context()
 
         # Assert
-        self.assertIsInstance(ctx, FormatContext)
+        self.assertIsInstance(ctx, ProvenanceFormatContext)
         self.assertTrue(ctx.show_paths)
         self.assertTrue(ctx.show_values)
 
@@ -159,7 +159,7 @@ class ProvenanceLayoutFormatPathTests(TestCase):
         """Test that format_path returns the path unchanged."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_path("/model.lr", ctx)
@@ -171,7 +171,7 @@ class ProvenanceLayoutFormatPathTests(TestCase):
         """Test that format_path handles empty string."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_path("", ctx)
@@ -183,7 +183,7 @@ class ProvenanceLayoutFormatPathTests(TestCase):
         """Test that format_path handles special characters."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_path("/model[0].layers", ctx)
@@ -199,7 +199,7 @@ class ProvenanceLayoutFormatValueTests(TestCase):
         """Test that None is formatted as 'null'."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_value(None, ctx)
@@ -211,7 +211,7 @@ class ProvenanceLayoutFormatValueTests(TestCase):
         """Test that True is formatted as 'true'."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_value(True, ctx)
@@ -223,7 +223,7 @@ class ProvenanceLayoutFormatValueTests(TestCase):
         """Test that False is formatted as 'false'."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_value(False, ctx)
@@ -235,7 +235,7 @@ class ProvenanceLayoutFormatValueTests(TestCase):
         """Test that strings are formatted with repr()."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_value("hello", ctx)
@@ -247,7 +247,7 @@ class ProvenanceLayoutFormatValueTests(TestCase):
         """Test that empty string is formatted with repr()."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_value("", ctx)
@@ -259,7 +259,7 @@ class ProvenanceLayoutFormatValueTests(TestCase):
         """Test that integers are formatted with str()."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_value(42, ctx)
@@ -271,7 +271,7 @@ class ProvenanceLayoutFormatValueTests(TestCase):
         """Test that floats are formatted with str()."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_value(3.14, ctx)
@@ -283,7 +283,7 @@ class ProvenanceLayoutFormatValueTests(TestCase):
         """Test that lists are formatted with str()."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_value([1, 2, 3], ctx)
@@ -295,7 +295,7 @@ class ProvenanceLayoutFormatValueTests(TestCase):
         """Test that dicts are formatted with str()."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_value({"a": 1}, ctx)
@@ -311,7 +311,7 @@ class ProvenanceLayoutFormatLocationTests(TestCase):
         """Test that file and line are combined when both shown."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(show_files=True, show_lines=True)
+        ctx = ProvenanceFormatContext(show_files=True, show_lines=True)
 
         # Act
         result = layout.format_location("config.yaml", 42, ctx)
@@ -323,7 +323,7 @@ class ProvenanceLayoutFormatLocationTests(TestCase):
         """Test that only file is shown when show_lines is False."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(show_files=True, show_lines=False)
+        ctx = ProvenanceFormatContext(show_files=True, show_lines=False)
 
         # Act
         result = layout.format_location("config.yaml", 42, ctx)
@@ -335,7 +335,7 @@ class ProvenanceLayoutFormatLocationTests(TestCase):
         """Test that only line is shown when show_files is False."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(show_files=False, show_lines=True)
+        ctx = ProvenanceFormatContext(show_files=False, show_lines=True)
 
         # Act
         result = layout.format_location("config.yaml", 42, ctx)
@@ -347,7 +347,7 @@ class ProvenanceLayoutFormatLocationTests(TestCase):
         """Test that empty string is returned when both are hidden."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(show_files=False, show_lines=False)
+        ctx = ProvenanceFormatContext(show_files=False, show_lines=False)
 
         # Act
         result = layout.format_location("config.yaml", 42, ctx)
@@ -359,7 +359,7 @@ class ProvenanceLayoutFormatLocationTests(TestCase):
         """Test that line 0 is included in output."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(show_files=True, show_lines=True)
+        ctx = ProvenanceFormatContext(show_files=True, show_lines=True)
 
         # Act
         result = layout.format_location("config.yaml", 0, ctx)
@@ -375,7 +375,7 @@ class ProvenanceLayoutFormatSourceTypeTests(TestCase):
         """Test that 'cli' source type is formatted as 'CLI'."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_source_type("cli", ctx)
@@ -387,7 +387,7 @@ class ProvenanceLayoutFormatSourceTypeTests(TestCase):
         """Test that 'env' source type is formatted as 'env'."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_source_type("env", ctx)
@@ -399,7 +399,7 @@ class ProvenanceLayoutFormatSourceTypeTests(TestCase):
         """Test that 'programmatic' source type is formatted as 'programmatic'."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_source_type("programmatic", ctx)
@@ -411,7 +411,7 @@ class ProvenanceLayoutFormatSourceTypeTests(TestCase):
         """Test that 'file' source type returns empty string."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_source_type("file", ctx)
@@ -423,7 +423,7 @@ class ProvenanceLayoutFormatSourceTypeTests(TestCase):
         """Test that unknown source type returns empty string."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_source_type("unknown", ctx)
@@ -439,7 +439,7 @@ class ProvenanceLayoutFormatChainTests(TestCase):
         """Test that format_chain returns string representation of node."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
         node = ProvenanceNode(source_type="file", file="test.yaml", line=5, value=42)
 
         # Act
@@ -456,7 +456,7 @@ class ProvenanceLayoutFormatTreeTests(TestCase):
         """Test that single node is formatted as single line."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
         node = ProvenanceNode(source_type="file", value=42)
 
         # Act
@@ -471,7 +471,7 @@ class ProvenanceLayoutFormatTreeTests(TestCase):
         """Test that tree with children formats all nodes."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
         child1 = ProvenanceNode(source_type="file", value=1)
         child2 = ProvenanceNode(source_type="file", value=2)
         parent = ProvenanceNode(
@@ -490,7 +490,7 @@ class ProvenanceLayoutFormatTreeTests(TestCase):
         """Test that deeply nested tree formats all levels."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
         grandchild = ProvenanceNode(source_type="file", value=1)
         child = ProvenanceNode(source_type="operator", operator="*", children=[grandchild])
         parent = ProvenanceNode(source_type="operator", operator="+", children=[child])
@@ -510,7 +510,7 @@ class ProvenanceLayoutFormatOverrideTests(TestCase):
         """Test that override info is formatted with 'Overrode:' prefix."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_override("base.yaml:10", ctx)
@@ -522,7 +522,7 @@ class ProvenanceLayoutFormatOverrideTests(TestCase):
         """Test that empty override string still gets prefix."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.format_override("", ctx)
@@ -538,7 +538,7 @@ class ProvenanceLayoutJoinEntriesTests(TestCase):
         """Test that multiple entries are joined with newlines."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
         entries = ["entry1", "entry2", "entry3"]
 
         # Act
@@ -551,7 +551,7 @@ class ProvenanceLayoutJoinEntriesTests(TestCase):
         """Test that empty list returns empty string."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.join_entries([], ctx)
@@ -563,7 +563,7 @@ class ProvenanceLayoutJoinEntriesTests(TestCase):
         """Test that single entry is returned without modification."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.join_entries(["only entry"], ctx)
@@ -579,7 +579,7 @@ class ProvenanceLayoutIndentTests(TestCase):
         """Test that depth 0 adds no indentation."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(indent_size=2)
+        ctx = ProvenanceFormatContext(indent_size=2)
 
         # Act
         result = layout.indent("text", 0, ctx)
@@ -591,7 +591,7 @@ class ProvenanceLayoutIndentTests(TestCase):
         """Test that positive depth adds correct number of spaces."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(indent_size=2)
+        ctx = ProvenanceFormatContext(indent_size=2)
 
         # Act
         result = layout.indent("text", 2, ctx)
@@ -603,7 +603,7 @@ class ProvenanceLayoutIndentTests(TestCase):
         """Test that large indent size works correctly."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(indent_size=4)
+        ctx = ProvenanceFormatContext(indent_size=4)
 
         # Act
         result = layout.indent("text", 3, ctx)
@@ -615,7 +615,7 @@ class ProvenanceLayoutIndentTests(TestCase):
         """Test that negative depth doesn't crash (returns text as-is)."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(indent_size=2)
+        ctx = ProvenanceFormatContext(indent_size=2)
 
         # Act
         result = layout.indent("text", -1, ctx)
@@ -628,7 +628,7 @@ class ProvenanceLayoutIndentTests(TestCase):
         """Test that empty text with depth returns only spaces."""
         # Arrange
         layout = ProvenanceLayoutConcreteImplementation()
-        ctx = FormatContext(indent_size=2)
+        ctx = ProvenanceFormatContext(indent_size=2)
 
         # Act
         result = layout.indent("", 2, ctx)
