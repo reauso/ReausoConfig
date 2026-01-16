@@ -1604,20 +1604,195 @@ tree_data = prov.trace("model.lr").to_dict()
 Create custom output formats by extending ProvenanceLayout:
 
 ```python
-from rconfig.composition import ProvenanceLayout, FormatContext
+from rconfig.composition import ProvenanceLayout, ProvenanceFormatContext
 
 class TableLayout(ProvenanceLayout):
-    def format_provenance(self, provenance, ctx: FormatContext) -> str:
+    def format_provenance(self, provenance, ctx: ProvenanceFormatContext) -> str:
         lines = ["| Path | File | Line |", "|------|------|------|"]
         for path, entry in provenance.items():
             lines.append(f"| {path} | {entry.file} | {entry.line} |")
         return "\n".join(lines)
 
-    def format_entry(self, entry, path, ctx: FormatContext) -> str:
+    def format_entry(self, entry, path, ctx: ProvenanceFormatContext) -> str:
         return f"| {path} | {entry.file} | {entry.line} |"
 
 # Use custom layout
 print(prov.format().layout(TableLayout()))
+```
+
+### Config Diffing
+
+Compare two configurations and report differences. Accepts Path objects or Provenance objects directly.
+
+#### Basic Usage
+
+```python
+import rconfig as rc
+from pathlib import Path
+
+# Compare two config files
+diff = rc.diff(Path("config_v1.yaml"), Path("config_v2.yaml"))
+
+# Check if configs are identical
+if diff.is_empty():
+    print("Configs are identical")
+
+# Access differences by type
+for path, entry in diff.added.items():
+    print(f"Added: {path} = {entry.right_value}")
+
+for path, entry in diff.removed.items():
+    print(f"Removed: {path}")
+
+for path, entry in diff.changed.items():
+    print(f"Changed: {path}: {entry.left_value} -> {entry.right_value}")
+```
+
+#### Programmatic Access
+
+```python
+# Access the ConfigDiff as a mapping
+diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
+
+print(len(diff))                    # Total entry count
+print(len(diff.added))              # Added entry count
+print("model.lr" in diff)           # Check if path exists
+entry = diff["model.lr"]            # Get specific entry
+
+# Get dictionary representation
+data = diff.to_dict()
+```
+
+#### Diff with Overrides
+
+```python
+# Compare same file with different overrides
+diff = rc.diff(
+    Path("config.yaml"),
+    Path("config.yaml"),
+    left_overrides={"model.lr": 0.001},
+    right_overrides={"model.lr": 0.01},
+)
+
+# Reuse existing provenance for efficiency
+prov_v1 = rc.get_provenance(Path("v1.yaml"))
+prov_v2 = rc.get_provenance(Path("v2.yaml"))
+diff = rc.diff(prov_v1, prov_v2)
+```
+
+#### Output Formats
+
+```python
+diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
+
+# Terminal output (default flat layout)
+print(diff.format().terminal())
+# + model.dropout: 0.1
+# - model.legacy: 'old'
+# ~ model.lr: 0.001 -> 0.01
+#
+# Added: 1, Removed: 1, Changed: 1
+
+# Tree layout (grouped by change type)
+print(diff.format().tree())
+# ConfigDiff:
+#   Added:
+#     + model.dropout: 0.1
+#   Removed:
+#     - model.legacy: 'old'
+#   Changed:
+#     ~ model.lr: 0.001 -> 0.01
+
+# Markdown table
+print(diff.format().markdown())
+# | Type | Path | Old Value | New Value |
+# |------|------|-----------|-----------|
+# | + | model.dropout | - | 0.1 |
+# | - | model.legacy | 'old' | - |
+# | ~ | model.lr | 0.001 | 0.01 |
+
+# Dictionary for JSON serialization
+data = diff.format().json()
+```
+
+#### Formatting Presets
+
+```python
+diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
+
+# changes_only (default) - only show added/removed/changed
+diff.format().changes_only().terminal()
+
+# with_context - show changes plus unchanged entries
+diff.format().with_context().terminal()
+
+# full - show everything including provenance info
+diff.format().full().terminal()
+
+# summary - only show statistics
+diff.format().summary().terminal()
+# Added: 2, Removed: 1, Changed: 3
+```
+
+#### Show/Hide Toggles
+
+```python
+diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
+
+# Show provenance (file:line) info
+diff.format().show_provenance().terminal()
+
+# Hide summary statistics
+diff.format().hide_counts().terminal()
+
+# Show only specific change types
+diff.format().hide_added().hide_removed().terminal()
+
+# Chain multiple options
+diff.format().show_provenance().show_unchanged().hide_counts().markdown()
+```
+
+#### Filtering
+
+```python
+diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
+
+# Filter by path pattern
+diff.format().for_path("model.*").terminal()
+
+# Filter by source file
+diff.format().from_file("*.yaml").terminal()
+
+# Combine filters
+diff.format().for_path("training.*").from_file("configs/*.yaml").terminal()
+```
+
+#### Custom Layouts
+
+Create custom output formats by extending DiffLayout:
+
+```python
+from rconfig.diff import DiffLayout, DiffFormatContext, ConfigDiff, DiffEntry
+
+class JsonLinesLayout(DiffLayout):
+    def format_diff(self, diff: ConfigDiff, ctx: DiffFormatContext) -> str:
+        import json
+        lines = []
+        for path, entry in diff.items():
+            lines.append(json.dumps({
+                "path": path,
+                "type": entry.diff_type.value,
+                "left": entry.left_value,
+                "right": entry.right_value,
+            }))
+        return "\n".join(lines)
+
+    def format_entry(self, entry: DiffEntry, ctx: DiffFormatContext) -> str:
+        import json
+        return json.dumps({"path": entry.path, "type": entry.diff_type.value})
+
+# Use custom layout
+print(diff.format().layout(JsonLinesLayout()))
 ```
 
 ### Deprecation Warnings

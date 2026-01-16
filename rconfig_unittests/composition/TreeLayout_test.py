@@ -3,7 +3,7 @@
 from unittest import TestCase
 
 from rconfig.composition import (
-    FormatContext,
+    ProvenanceFormatContext,
     InstanceRef,
     Provenance,
     ProvenanceEntry,
@@ -56,7 +56,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that entries match when no filters are set."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -68,7 +68,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that matching path filter returns True."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(path_filters=["/model.*"])
+        ctx = ProvenanceFormatContext(path_filters=["/model.*"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -80,7 +80,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that non-matching path filter returns False."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(path_filters=["/data.*"])
+        ctx = ProvenanceFormatContext(path_filters=["/data.*"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -92,7 +92,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that matching file filter returns True."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(file_filters=["*.yaml"])
+        ctx = ProvenanceFormatContext(file_filters=["*.yaml"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -104,7 +104,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that non-matching file filter returns False."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(file_filters=["*.json"])
+        ctx = ProvenanceFormatContext(file_filters=["*.json"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -116,7 +116,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that both path and file filters must match (AND logic)."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(path_filters=["/model.*"], file_filters=["*.json"])
+        ctx = ProvenanceFormatContext(path_filters=["/model.*"], file_filters=["*.json"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -128,7 +128,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that multiple path filters use OR logic."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(path_filters=["/data.*", "/model.*"])
+        ctx = ProvenanceFormatContext(path_filters=["/data.*", "/model.*"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -140,7 +140,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that multiple file filters use OR logic."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(file_filters=["*.json", "*.yaml"])
+        ctx = ProvenanceFormatContext(file_filters=["*.json", "*.yaml"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -152,7 +152,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that glob wildcard patterns work correctly."""
         # Arrange
         entry = ProvenanceEntry(file="configs/model/base.yaml", line=5, value=42)
-        ctx = FormatContext(file_filters=["configs/model/*.yaml"])
+        ctx = ProvenanceFormatContext(file_filters=["configs/model/*.yaml"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -164,7 +164,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that path matching works with leading slash."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(path_filters=["/model.lr"])
+        ctx = ProvenanceFormatContext(path_filters=["/model.lr"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -176,7 +176,7 @@ class TreeLayoutFilterTests(TestCase):
         """Test that path matching works without leading slash in filter."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(path_filters=["model.lr"])
+        ctx = ProvenanceFormatContext(path_filters=["model.lr"])
 
         # Act
         result = self.layout._matches_filters("model.lr", entry, ctx)
@@ -190,7 +190,7 @@ class TreeLayoutInterpolationTreeTests(TestCase):
 
     def setUp(self) -> None:
         self.layout = TreeLayout()
-        self.ctx = FormatContext()
+        self.ctx = ProvenanceFormatContext()
 
     def test_formatInterpolationTree__ExpressionWithOperator__FormatsOperator(self) -> None:
         """Test formatting expression with operator shows operator."""
@@ -237,7 +237,7 @@ class TreeLayoutInterpolationTreeTests(TestCase):
             value=0.01,
             path="model.lr",
         )
-        ctx = FormatContext(show_values=True)
+        ctx = ProvenanceFormatContext(show_values=True)
 
         # Act
         lines = self.layout._format_interpolation_tree(source, 0, ctx)
@@ -321,7 +321,7 @@ class TreeLayoutChildSourceTests(TestCase):
 
     def setUp(self) -> None:
         self.layout = TreeLayout()
-        self.ctx = FormatContext()
+        self.ctx = ProvenanceFormatContext()
 
     def test_formatChildSource__IsLast__UsesLastConnector(self) -> None:
         """Test that last child uses +-- connector."""
@@ -429,7 +429,7 @@ class TreeLayoutFormatValueTests(TestCase):
 
     def setUp(self) -> None:
         self.layout = TreeLayout()
-        self.ctx = FormatContext()
+        self.ctx = ProvenanceFormatContext()
 
     def test_formatValue__LongList__Truncates(self) -> None:
         """Test that long lists are truncated with ellipsis."""
@@ -500,7 +500,7 @@ class TreeLayoutFormatEntryTests(TestCase):
         """Test that path is included when show_paths is True."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(show_paths=True)
+        ctx = ProvenanceFormatContext(show_paths=True)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -512,7 +512,7 @@ class TreeLayoutFormatEntryTests(TestCase):
         """Test that path is omitted when show_paths is False."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(show_paths=False)
+        ctx = ProvenanceFormatContext(show_paths=False)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -524,7 +524,7 @@ class TreeLayoutFormatEntryTests(TestCase):
         """Test that value is included when show_values is True."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(show_values=True)
+        ctx = ProvenanceFormatContext(show_values=True)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -536,7 +536,7 @@ class TreeLayoutFormatEntryTests(TestCase):
         """Test that None value doesn't add empty '= null' part."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=None)
-        ctx = FormatContext(show_values=True)
+        ctx = ProvenanceFormatContext(show_values=True)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -555,7 +555,7 @@ class TreeLayoutFormatEntryTests(TestCase):
             source_type="cli",
             cli_arg="--model.lr=0.01",
         )
-        ctx = FormatContext(show_source_type=True)
+        ctx = ProvenanceFormatContext(show_source_type=True)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -574,7 +574,7 @@ class TreeLayoutFormatEntryTests(TestCase):
             source_type="env",
             env_var="DATA_PATH",
         )
-        ctx = FormatContext(show_source_type=True)
+        ctx = ProvenanceFormatContext(show_source_type=True)
 
         # Act
         result = self.layout.format_entry(entry, "data.path", ctx)
@@ -587,7 +587,7 @@ class TreeLayoutFormatEntryTests(TestCase):
         """Test that file source shows file:line location."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(show_files=True, show_lines=True)
+        ctx = ProvenanceFormatContext(show_files=True, show_lines=True)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -613,7 +613,7 @@ class TreeLayoutFormatEntryTests(TestCase):
                 ],
             ),
         )
-        ctx = FormatContext(show_chain=True)
+        ctx = ProvenanceFormatContext(show_chain=True)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -633,7 +633,7 @@ class TreeLayoutFormatEntryTests(TestCase):
                 InstanceRef(path="/shared.database", file="shared.yaml", line=5),
             ],
         )
-        ctx = FormatContext(show_chain=True)
+        ctx = ProvenanceFormatContext(show_chain=True)
 
         # Act
         result = self.layout.format_entry(entry, "service.db", ctx)
@@ -652,7 +652,7 @@ class TreeLayoutFormatEntryTests(TestCase):
             value=42,
             overrode="base.yaml:10",
         )
-        ctx = FormatContext(show_overrides=True)
+        ctx = ProvenanceFormatContext(show_overrides=True)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -676,7 +676,7 @@ class TreeLayoutFormatEntryTests(TestCase):
             ),
             instance=[InstanceRef(path="/shared.db", file="shared.yaml", line=1)],
         )
-        ctx = FormatContext(show_chain=False)
+        ctx = ProvenanceFormatContext(show_chain=False)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -694,7 +694,7 @@ class TreeLayoutFormatEntryTests(TestCase):
             value=42,
             overrode="base.yaml:10",
         )
-        ctx = FormatContext(show_overrides=False)
+        ctx = ProvenanceFormatContext(show_overrides=False)
 
         # Act
         result = self.layout.format_entry(entry, "model.lr", ctx)
@@ -706,7 +706,7 @@ class TreeLayoutFormatEntryTests(TestCase):
         """Test that hiding all options returns minimal output."""
         # Arrange
         entry = ProvenanceEntry(file="config.yaml", line=5, value=42)
-        ctx = FormatContext(
+        ctx = ProvenanceFormatContext(
             show_paths=False,
             show_values=False,
             show_files=False,
@@ -733,7 +733,7 @@ class TreeLayoutFormatProvenanceTests(TestCase):
         """Test that empty provenance returns empty string."""
         # Arrange
         provenance = Provenance()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = self.layout.format_provenance(provenance, ctx)
@@ -747,7 +747,7 @@ class TreeLayoutFormatProvenanceTests(TestCase):
         builder = ProvenanceBuilder()
         builder.add("model.lr", file="config.yaml", line=5, value=0.01)
         provenance = builder.build()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = self.layout.format_provenance(provenance, ctx)
@@ -764,7 +764,7 @@ class TreeLayoutFormatProvenanceTests(TestCase):
         builder.add("a", file="a.yaml", line=1, value=1)
         builder.add("b", file="b.yaml", line=2, value=2)
         provenance = builder.build()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = self.layout.format_provenance(provenance, ctx)
@@ -779,7 +779,7 @@ class TreeLayoutFormatProvenanceTests(TestCase):
         builder.add("model.lr", file="config.yaml", line=1, value=0.01)
         builder.add("data.path", file="config.yaml", line=2, value="/data")
         provenance = builder.build()
-        ctx = FormatContext(path_filters=["/model.*"])
+        ctx = ProvenanceFormatContext(path_filters=["/model.*"])
 
         # Act
         result = self.layout.format_provenance(provenance, ctx)
@@ -796,7 +796,7 @@ class TreeLayoutJoinEntriesTests(TestCase):
         """Test that entries are joined with double newlines."""
         # Arrange
         layout = TreeLayout()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
         entries = ["entry1", "entry2", "entry3"]
 
         # Act
@@ -809,7 +809,7 @@ class TreeLayoutJoinEntriesTests(TestCase):
         """Test that empty list returns empty string."""
         # Arrange
         layout = TreeLayout()
-        ctx = FormatContext()
+        ctx = ProvenanceFormatContext()
 
         # Act
         result = layout.join_entries([], ctx)
@@ -831,7 +831,7 @@ class TreeLayoutProgrammaticSourceTests(TestCase):
             value=42,
             source_type="programmatic",
         )
-        ctx = FormatContext(show_source_type=True)
+        ctx = ProvenanceFormatContext(show_source_type=True)
 
         # Act
         result = layout.format_entry(entry, "test", ctx)
@@ -850,7 +850,7 @@ class TreeLayoutProgrammaticSourceTests(TestCase):
             source_type="env",
             env_var=None,
         )
-        ctx = FormatContext(show_source_type=True)
+        ctx = ProvenanceFormatContext(show_source_type=True)
 
         # Act
         result = layout.format_entry(entry, "test", ctx)
@@ -873,7 +873,7 @@ class TreeLayoutTargetDisplayTests(TestCase):
             target_class="MyModel",
             target_module="myapp.models",
         )
-        ctx = FormatContext(show_targets=True)
+        ctx = ProvenanceFormatContext(show_targets=True)
 
         # Act
         result = layout.format_entry(entry, "model", ctx)
@@ -895,7 +895,7 @@ class TreeLayoutTargetDisplayTests(TestCase):
             target_module="myapp.models",
             target_auto_registered=True,
         )
-        ctx = FormatContext(show_targets=True)
+        ctx = ProvenanceFormatContext(show_targets=True)
 
         # Act
         result = layout.format_entry(entry, "model", ctx)
@@ -914,7 +914,7 @@ class TreeLayoutTargetDisplayTests(TestCase):
             target_class=None,
             target_module=None,
         )
-        ctx = FormatContext(show_targets=True)
+        ctx = ProvenanceFormatContext(show_targets=True)
 
         # Act
         result = layout.format_entry(entry, "model", ctx)
@@ -933,7 +933,7 @@ class TreeLayoutTargetDisplayTests(TestCase):
             target_class="MyModel",
             target_module="myapp.models",
         )
-        ctx = FormatContext(show_targets=False)
+        ctx = ProvenanceFormatContext(show_targets=False)
 
         # Act
         result = layout.format_entry(entry, "model", ctx)
@@ -949,7 +949,7 @@ class TreeLayoutTargetDisplayTests(TestCase):
             file="config.yaml",
             line=5,
         )
-        ctx = FormatContext(show_targets=True)
+        ctx = ProvenanceFormatContext(show_targets=True)
 
         # Act
         result = layout.format_entry(entry, "model.layers", ctx)
@@ -963,7 +963,7 @@ class TreeLayoutFormatValueTests(TestCase):
 
     def setUp(self) -> None:
         self.layout = TreeLayout()
-        self.ctx = FormatContext()
+        self.ctx = ProvenanceFormatContext()
 
     def test_formatValue__None__ReturnsNull(self) -> None:
         """Test that None value is formatted as 'null'."""
@@ -1020,7 +1020,7 @@ class TreeLayoutTargetWithoutModuleTests(TestCase):
             target_class="MyModel",
             target_module=None,  # No module
         )
-        ctx = FormatContext(show_targets=True)
+        ctx = ProvenanceFormatContext(show_targets=True)
 
         # Act
         result = layout.format_entry(entry, "model", ctx)
@@ -1040,7 +1040,7 @@ class TreeLayoutTargetWithoutModuleTests(TestCase):
             target_module=None,
             target_auto_registered=True,
         )
-        ctx = FormatContext(show_targets=True)
+        ctx = ProvenanceFormatContext(show_targets=True)
 
         # Act
         result = layout.format_entry(entry, "model", ctx)

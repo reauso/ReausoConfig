@@ -61,6 +61,19 @@ from .multirun import (
 if TYPE_CHECKING:
     from .composition import Provenance
     from .composition.ProvenanceBuilder import ProvenanceBuilder
+from .diff import (
+    ConfigDiff,
+    DiffEntry,
+    DiffEntryType,
+    DiffBuilder,
+    DiffFormat,
+    DiffPreset,
+    DiffFormatContext,
+    DiffLayout,
+    DiffFlatLayout,
+    DiffTreeLayout,
+    DiffMarkdownLayout,
+)
 from .validation import ConfigValidator, ValidationResult
 from .instantiation import ConfigInstantiator, is_lazy_proxy, force_initialize
 from .composition import (
@@ -1131,6 +1144,104 @@ def get_provenance(
     return builder.build()
 
 
+# === Config Diffing API ===
+
+
+def diff(
+    left: "Path | Provenance",
+    right: "Path | Provenance",
+    *,
+    left_inner_path: str | None = None,
+    right_inner_path: str | None = None,
+    left_overrides: dict[str, Any] | None = None,
+    right_overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = False,
+) -> ConfigDiff:
+    """Compare two configurations and report differences.
+
+    Accepts either Path objects (which are resolved to Provenance internally)
+    or Provenance objects directly. Returns a ConfigDiff with added, removed,
+    changed, and unchanged entries.
+
+    :param left: Left (original/base) config - Path or Provenance.
+    :param right: Right (new/updated) config - Path or Provenance.
+    :param left_inner_path: Optional path to compare only a section of left config.
+    :param right_inner_path: Optional path to compare only a section of right config.
+    :param left_overrides: Overrides to apply to left config (Path only).
+    :param right_overrides: Overrides to apply to right config (Path only).
+    :param cli_overrides: Whether to parse CLI overrides (default False for diff).
+    :return: ConfigDiff object with all differences.
+
+    Example::
+
+        import rconfig as rc
+        from pathlib import Path
+
+        # Compare two config files
+        diff = rc.diff(Path("config_v1.yaml"), Path("config_v2.yaml"))
+
+        # Check if configs are identical
+        if diff.is_empty():
+            print("Configs are identical")
+
+        # Access differences by type
+        for path, entry in diff.added.items():
+            print(f"Added: {path} = {entry.right_value}")
+
+        for path, entry in diff.changed.items():
+            print(f"Changed: {path}: {entry.left_value} -> {entry.right_value}")
+
+        # Format output
+        print(diff.format().terminal())
+        print(diff.format().markdown())
+        print(diff.format().show_provenance().tree())
+
+        # Compare specific sections
+        diff = rc.diff(
+            Path("trainer.yaml"), Path("trainer_new.yaml"),
+            left_inner_path="model",
+            right_inner_path="model",
+        )
+
+        # Compare with overrides
+        diff = rc.diff(
+            Path("config.yaml"), Path("config.yaml"),
+            left_overrides={"model.lr": 0.001},
+            right_overrides={"model.lr": 0.01},
+        )
+
+        # Reuse existing provenance
+        prov1 = rc.get_provenance(Path("config_v1.yaml"))
+        prov2 = rc.get_provenance(Path("config_v2.yaml"))
+        diff = rc.diff(prov1, prov2)
+    """
+    # Resolve left to Provenance if needed
+    if isinstance(left, Path):
+        left_prov = get_provenance(
+            left,
+            inner_path=left_inner_path,
+            overrides=left_overrides,
+            cli_overrides=cli_overrides,
+        )
+    else:
+        left_prov = left
+
+    # Resolve right to Provenance if needed
+    if isinstance(right, Path):
+        right_prov = get_provenance(
+            right,
+            inner_path=right_inner_path,
+            overrides=right_overrides,
+            cli_overrides=cli_overrides,
+        )
+    else:
+        right_prov = right
+
+    # Use DiffBuilder to compute the diff
+    builder = DiffBuilder()
+    return builder.compute_diff(left_prov, right_prov)
+
+
 # === Deprecation API ===
 
 
@@ -1708,6 +1819,19 @@ __all__ = [
     "register_resolver",
     "unregister_resolver",
     "resolver",
+    # Diff API
+    "diff",
+    "ConfigDiff",
+    "DiffEntry",
+    "DiffEntryType",
+    "DiffBuilder",
+    "DiffFormat",
+    "DiffPreset",
+    "DiffFormatContext",
+    "DiffLayout",
+    "DiffFlatLayout",
+    "DiffTreeLayout",
+    "DiffMarkdownLayout",
     # Lazy instantiation utilities
     "is_lazy_proxy",
     "force_initialize",
