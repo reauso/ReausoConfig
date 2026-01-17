@@ -9,11 +9,12 @@ from __future__ import annotations
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING
 
-from .Diff import DiffEntryType
-from .DiffLayout import DiffFormatContext, DiffLayout
+from ..models import DiffEntryType
+from .layout import DiffFormatContext, DiffLayout
 
 if TYPE_CHECKING:
-    from .Diff import ConfigDiff, DiffEntry
+    from ..diff import ConfigDiff
+    from ..models import DiffEntry
 
 
 class DiffFlatLayout(DiffLayout):

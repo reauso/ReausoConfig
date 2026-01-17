@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .Diff import ConfigDiff, DiffEntry
+    from ..diff import ConfigDiff
+    from ..models import DiffEntry
 
 
 @dataclass

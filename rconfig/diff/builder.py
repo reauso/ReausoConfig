@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .Diff import ConfigDiff, DiffEntry, DiffEntryType
+from .diff import ConfigDiff
+from .models import DiffEntry, DiffEntryType
 
 if TYPE_CHECKING:
     from rconfig.provenance import Provenance, ProvenanceEntry
