@@ -742,7 +742,7 @@ class UpdateProvenanceForOverrideTests(TestCase):
         """Test that CLI override sets cli source type in provenance."""
         # Arrange
         from rconfig.composition import EntrySourceType
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
         builder = ProvenanceBuilder()
@@ -767,7 +767,7 @@ class UpdateProvenanceForOverrideTests(TestCase):
         """Test that programmatic override sets programmatic source type."""
         # Arrange
         from rconfig.composition import EntrySourceType
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
         builder = ProvenanceBuilder()
@@ -791,7 +791,7 @@ class UpdateProvenanceForOverrideTests(TestCase):
         """Test that overriding existing entry records what was overridden."""
         # Arrange
         from rconfig.composition import EntrySourceType
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
         builder = ProvenanceBuilder()
@@ -815,7 +815,7 @@ class UpdateProvenanceForOverrideTests(TestCase):
         """Test that new path has no overrode field."""
         # Arrange
         from rconfig.composition import EntrySourceType
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
         builder = ProvenanceBuilder()  # Empty builder
@@ -837,7 +837,7 @@ class UpdateProvenanceForOverrideTests(TestCase):
     def test_updateProvenance__SetsValue(self):
         """Test that override value is stored in provenance entry."""
         # Arrange
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
         builder = ProvenanceBuilder()
@@ -859,7 +859,7 @@ class UpdateProvenanceForOverrideTests(TestCase):
         """Test that cli_arg is only set for cli source type."""
         # Arrange
         from rconfig.composition import EntrySourceType
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
         builder = ProvenanceBuilder()
@@ -883,7 +883,7 @@ class UpdateProvenanceForOverrideTests(TestCase):
         """Test that programmatic override has None cli_arg."""
         # Arrange
         from rconfig.composition import EntrySourceType
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.override.override import _update_provenance_for_override
 
         builder = ProvenanceBuilder()
@@ -910,7 +910,7 @@ class ApplyOverridesWithProvenanceTests(TestCase):
         """Test that set operation updates provenance."""
         # Arrange
         from rconfig.composition import EntrySourceType
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
 
         builder = ProvenanceBuilder()
         builder.add("model.lr", file="config.yaml", line=5, value=0.001)
@@ -936,7 +936,7 @@ class ApplyOverridesWithProvenanceTests(TestCase):
     def test_applyOverrides__AddOperation__NoProvenanceUpdate(self):
         """Test that add operation doesn't crash with provenance."""
         # Arrange
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
 
         builder = ProvenanceBuilder()
         builder.add("callbacks", file="config.yaml", line=5)
@@ -958,7 +958,7 @@ class ApplyOverridesWithProvenanceTests(TestCase):
     def test_applyOverrides__RemoveOperation__NoProvenanceUpdate(self):
         """Test that remove operation doesn't crash with provenance."""
         # Arrange
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
 
         builder = ProvenanceBuilder()
         builder.add("dropout", file="config.yaml", line=5, value=0.1)
@@ -993,7 +993,7 @@ class ApplyOverridesWithProvenanceTests(TestCase):
         """Test that multiple overrides are all tracked in provenance."""
         # Arrange
         from rconfig.composition import EntrySourceType
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
 
         builder = ProvenanceBuilder()
         builder.add("model.lr", file="config.yaml", line=5)

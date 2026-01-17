@@ -27,17 +27,21 @@ from .CompositionCache import (
 )
 from .Merger import deep_merge
 from .InstanceResolver import InstanceResolver
-from .Provenance import (
+
+# Re-export provenance classes from their new location for backwards compatibility
+from rconfig.provenance import (
     Provenance,
     ProvenanceEntry,
     ProvenanceNode,
     InstanceRef,
     EntrySourceType,
     NodeSourceType,
+    ProvenanceLayout,
+    ProvenanceFormatContext,
+    ProvenanceFormat,
+    ProvenancePreset,
+    TreeLayout,
 )
-from .ProvenanceLayout import ProvenanceLayout, ProvenanceFormatContext
-from .ProvenanceFormat import ProvenanceFormat, ProvenancePreset
-from .TreeLayout import TreeLayout
 
 from rconfig.errors import AmbiguousRefError
 

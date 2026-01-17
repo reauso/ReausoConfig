@@ -24,7 +24,7 @@ from rconfig.interpolation.parser import (
 )
 
 if TYPE_CHECKING:
-    from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+    from rconfig.provenance import ProvenanceBuilder
 
 
 class InterpolationResolver:

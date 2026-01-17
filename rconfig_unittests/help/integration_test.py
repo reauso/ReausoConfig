@@ -4,8 +4,7 @@ from io import StringIO
 from unittest import TestCase
 
 from rconfig.help import HelpIntegration, FunctionHelpIntegration
-from rconfig.composition import Provenance, ProvenanceEntry
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import Provenance, ProvenanceEntry, ProvenanceBuilder
 
 
 class HelpIntegrationTests(TestCase):
@@ -79,7 +78,7 @@ class FunctionHelpIntegrationTests(TestCase):
 
     def _create_test_provenance(self) -> Provenance:
         """Create a test provenance object."""
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
 
         builder = ProvenanceBuilder()
         builder.add("test.key", file="test.yaml", line=1, value="test_value")

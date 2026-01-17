@@ -13,8 +13,7 @@ from typing import Any
 
 from .IncrementalComposer import IncrementalComposer, clear_cache, set_cache_size
 from .InstanceResolver import InstanceResolver
-from .Provenance import Provenance
-from .ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import Provenance, ProvenanceBuilder
 
 
 # Re-export cache functions for backwards compatibility

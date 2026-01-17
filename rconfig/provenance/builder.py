@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from rconfig._internal.path_utils import get_value_at_path
 
-from .Provenance import EntrySourceType, InstanceRef
+from .models import EntrySourceType, InstanceRef
 
 if TYPE_CHECKING:
     from rconfig.deprecation.info import DeprecationInfo
@@ -197,7 +197,8 @@ class ProvenanceBuilder:
 
         :return: Immutable Provenance object.
         """
-        from .Provenance import Provenance, ProvenanceEntry
+        from .provenance import Provenance
+        from .models import ProvenanceEntry
 
         # Convert mutable entries to frozen ProvenanceEntry objects
         frozen_entries: dict[str, ProvenanceEntry] = {}

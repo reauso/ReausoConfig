@@ -59,7 +59,7 @@ class ProvenanceIntegrationTests(TestCase):
     def test_getProvenance__WithInterpolation__TracksInterpolationSources(self):
         """Test that provenance tracks interpolation sources."""
         # Arrange - use interpolation resolver directly
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.interpolation import resolve_interpolations
 
         config = {
@@ -270,7 +270,7 @@ class ProvenanceWithOverridesIntegrationTests(TestCase):
         """Test that CLI overrides are tracked in provenance."""
         # Arrange
         from rconfig.override import Override, apply_overrides
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
 
         config = {"lr": 0.1, "epochs": 10}
         builder = ProvenanceBuilder()
@@ -300,7 +300,7 @@ class ProvenanceWithOverridesIntegrationTests(TestCase):
         """Test that CLI override is shown in formatted output."""
         # Arrange
         from rconfig.override import Override, apply_overrides
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
 
         builder = ProvenanceBuilder()
         builder.add("lr", file="config.yaml", line=1, value=0.1)
@@ -331,7 +331,7 @@ class ProvenanceWithInterpolationIntegrationTests(TestCase):
     def test_resolveInterpolations__TracksInterpolationSource(self):
         """Test that interpolation sources are tracked."""
         # Arrange - use interpolation resolver directly
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.interpolation import resolve_interpolations
 
         config = {
@@ -354,7 +354,7 @@ class ProvenanceWithInterpolationIntegrationTests(TestCase):
     def test_resolveInterpolations__TracksExpressionOperator(self):
         """Test that expression operators are tracked."""
         # Arrange - use interpolation resolver directly
-        from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+        from rconfig.provenance import ProvenanceBuilder
         from rconfig.interpolation import resolve_interpolations
 
         config = {

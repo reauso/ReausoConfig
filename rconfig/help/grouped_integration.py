@@ -14,7 +14,7 @@ from .integration import HelpIntegration
 from .multirun_help import MULTIRUN_HELP
 
 if TYPE_CHECKING:
-    from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+    from rconfig.provenance import Provenance, ProvenanceEntry
 
 
 class GroupedHelpIntegration(HelpIntegration):

@@ -4,8 +4,7 @@ import argparse
 from unittest import TestCase
 
 from rconfig.help import ArgparseHelpIntegration
-from rconfig.composition import Provenance
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import Provenance, ProvenanceBuilder
 
 
 class ArgparseHelpIntegrationTests(TestCase):
