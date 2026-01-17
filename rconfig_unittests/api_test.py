@@ -14,8 +14,6 @@ from rconfig import (
     ConfigError,
     ConfigFileError,
     ConfigInstantiator,
-    ConfigReference,
-    ConfigStore,
     ConfigValidator,
     InstantiationError,
     InvalidOverridePathError,
@@ -28,6 +26,7 @@ from rconfig import (
     ValidationError,
     ValidationResult,
 )
+from rconfig.target import TargetRegistry, TargetEntry
 
 
 class ModuleLevelAPITests(TestCase):
@@ -46,7 +45,7 @@ class ModuleLevelAPITests(TestCase):
         rc.register("model", Model)
 
         # Assert
-        refs = rc.known_references()
+        refs = rc.known_targets()
         self.assertIn("model", refs)
         self.assertIs(refs["model"].target_class, Model)
 
@@ -62,7 +61,7 @@ class ModuleLevelAPITests(TestCase):
         rc.unregister("model")
 
         # Assert
-        refs = rc.known_references()
+        refs = rc.known_targets()
         self.assertNotIn("model", refs)
 
     def test_unregister__UnknownName__RaisesKeyError(self):
@@ -113,7 +112,7 @@ class ModuleLevelAPITests(TestCase):
             self.assertIsInstance(result, Model)
             self.assertEqual(result.size, 512)
 
-    def test_known_references__ReturnsImmutableMapping(self):
+    def test_known_targets__ReturnsImmutableMapping(self):
         # Arrange
         @dataclass
         class Model:
@@ -122,7 +121,7 @@ class ModuleLevelAPITests(TestCase):
         rc.register("model", Model)
 
         # Act
-        refs = rc.known_references()
+        refs = rc.known_targets()
 
         # Assert
         self.assertIsInstance(refs, MappingProxyType)
@@ -133,8 +132,8 @@ class ModuleLevelAPITests(TestCase):
 class ExportsTests(TestCase):
     def test_exports__AllClassesAccessible(self):
         # Act & Assert
-        self.assertTrue(issubclass(ConfigStore, object))
-        self.assertTrue(issubclass(ConfigReference, object))
+        self.assertTrue(issubclass(TargetRegistry, object))
+        self.assertTrue(issubclass(TargetEntry, object))
         self.assertTrue(issubclass(ConfigValidator, object))
         self.assertTrue(issubclass(ConfigInstantiator, object))
 

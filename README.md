@@ -155,7 +155,7 @@ This decoupling allows config files to reference classes by stable string identi
 **Viewing registered targets:**
 
 ```python
-refs = rc.known_references()
+refs = rc.known_targets()
 for name, ref in refs.items():
     print(f"{name}: {ref.target_class}")
 ```
@@ -2432,15 +2432,15 @@ for result in rc.instantiate_multirun(
     train(result.instance)  # 4 runs total
 ```
 
-#### `rc.known_references()`
+#### `rc.known_targets()`
 
 Get a read-only view of all registered configuration references.
 
 **Parameters:** None
 
-**Returns:** `MappingProxyType[str, ConfigReference]` - Immutable mapping of name to `ConfigReference`
+**Returns:** `MappingProxyType[str, TargetEntry]` - Immutable mapping of name to `TargetEntry`
 
-`ConfigReference` has attributes:
+`TargetEntry` has attributes:
 
 - `name` (`str`): Identifier for the target class
 - `target_class` (`type[Any]`): The registered class
@@ -2449,7 +2449,7 @@ Get a read-only view of all registered configuration references.
 **Examples:**
 
 ```python
-refs = rc.known_references()
+refs = rc.known_targets()
 for name, ref in refs.items():
     print(f"{name}: {ref.target_class}")
     for param_name, param in ref.decisive_init_parameters.items():
@@ -3562,7 +3562,7 @@ ReausoConfig is thread-safe for concurrent access. The following operations can 
 - `register_loader()` / `unregister_loader()` - Thread-safe loader registration
 - `register_exporter()` / `unregister_exporter()` - Thread-safe exporter registration
 
-**Note:** `rc.known_references()` returns a live view of registrations. Individual read operations are thread-safe, but iteration during concurrent mutation may raise RuntimeError.
+**Note:** `rc.known_targets()` returns a live view of registrations. Individual read operations are thread-safe, but iteration during concurrent mutation may raise RuntimeError.
 
 ## Error Handling
 

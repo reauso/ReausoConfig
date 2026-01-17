@@ -11,7 +11,7 @@ from typing import Any, Generator
 from unittest import TestCase
 from unittest.mock import patch
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 
 
 # =============================================================================
@@ -20,10 +20,10 @@ from rconfig.store import ConfigStore
 
 
 class BaseStoreTest(TestCase):
-    """Base class for tests that need a clean ConfigStore.
+    """Base class for tests that need a clean TargetRegistry.
 
     Provides the `_empty_store()` helper method that creates a fresh
-    ConfigStore with all references cleared. This is the standard pattern
+    TargetRegistry with all targets cleared. This is the standard pattern
     for test isolation in rconfig tests.
 
     Example::
@@ -41,12 +41,12 @@ class BaseStoreTest(TestCase):
                 self.assertEqual(result, expected)
     """
 
-    def _empty_store(self) -> ConfigStore:
-        """Create a fresh ConfigStore with all references cleared.
+    def _empty_store(self) -> TargetRegistry:
+        """Create a fresh TargetRegistry with all targets cleared.
 
-        :return: A new ConfigStore instance with no registered references.
+        :return: A new TargetRegistry instance with no registered targets.
         """
-        store = ConfigStore()
+        store = TargetRegistry()
         store.clear()
         return store
 

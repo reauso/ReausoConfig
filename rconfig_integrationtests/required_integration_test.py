@@ -33,7 +33,7 @@ CONFIG_DIR = Path(__file__).parent / "config_files"
 
 class RequiredValueInstantiateTests(TestCase):
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("app", AppConfig)
         rc.register("database", DatabaseConfig)
 
@@ -113,7 +113,7 @@ class RequiredValueInstantiateTests(TestCase):
 
 class RequiredValueValidateTests(TestCase):
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("app", AppConfig)
         rc.register("database", DatabaseConfig)
 
@@ -161,7 +161,7 @@ class RequiredValueValidateTests(TestCase):
 
 class RequiredValueErrorMessageTests(TestCase):
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("app", AppConfig)
         rc.register("database", DatabaseConfig)
 

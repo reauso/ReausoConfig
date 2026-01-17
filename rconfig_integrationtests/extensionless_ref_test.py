@@ -32,7 +32,7 @@ class ExtensionlessRefIntegrationTests(TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config_root = Path(self.temp_dir.name)
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("model", Model)
         rc.register("trainer", Trainer)

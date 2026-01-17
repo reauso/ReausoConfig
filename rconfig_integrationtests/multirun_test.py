@@ -41,7 +41,7 @@ class MultirunCoreTests(TestCase):
     """Core instantiate_multirun functionality tests."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -161,7 +161,7 @@ class MultirunIteratorFeatureTests(TestCase):
     """Tests for MultirunIterator features."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -251,7 +251,7 @@ class MultirunErrorHandlingTests(TestCase):
     """Tests for error handling in instantiate_multirun."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -318,7 +318,7 @@ class MultirunExportTests(TestCase):
     """Tests for to_file/to_files with MultirunResult."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
         self._temp_files: list[Path] = []
@@ -353,7 +353,7 @@ class MultirunLazyModeTests(TestCase):
     """Tests for lazy instantiation mode."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -380,7 +380,7 @@ class MultirunConfigImmutabilityTests(TestCase):
     """Tests for config immutability."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -406,7 +406,7 @@ class MultirunCLIIntegrationTests(TestCase):
     """Tests for CLI integration with instantiate_multirun."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -514,7 +514,7 @@ class MultirunHelpIntegrationTests(TestCase):
     """Tests for help integration with multirun."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -541,7 +541,7 @@ class MultirunAdditionalCoreTests(TestCase):
     """Additional core functionality tests."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -567,7 +567,7 @@ class MultirunAdditionalErrorTests(TestCase):
     """Additional error handling tests."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -593,7 +593,7 @@ class MultirunAdditionalExportTests(TestCase):
     """Additional export tests."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
         self._temp_files: list[Path] = []

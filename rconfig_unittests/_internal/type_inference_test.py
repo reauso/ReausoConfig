@@ -6,14 +6,14 @@ from typing import Optional, Union
 from unittest import TestCase
 
 from rconfig._internal.type_inference import infer_target_from_parent
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 
 
 class InferTargetFromParentTests(TestCase):
     """Tests for infer_target_from_parent function."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -365,8 +365,8 @@ class InferTargetFromParentTests(TestCase):
 class ListElementTypeInferenceTests(TestCase):
     """Tests for list element type inference."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 

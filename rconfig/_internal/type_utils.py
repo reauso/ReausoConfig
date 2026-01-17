@@ -7,7 +7,7 @@ and determining if types can be used as config targets.
 import inspect
 from typing import Any, Union, get_args, get_origin
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 
 
 # Sentinel for _target_ key
@@ -111,16 +111,16 @@ def could_be_implicit_nested(value: Any, expected_type: type | None) -> bool:
     return class_type is not None
 
 
-def find_registered_subclasses(store: ConfigStore, base_class: type) -> list[str]:
+def find_registered_subclasses(store: TargetRegistry, base_class: type) -> list[str]:
     """Find all registered targets that are subclasses of the given base class.
 
-    :param store: ConfigStore containing registered target classes.
+    :param store: TargetRegistry containing registered target classes.
     :param base_class: Base class to find subclasses of.
     :return: List of target names whose classes are subclasses of base_class.
     """
     subclasses: list[str] = []
 
-    for name, reference in store.known_references.items():
+    for name, reference in store.known_targets.items():
         target_class = reference.target_class
         # Check if target_class is a subclass of base_class (including exact match)
         try:
@@ -133,21 +133,21 @@ def find_registered_subclasses(store: ConfigStore, base_class: type) -> list[str
     return subclasses
 
 
-def find_exact_match(store: ConfigStore, cls: type) -> str | None:
+def find_exact_match(store: TargetRegistry, cls: type) -> str | None:
     """Find a registered target that exactly matches the given class.
 
-    :param store: ConfigStore containing registered target classes.
+    :param store: TargetRegistry containing registered target classes.
     :param cls: Class to find exact match for.
     :return: Target name if exact match found, None otherwise.
     """
-    for name, reference in store.known_references.items():
+    for name, reference in store.known_targets.items():
         if reference.target_class is cls:
             return name
     return None
 
 
 def is_concrete_type(
-    store: ConfigStore, cls: type
+    store: TargetRegistry, cls: type
 ) -> tuple[bool, str | None, list[str]]:
     """Determine if a type is concrete (unambiguously instantiable).
 
@@ -156,7 +156,7 @@ def is_concrete_type(
     2. It has exactly one registered target matching it, OR
     3. No targets are registered for this type (auto-register it)
 
-    :param store: ConfigStore containing registered target classes.
+    :param store: TargetRegistry containing registered target classes.
     :param cls: Class to check.
     :return: Tuple of (is_concrete, exact_target_name, all_matching_targets)
     """
@@ -185,7 +185,7 @@ def is_concrete_type(
             # No subclasses registered - auto-register the class
             target_name = cls.__name__.lower()
             # Avoid name collision
-            if target_name in store._known_references:
+            if target_name in store._known_targets:
                 target_name = f"{cls.__module__}.{cls.__name__}"
             store.register(target_name, cls)
             return (True, target_name, [target_name])

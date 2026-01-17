@@ -37,7 +37,7 @@ class ProvenanceIntegrationTests(TestCase):
 
     def setUp(self):
         # Clear the store before each test
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         # Register test targets
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
@@ -262,7 +262,7 @@ class ProvenanceWithOverridesIntegrationTests(TestCase):
 
     def setUp(self):
         # Clear the store before each test
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -381,7 +381,7 @@ class ProvenanceTargetIntegrationTests(TestCase):
 
     def setUp(self):
         # Clear the store before each test
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         # Register test targets
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
@@ -420,7 +420,7 @@ class ProvenanceTargetIntegrationTests(TestCase):
     def test_getProvenance__UnregisteredTarget__ShowsNotRegisteredInFormat(self):
         """Test that unregistered targets show 'not registered' when formatted."""
         # Arrange - clear registrations and use a config with unknown target
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         config_path = CONFIG_DIR / "trainer_config.yaml"
 
         # Act
@@ -464,7 +464,7 @@ class GetProvenanceWithOverridesIntegrationTests(TestCase):
     """Integration tests for rc.get_provenance() with overrides and cli_overrides."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -525,7 +525,7 @@ class ValidateWithInnerPathIntegrationTests(TestCase):
     """Integration tests for rc.validate() with inner_path parameter."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 

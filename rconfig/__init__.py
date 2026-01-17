@@ -37,7 +37,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Callable, TypeVar, overload
 
-from .store import ConfigStore, ConfigReference
+from .target import TargetRegistry, TargetEntry
 from .help import (
     HelpIntegration,
     FunctionHelpIntegration,
@@ -171,7 +171,7 @@ T = TypeVar("T")
 
 
 # Internal singleton instances
-_store = ConfigStore()
+_store = TargetRegistry()
 _resolver_registry = ResolverRegistry()
 _validator = ConfigValidator(_store)
 _instantiator = ConfigInstantiator(_store, _validator)
@@ -961,12 +961,12 @@ def instantiate_multirun(
     return MultirunIterator(run_configs, instantiate_single_run)
 
 
-def known_references() -> MappingProxyType[str, ConfigReference]:
-    """Get a read-only view of all registered configuration references.
+def known_targets() -> MappingProxyType[str, TargetEntry]:
+    """Get a read-only view of all registered target entries.
 
-    :return: Immutable mapping of name to ConfigReference.
+    :return: Immutable mapping of name to TargetEntry.
     """
-    return _store.known_references
+    return _store.known_targets
 
 
 # Type variable for the resolver decorator
@@ -1145,7 +1145,7 @@ def get_provenance(
     builder.set_config(resolved)
 
     # Resolve target class information from registered targets
-    builder.resolve_targets(_store.known_references)
+    builder.resolve_targets(_store.known_targets)
 
     # Build the final immutable provenance
     return builder.build()
@@ -1799,8 +1799,8 @@ def _to_files_from_multirun_result(
 
 
 # Public API - Minimal root exports
-# For classes like ConfigStore, ConfigValidator, etc., import from submodules:
-#   from rconfig.store import ConfigStore
+# For classes like TargetRegistry, ConfigValidator, etc., import from submodules:
+#   from rconfig.target import TargetRegistry
 #   from rconfig.validation import ConfigValidator
 #   from rconfig.composition import ConfigComposer, Provenance
 #   from rconfig.override import Override
@@ -1810,7 +1810,7 @@ __all__ = [
     "unregister",
     "validate",
     "instantiate",
-    "known_references",
+    "known_targets",
     "get_provenance",
     "set_cache_size",
     "clear_cache",
