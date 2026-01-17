@@ -26,7 +26,7 @@ class InstantiateHelpTests(TestCase):
         self._original_argv = sys.argv.copy()
         self._original_integration = rc.current_help_integration()
         # Register the test target
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("simple_config", SimpleConfig)
 
     def tearDown(self) -> None:
@@ -141,7 +141,7 @@ class SysArgvManipulationTests(TestCase):
         self._original_argv = sys.argv.copy()
         self._original_integration = rc.current_help_integration()
         # Register the test target
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("simple_config", SimpleConfig)
 
     def tearDown(self) -> None:

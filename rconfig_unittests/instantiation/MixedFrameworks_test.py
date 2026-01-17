@@ -11,7 +11,7 @@ from unittest import TestCase
 from pydantic import BaseModel, ConfigDict
 from attrs import define
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 from rconfig.validation import ConfigValidator
 from rconfig.instantiation import ConfigInstantiator
 
@@ -19,12 +19,12 @@ from rconfig.instantiation import ConfigInstantiator
 class MixedFrameworkTests(TestCase):
     """Tests for interoperability between dataclasses, Pydantic, and attrs."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -222,12 +222,12 @@ class MixedFrameworkTests(TestCase):
 class MixedFrameworkImplicitTargetTests(TestCase):
     """Tests for implicit target inference across mixed frameworks."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -332,12 +332,12 @@ class MixedFrameworkImplicitTargetTests(TestCase):
 class TripleMixedFrameworkTests(TestCase):
     """Tests for configurations using all three frameworks together."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 

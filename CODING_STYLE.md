@@ -11,13 +11,118 @@ This guide documents the coding conventions for this project, derived from:
 
 ## Table of Contents
 
-1. [SOLID Principles](#solid-principles)
-2. [Method Naming Conventions](#method-naming-conventions)
-3. [Class Design](#class-design)
-4. [Code Hygiene](#code-hygiene)
-5. [Error Handling](#error-handling)
-6. [Unit Tests](#unit-tests)
-7. [Integration Tests](#integration-tests)
+1. [Python Naming Conventions (PEP 8)](#python-naming-conventions-pep-8)
+2. [SOLID Principles](#solid-principles)
+3. [Method Naming Conventions](#method-naming-conventions)
+4. [Class Design](#class-design)
+5. [Code Hygiene](#code-hygiene)
+6. [Error Handling](#error-handling)
+7. [Unit Tests](#unit-tests)
+8. [Integration Tests](#integration-tests)
+
+---
+
+## Python Naming Conventions (PEP 8)
+
+This project follows PEP 8, Python's official style guide. Key conventions:
+
+### File and Module Names
+
+Use **lowercase with underscores** (snake_case):
+
+```python
+# Good
+target_registry.py
+config_loader.py
+type_utils.py
+
+# Bad
+TargetRegistry.py
+ConfigLoader.py
+TypeUtils.py
+```
+
+**Why:** Python modules are typically imported by name. Lowercase names are easier to type and avoid confusion with class names.
+
+### Package Names
+
+Use **short, lowercase names** without underscores if possible:
+
+```python
+# Good
+rconfig/target/
+rconfig/validation/
+
+# Acceptable (when needed for clarity)
+rconfig/type_utils/
+```
+
+### Class Names
+
+Use **PascalCase** (CapWords):
+
+```python
+# Good
+class TargetRegistry: ...
+class ConfigValidator: ...
+
+# Bad
+class target_registry: ...
+class config_validator: ...
+```
+
+### Function and Variable Names
+
+Use **lowercase with underscores** (snake_case):
+
+```python
+# Good
+def validate_config(): ...
+target_name = "model"
+
+# Bad
+def validateConfig(): ...
+targetName = "model"
+```
+
+### Constants
+
+Use **UPPERCASE with underscores**:
+
+```python
+# Good
+MAX_RETRIES = 3
+DEFAULT_TIMEOUT = 30
+
+# Bad
+maxRetries = 3
+default_timeout = 30
+```
+
+### Private Members
+
+Prefix with a single underscore:
+
+```python
+# Good - internal use only
+self._known_targets = {}
+def _validate_type(self): ...
+
+# Convention - "name mangling" (rarely needed)
+self.__private = value
+```
+
+### Summary Table
+
+| Element | Convention | Example |
+|---------|------------|---------|
+| Module/File | snake_case | `target_registry.py` |
+| Package | lowercase | `rconfig/target/` |
+| Class | PascalCase | `TargetRegistry` |
+| Function | snake_case | `validate_config()` |
+| Variable | snake_case | `target_name` |
+| Constant | UPPER_SNAKE | `MAX_RETRIES` |
+| Private | `_prefix` | `_internal_method()` |
 
 ---
 
@@ -31,7 +136,7 @@ Each class should have one, and only one, reason to change.
 
 ```python
 # Good - Each class has a single responsibility
-class ConfigStore:
+class TargetRegistry:
     """Only manages registration and lookup of config references."""
 
 class ConfigValidator:
@@ -47,7 +152,7 @@ Classes should be open for extension but closed for modification.
 
 ```python
 # Good - Extensible through registration, not modification
-class ConfigStore:
+class TargetRegistry:
     def register(self, name: str, target: type) -> None:
         """Extend behavior by registering new targets."""
 ```
@@ -95,9 +200,9 @@ Clients should not be forced to depend on interfaces they don't use.
 ```python
 # Good - Return read-only views instead of full mutable objects
 @property
-def known_references(self) -> MappingProxyType[str, ConfigReference]:
+def known_targets(self) -> MappingProxyType[str, TargetEntry]:
     """Clients only need to read, not modify."""
-    return MappingProxyType(self._known_references)
+    return MappingProxyType(self._known_targets)
 ```
 
 ### Dependency Inversion Principle (DIP)
@@ -107,7 +212,7 @@ Depend on abstractions, not concretions. Inject dependencies via constructor.
 ```python
 # Good - Dependencies injected, easy to test with mocks
 class ConfigInstantiator:
-    def __init__(self, store: ConfigStore, validator: ConfigValidator) -> None:
+    def __init__(self, store: TargetRegistry, validator: ConfigValidator) -> None:
         self._store = store
         self._validator = validator
 ```
@@ -236,7 +341,7 @@ Use frozen dataclasses for value objects:
 
 ```python
 @dataclass(frozen=True, kw_only=True)
-class ConfigReference:
+class TargetEntry:
     """Immutable reference to a configuration class."""
     name: str
     target_class: type[Any]
@@ -258,8 +363,8 @@ def cards(self) -> tuple[Card, ...]:
 
 # Good - MappingProxyType for dict
 @property
-def known_references(self) -> MappingProxyType[str, ConfigReference]:
-    return MappingProxyType(self._known_references)
+def known_targets(self) -> MappingProxyType[str, TargetEntry]:
+    return MappingProxyType(self._known_targets)
 
 # Good - frozenset is immutable
 @property
@@ -545,7 +650,7 @@ def instantiate(self, config: dict[str, Any]) -> Any:
         raise MissingFieldError(TARGET_KEY, "(root)")
 
     target_name = config[TARGET_KEY]
-    if target_name not in self._store.known_references:
+    if target_name not in self._store.known_targets:
         raise TargetNotFoundError(target_name)
 
     # Happy path continues here
@@ -754,10 +859,10 @@ Use helper methods to reduce test setup duplication:
 ```python
 class ConfigValidatorTests(unittest.TestCase):
 
-    def _empty_store(self) -> ConfigStore:
-        """Create a clean ConfigStore for testing."""
-        store = ConfigStore()
-        store._known_references.clear()
+    def _empty_store(self) -> TargetRegistry:
+        """Create a clean TargetRegistry for testing."""
+        store = TargetRegistry()
+        store._known_targets.clear()
         return store
 ```
 

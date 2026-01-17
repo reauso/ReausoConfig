@@ -14,11 +14,11 @@ class LazyInstantiationIntegrationTests(TestCase):
     """Full pipeline integration tests for lazy instantiation."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         self.temp_dir = tempfile.mkdtemp()
 
     def tearDown(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def _write_yaml(self, name: str, content: str) -> Path:
@@ -479,11 +479,11 @@ class LazyInstantiationTransparencyIntegrationTests(TestCase):
     """Integration tests verifying lazy proxies are transparent to user code."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         self.temp_dir = tempfile.mkdtemp()
 
     def tearDown(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def _write_yaml(self, name: str, content: str) -> Path:

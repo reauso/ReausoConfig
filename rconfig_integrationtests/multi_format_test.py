@@ -28,7 +28,7 @@ class MultiFormatInstantiationTests(TestCase):
 
     def setUp(self):
         clear_cache()
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("JsonTestModel", JsonTestModel)
         rc.register("TomlTestModel", TomlTestModel)
 

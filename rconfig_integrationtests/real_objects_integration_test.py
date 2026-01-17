@@ -139,7 +139,7 @@ class RealObjectsComputedStateTests(TestCase):
     """Tests for objects that compute/derive state from constructor params."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("rectangle", Rectangle)
 
@@ -188,7 +188,7 @@ class RealObjectsFactoryPatternTests(TestCase):
     """Tests for factory pattern objects that create internal structures."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("connection_pool", ConnectionPool)
 
@@ -237,7 +237,7 @@ class RealObjectsNestedTests(TestCase):
     """Tests for nested real objects."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("canvas", Canvas)
         rc.register("rectangle", Rectangle)
@@ -280,7 +280,7 @@ class RealObjectsInstanceSharingTests(TestCase):
     """Tests for _instance_ sharing with real objects."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("counter_app", CounterApp)
         rc.register("counter", Counter)
@@ -342,7 +342,7 @@ class RealObjectsRefCompositionTests(TestCase):
     """Tests for _ref_ composition with real objects."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("canvas", Canvas)
         rc.register("rectangle", Rectangle)
@@ -378,7 +378,7 @@ class RealObjectsOverrideTests(TestCase):
     """Tests for overrides applied to real objects."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("rectangle", Rectangle)
 

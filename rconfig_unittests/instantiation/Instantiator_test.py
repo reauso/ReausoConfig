@@ -4,7 +4,7 @@ from typing import Optional, Union
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 from rconfig.validation import ConfigValidator
 from rconfig.instantiation import ConfigInstantiator
 from rconfig._internal.type_utils import (
@@ -26,12 +26,12 @@ from rconfig.errors import (
 
 
 class ConfigInstantiatorTests(TestCase):
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -418,12 +418,12 @@ class ConfigInstantiatorTests(TestCase):
 class ConfigInstantiatorImplicitTargetTests(TestCase):
     """Tests for instantiation with implicit _target_ inference."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -559,12 +559,12 @@ class ConfigInstantiatorImplicitTargetTests(TestCase):
 class ConfigInstantiatorEdgeCaseTests(TestCase):
     """Tests for edge cases and uncovered code paths in ConfigInstantiator."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -729,7 +729,7 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
         self.assertIsInstance(result.inner, Inner)
         self.assertEqual(result.inner.value, 42)
         # Verify Inner was auto-registered
-        self.assertIn("inner", store._known_references)
+        self.assertIn("inner", store._known_targets)
 
     def test_instantiate__DeeplyNestedUnregistered__AutoRegistersAll(self):
         """Test deeply nested unregistered types are all auto-registered."""
@@ -984,12 +984,12 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
 class ConfigInstantiatorAutoRegistrationTests(TestCase):
     """Tests for auto-registration during instantiation."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -1023,7 +1023,7 @@ class ConfigInstantiatorAutoRegistrationTests(TestCase):
         self.assertIsInstance(result, Outer)
         self.assertIsInstance(result.inner, Inner)
         self.assertEqual(result.inner.value, 42)
-        self.assertIn("inner", store._known_references)
+        self.assertIn("inner", store._known_targets)
 
     def test_instantiate__NestedExplicitTargets__AutoRegistersAndInstantiatesAll(self):
         """Deeply nested configs with explicit targets all get auto-registered."""
@@ -1060,8 +1060,8 @@ class ConfigInstantiatorAutoRegistrationTests(TestCase):
         self.assertIsInstance(result.level2, Level2)
         self.assertIsInstance(result.level2.level3, Level3)
         self.assertEqual(result.level2.level3.value, 99)
-        self.assertIn("level2", store._known_references)
-        self.assertIn("level3", store._known_references)
+        self.assertIn("level2", store._known_targets)
+        self.assertIn("level3", store._known_targets)
 
     def test_instantiate__MixedImplicitExplicit__HandlesCorrectly(self):
         """Some nested use implicit inference, others use explicit auto-registration."""
@@ -1234,18 +1234,18 @@ class ConfigInstantiatorAutoRegistrationTests(TestCase):
         # Assert
         self.assertIsInstance(result.inner, Inner)
         self.assertEqual(result.inner.value, 42)
-        self.assertIn("inner", store._known_references)
+        self.assertIn("inner", store._known_targets)
 
 
 class ConfigInstantiatorHelperMethodTests(TestCase):
     """Tests for helper methods in type_utils used by ConfigInstantiator."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -1328,12 +1328,12 @@ class ConfigInstantiatorHelperMethodTests(TestCase):
 class ConfigInstantiatorSharedInstanceTests(TestCase):
     """Tests for shared instance instantiation via instance_targets."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -1767,12 +1767,12 @@ class ConfigInstantiatorSharedInstanceTests(TestCase):
 class ConfigInstantiatorCoverageTests(TestCase):
     """Tests to improve ConfigInstantiator coverage for edge cases."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -1954,7 +1954,7 @@ class ConfigInstantiatorCoverageTests(TestCase):
         self.assertIsInstance(result.model, NestedModel)
         self.assertEqual(result.model.size, 100)
         # Verify it was auto-registered
-        self.assertIn("nestedmodel", store.known_references)
+        self.assertIn("nestedmodel", store.known_targets)
 
     def test_instantiate__UnregisteredTargetNotMatchingType__RaisesError(self):
         """Test that auto-registration only happens when names match."""
@@ -2079,12 +2079,12 @@ class ConfigInstantiatorCoverageTests(TestCase):
 class ConfigInstantiatorExternalInstancesTests(TestCase):
     """Tests for external_instances parameter used by partial instantiation."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -2259,12 +2259,12 @@ class ConfigInstantiatorExternalInstancesTests(TestCase):
 class ConfigInstantiatorLazyTests(TestCase):
     """Tests for lazy instantiation in ConfigInstantiator."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 

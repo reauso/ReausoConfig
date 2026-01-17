@@ -46,7 +46,7 @@ CONFIG_DIR = Path(__file__).parent / "config_files"
 class IntegrationTests(TestCase):
     def setUp(self):
         # Clear the store before each test
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         # Register test targets
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
@@ -103,7 +103,7 @@ class ImplicitTargetIntegrationTests(TestCase):
     """Integration tests for implicit _target_ inference with real YAML files."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
         rc.register("l1", Level1)

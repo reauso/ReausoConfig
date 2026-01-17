@@ -7,7 +7,7 @@ Python objects using registered target classes.
 import inspect
 from typing import Any, get_type_hints
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 from rconfig.validation import ConfigValidator
 from rconfig.errors import InstantiationError
 from rconfig._internal.path_utils import build_child_path
@@ -29,10 +29,10 @@ class ConfigInstantiator:
     instance_targets mapping is provided from ConfigComposer.
     """
 
-    def __init__(self, store: ConfigStore, validator: ConfigValidator) -> None:
+    def __init__(self, store: TargetRegistry, validator: ConfigValidator) -> None:
         """Initialize the instantiator.
 
-        :param store: ConfigStore containing registered target classes.
+        :param store: TargetRegistry containing registered target classes.
         :param validator: ConfigValidator for validating configs before instantiation.
         """
         self._store = store
@@ -92,7 +92,7 @@ class ConfigInstantiator:
                 raise result.errors[0]
 
         target_name = config[TARGET_KEY]
-        reference = self._store.known_references[target_name]
+        reference = self._store.known_targets[target_name]
 
         # Check for per-field _lazy_ marker on the root config
         should_be_lazy = self._global_lazy or config.get(LAZY_KEY, False)
@@ -130,7 +130,7 @@ class ConfigInstantiator:
 
         # Get type hints for inferring nested config types
         target_name = config[TARGET_KEY]
-        reference = self._store.known_references[target_name]
+        reference = self._store.known_targets[target_name]
 
         try:
             type_hints = get_type_hints(reference.target_class)
@@ -190,7 +190,7 @@ class ConfigInstantiator:
             # Auto-register target if not registered but we have expected type
             # Only auto-register if target name matches expected class name
             target_name = value[TARGET_KEY]
-            if target_name not in self._store.known_references:
+            if target_name not in self._store.known_targets:
                 class_type = extract_class_from_hint(expected_type)
                 if (
                     class_type is not None
@@ -255,7 +255,7 @@ class ConfigInstantiator:
             raise result.errors[0]
 
         target_name = filtered_config[TARGET_KEY]
-        reference = self._store.known_references[target_name]
+        reference = self._store.known_targets[target_name]
 
         # Process arguments, instantiating nested configs
         kwargs = self._processed_arguments(filtered_config, config_path)

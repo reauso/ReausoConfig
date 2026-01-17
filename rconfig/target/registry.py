@@ -1,11 +1,11 @@
-"""Store and inspect configuration class references.
+"""Target registry for configuration classes.
 
-This module provides :class:`ConfigReference`, a dataclass capturing the
-constructor parameters of a target class, and :class:`ConfigStore`, a singleton
-registry for such references.  References can be registered and later
-unregistered from the store.
+This module provides :class:`TargetEntry`, a dataclass capturing the
+constructor parameters of a target class, and :class:`TargetRegistry`, a singleton
+registry for such entries. Entries can be registered and later
+unregistered from the registry.
 
-Thread-safe: All operations on ConfigStore are protected by an internal lock.
+Thread-safe: All operations on TargetRegistry are protected by an internal lock.
 """
 
 import inspect
@@ -20,11 +20,11 @@ from rconfig._internal import Singleton
 
 
 @dataclass(kw_only=True, frozen=True)
-class ConfigReference:
-    """Immutable reference to a configuration class.
+class TargetEntry:
+    """Immutable entry for a registered target class.
 
     The ``decisive_init_parameters`` attribute exposes the parameters required
-    to instantiate the referenced class.
+    to instantiate the target class.
     """
 
     name: str
@@ -53,16 +53,16 @@ class ConfigReference:
 
 
 @Singleton
-class ConfigStore:
-    """Thread-safe registry for :class:`ConfigReference` objects.
+class TargetRegistry:
+    """Thread-safe registry for :class:`TargetEntry` objects.
 
-    References can be registered via :meth:`register` and unregistered again
+    Entries can be registered via :meth:`register` and unregistered again
     using :meth:`unregister`. All operations are protected by an internal lock.
     """
 
     def __init__(self) -> None:
-        """Initialize the store."""
-        self._known_references: dict[str, ConfigReference] = {}
+        """Initialize the registry."""
+        self._known_targets: dict[str, TargetEntry] = {}
         self._lock = threading.RLock()
 
     def register(
@@ -77,57 +77,57 @@ class ConfigStore:
         :param name: Identifier for the target class.
         :param target: Class to register.
         """
-        # Create ConfigReference outside lock (inspect.signature may be slow)
-        reference = ConfigReference(
+        # Create TargetEntry outside lock (inspect.signature may be slow)
+        entry = TargetEntry(
             name=name,
             target_class=target,
         )
         with self._lock:
-            self._known_references[reference.name] = reference
+            self._known_targets[entry.name] = entry
 
     def unregister(self, name: str) -> None:
-        """Unregister a previously registered configuration reference.
+        """Unregister a previously registered target entry.
 
         Thread-safe: protected by internal lock.
 
-        :param name: Identifier of the reference to unregister.
-        :raises KeyError: If no reference with that name exists.
+        :param name: Identifier of the entry to unregister.
+        :raises KeyError: If no entry with that name exists.
         """
         with self._lock:
-            del self._known_references[name]
+            del self._known_targets[name]
 
     def clear(self) -> None:
-        """Clear all registered references.
+        """Clear all registered entries.
 
         Thread-safe: protected by internal lock.
-        This is primarily intended for testing purposes to reset the store
+        This is primarily intended for testing purposes to reset the registry
         between test cases.
         """
         with self._lock:
-            self._known_references.clear()
+            self._known_targets.clear()
 
     def __contains__(self, name: str) -> bool:
-        """Check if a reference is registered using 'in' keyword.
+        """Check if an entry is registered using 'in' keyword.
 
         Thread-safe: protected by internal lock.
 
-        :param name: Identifier of the reference to check.
-        :return: True if the reference is registered.
+        :param name: Identifier of the entry to check.
+        :return: True if the entry is registered.
 
         Example::
 
-            if "model" in store:
+            if "model" in registry:
                 ...
         """
         with self._lock:
-            return name in self._known_references
+            return name in self._known_targets
 
     @property
-    def known_references(self) -> MappingProxyType[str, ConfigReference]:
-        """Read-only view of all registered configuration references.
+    def known_targets(self) -> MappingProxyType[str, TargetEntry]:
+        """Read-only view of all registered target entries.
 
         Returns a live view - changes made after this call ARE reflected.
         Individual read operations are thread-safe, but iteration during
         concurrent mutation may raise RuntimeError.
         """
-        return MappingProxyType(self._known_references)
+        return MappingProxyType(self._known_targets)

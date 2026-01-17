@@ -1,13 +1,13 @@
 from types import MappingProxyType
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 from rconfig_unittests.fixtures import BaseStoreTest
 
 
-class ConfigStoreTests(BaseStoreTest):
-    """Tests for ConfigStore registration and lookup functionality."""
+class TargetRegistryTests(BaseStoreTest):
+    """Tests for TargetRegistry registration and lookup functionality."""
 
-    def test_register__WithTargetClass__StoreConfigReference(self):
+    def test_register__WithTargetClass__StoreTargetEntry(self):
         # Arrange
         store = self._empty_store()
 
@@ -21,12 +21,12 @@ class ConfigStoreTests(BaseStoreTest):
         store.register(name="example", target=Example)
 
         # Assert
-        references = store.known_references
-        self.assertIn("example", references)
-        reference = references["example"]
-        self.assertIs(reference.target_class, Example)
-        self.assertEqual(list(reference.decisive_init_parameters.keys()), ["a", "b", "c"])
-        self.assertIsInstance(reference.decisive_init_parameters, MappingProxyType)
+        targets = store.known_targets
+        self.assertIn("example", targets)
+        entry = targets["example"]
+        self.assertIs(entry.target_class, Example)
+        self.assertEqual(list(entry.decisive_init_parameters.keys()), ["a", "b", "c"])
+        self.assertIsInstance(entry.decisive_init_parameters, MappingProxyType)
 
     def test_register__TargetWithoutInitAttribute__RaisesAttributeError(self):
         # Arrange
@@ -45,7 +45,7 @@ class ConfigStoreTests(BaseStoreTest):
         with self.assertRaisesRegex(AttributeError, "has no '__init__'"):
             store.register(name="noinit", target=NoInit)
 
-        self.assertEqual(len(store.known_references), 0)
+        self.assertEqual(len(store.known_targets), 0)
 
     def test_register__TargetWithNonCallableInitAttribute__RaisesTypeError(self):
         # Arrange
@@ -58,9 +58,9 @@ class ConfigStoreTests(BaseStoreTest):
         with self.assertRaises(TypeError):
             store.register(name="notcallable", target=InitNotCallable)
 
-        self.assertEqual(len(store.known_references), 0)
+        self.assertEqual(len(store.known_targets), 0)
 
-    def test_register__NameAlreadyExists__OverridesExistingReference(self):
+    def test_register__NameAlreadyExists__OverridesExistingEntry(self):
         # Arrange
         store = self._empty_store()
 
@@ -76,11 +76,11 @@ class ConfigStoreTests(BaseStoreTest):
         store.register(name="dup", target=Second)
 
         # Assert
-        references = store.known_references
-        self.assertEqual(len(references), 1)
-        self.assertIs(references["dup"].target_class, Second)
+        targets = store.known_targets
+        self.assertEqual(len(targets), 1)
+        self.assertIs(targets["dup"].target_class, Second)
 
-    def test_known_references__ReturnMappingProxy__IsImmutable(self):
+    def test_known_targets__ReturnMappingProxy__IsImmutable(self):
         # Arrange
         store = self._empty_store()
 
@@ -91,14 +91,14 @@ class ConfigStoreTests(BaseStoreTest):
         store.register(name="example", target=Example)
 
         # Act
-        references = store.known_references
+        targets = store.known_targets
 
         # Assert
-        self.assertIsInstance(references, MappingProxyType)
+        self.assertIsInstance(targets, MappingProxyType)
         with self.assertRaises(TypeError):
-            references["new"] = object()
+            targets["new"] = object()
 
-    def test_known_references__ReturnsLiveView__ReflectsLaterChanges(self):
+    def test_known_targets__ReturnsLiveView__ReflectsLaterChanges(self):
         # Arrange
         store = self._empty_store()
 
@@ -107,15 +107,15 @@ class ConfigStoreTests(BaseStoreTest):
                 pass
 
         # Get live view before registration
-        references = store.known_references
+        targets = store.known_targets
 
         # Act
         store.register(name="example", target=Example)
 
         # Assert - live view DOES reflect later changes
-        self.assertIn("example", references)
+        self.assertIn("example", targets)
 
-    def test_unregister__RegisteredName__RemovesReference(self):
+    def test_unregister__RegisteredName__RemovesEntry(self):
         # Arrange
         store = self._empty_store()
 
@@ -128,7 +128,7 @@ class ConfigStoreTests(BaseStoreTest):
         store.unregister("example")
 
         # Assert
-        self.assertNotIn("example", store.known_references)
+        self.assertNotIn("example", store.known_targets)
 
     def test_unregister__UnknownName__RaisesKeyError(self):
         # Arrange
@@ -171,4 +171,3 @@ class ConfigStoreTests(BaseStoreTest):
 
         # Act & Assert
         self.assertFalse("example" in store)
-

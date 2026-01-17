@@ -55,7 +55,7 @@ class RefCompositionIntegrationTests(TestCase):
     """Tests for _ref_ resolution through the public API."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
@@ -97,7 +97,7 @@ class InstanceSharingIntegrationTests(TestCase):
     """Tests for _instance_ sharing through the public API."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("cache", Cache)
         rc.register("service_a", ServiceA)
@@ -145,7 +145,7 @@ class ProvenanceIntegrationTests(TestCase):
     """Tests for provenance tracking through the public API."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
@@ -188,7 +188,7 @@ class CacheControlIntegrationTests(TestCase):
     """Tests for cache control functions."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
@@ -214,7 +214,7 @@ class OverridesWithCompositionIntegrationTests(TestCase):
     """Tests for overrides combined with composition."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.clear_cache()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
