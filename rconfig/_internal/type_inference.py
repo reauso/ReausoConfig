@@ -16,13 +16,13 @@ from rconfig._internal.type_utils import (
     extract_class_from_hint,
     is_concrete_type,
 )
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 
 
 def infer_target_from_parent(
     config: dict[str, Any],
     path: str,
-    store: ConfigStore,
+    store: TargetRegistry,
 ) -> str | None:
     """Infer target name from parent's type hint.
 
@@ -35,7 +35,7 @@ def infer_target_from_parent(
 
     :param config: Full config dict (before extraction).
     :param path: Dot-notation path to the section being extracted.
-    :param store: ConfigStore with registered targets.
+    :param store: TargetRegistry with registered targets.
     :return: Inferred target name, or None if cannot infer.
     """
     # Parse path into segments
@@ -69,10 +69,10 @@ def infer_target_from_parent(
 
     # Get parent's target class
     parent_target = parent_config[TARGET_KEY]
-    if parent_target not in store.known_references:
+    if parent_target not in store.known_targets:
         return None
 
-    parent_class = store.known_references[parent_target].target_class
+    parent_class = store.known_targets[parent_target].target_class
 
     # Get type hint for the field
     try:
@@ -100,7 +100,7 @@ def infer_target_from_parent(
 def _infer_list_element_type(
     config: dict[str, Any],
     segments: list[str | int],
-    store: ConfigStore,
+    store: TargetRegistry,
 ) -> str | None:
     """Infer target name for a list element from the list's type hint.
 
@@ -110,7 +110,7 @@ def _infer_list_element_type(
 
     :param config: Full config dict.
     :param segments: Parsed path segments where the last is an int (list index).
-    :param store: ConfigStore with registered targets.
+    :param store: TargetRegistry with registered targets.
     :return: Inferred target name, or None if cannot infer.
     """
     # Need at least 3 segments: grandparent, list_field, index
@@ -146,10 +146,10 @@ def _infer_list_element_type(
 
     # Get grandparent's target class
     grandparent_target = grandparent_config[TARGET_KEY]
-    if grandparent_target not in store.known_references:
+    if grandparent_target not in store.known_targets:
         return None
 
-    grandparent_class = store.known_references[grandparent_target].target_class
+    grandparent_class = store.known_targets[grandparent_target].target_class
 
     # Get type hint for the list field
     try:

@@ -447,7 +447,7 @@ class ConfigPathInterpolationTests(TestCase):
     """Tests for config path references: /path, ./path, path."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("config_paths_test", ConfigPathsTest)
 
     def test_instantiate__AbsolutePath__ResolvesCorrectly(self) -> None:
@@ -495,7 +495,7 @@ class ArithmeticOperatorTests(TestCase):
     """Tests for arithmetic: +, -, *, /, //, %, **, unary -/+."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("arithmetic_test", ArithmeticTest)
 
     def test_instantiate__Addition__ResolvesCorrectly(self) -> None:
@@ -587,7 +587,7 @@ class ComparisonOperatorTests(TestCase):
     """Tests for comparisons: ==, !=, <, >, <=, >=."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("comparison_test", ComparisonTest)
 
     def test_instantiate__Equal__ResolvesCorrectly(self) -> None:
@@ -650,7 +650,7 @@ class BooleanOperatorTests(TestCase):
     """Tests for booleans: and, or, not, in, not in."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("boolean_test", BooleanTest)
 
     def test_instantiate__And__ResolvesCorrectly(self) -> None:
@@ -705,7 +705,7 @@ class ListOperationTests(TestCase):
     """Tests for list ops: +, -, [], [:], .remove(), len()."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("lists_test", ListsTest)
 
     def test_instantiate__ListIndex__ResolvesCorrectly(self) -> None:
@@ -766,7 +766,7 @@ class FilterOperationTests(TestCase):
     """Tests for filter: | filter(x op value) with all operators."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("filter_test", FilterTest)
 
     def test_instantiate__FilterGreaterThan__FiltersCorrectly(self) -> None:
@@ -829,7 +829,7 @@ class StringOperationTests(TestCase):
     """Tests for string concatenation and embedded interpolation."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("string_test", StringTest)
 
     def test_instantiate__SimpleConcat__ResolvesCorrectly(self) -> None:
@@ -884,7 +884,7 @@ class EnvironmentVariableTests(TestCase):
     """Tests for env var interpolation: ${env:VAR}, ${env:VAR,default}."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("env_vars_test", EnvVarsTest)
         # Clean up any test env vars
         for key in list(os.environ.keys()):
@@ -965,7 +965,7 @@ class LiteralTests(TestCase):
     """Tests for literal values in interpolation expressions."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("literals_test", LiteralsTest)
 
     def test_instantiate__IntegerLiteral__PreservesType(self) -> None:
@@ -1052,7 +1052,7 @@ class ComplexExpressionTests(TestCase):
     """Tests for chained ops, precedence, parentheses."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("chained_expressions_test", ChainedExpressionsTest)
 
     def test_instantiate__OperatorPrecedence__FollowsMathRules(self) -> None:
@@ -1125,7 +1125,7 @@ class NestedInterpolationTests(TestCase):
     """Tests for deeply nested configs with interpolation."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("nested_interpolation_test", NestedInterpolationTest)
 
     def test_instantiate__CrossLevelReferences__ResolveCorrectly(self) -> None:
@@ -1168,7 +1168,7 @@ class AllOperationsTests(TestCase):
     """Tests for comprehensive config using all operations."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("all_operations_test", AllOperationsTest)
         # Clean up any test env vars
         for key in list(os.environ.keys()):
@@ -1260,7 +1260,7 @@ class InterpolationErrorTests(TestCase):
     """Tests for error cases: circular, missing, type errors."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         # Existing error test registrations
         rc.register("circular_ref_test", CircularRefTest)
         rc.register("self_ref_test", SelfRefTest)
@@ -1505,7 +1505,7 @@ class InterpolationCompositionTests(TestCase):
     """Tests for interpolation + _ref_ + _instance_."""
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("base_config_test", BaseConfigTest)
         rc.register("ref_interpolation_test", RefInterpolationTest)
         rc.register("cache_config", CacheConfig)
@@ -1641,7 +1641,7 @@ class ResolverIntegrationTests(TestCase):
         rc.unregister_resolver("raise_error")
 
     def setUp(self) -> None:
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("resolver_test", ResolverTest)
 
     # === App Resolver Tests ===

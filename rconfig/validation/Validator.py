@@ -1,7 +1,7 @@
 """Configuration validation logic.
 
 This module provides validation of config dictionaries against registered
-target classes in the ConfigStore.
+target classes in the TargetRegistry.
 """
 
 import inspect
@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from inspect import Parameter
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
-from rconfig.store import ConfigStore, ConfigReference
+from rconfig.target import TargetRegistry, TargetEntry
 from rconfig.errors import (
     AmbiguousTargetError,
     InvalidOverridePathError,
@@ -47,16 +47,16 @@ class ConfigValidator:
     """Validates config dictionaries against registered target classes.
 
     Performs validation including:
-    - Target existence in ConfigStore
+    - Target existence in TargetRegistry
     - Required field presence
     - Type compatibility
     - Recursive validation of nested configs
     """
 
-    def __init__(self, store: ConfigStore) -> None:
+    def __init__(self, store: TargetRegistry) -> None:
         """Initialize the validator.
 
-        :param store: ConfigStore containing registered target classes.
+        :param store: TargetRegistry containing registered target classes.
         """
         self._store = store
 
@@ -75,7 +75,7 @@ class ConfigValidator:
                 AmbiguousTargetError(
                     field="(root)",
                     expected_type=object,
-                    available_targets=list(self._store.known_references.keys()),
+                    available_targets=list(self._store.known_targets.keys()),
                     is_abstract=True,
                     config_path=config_path,
                 )
@@ -90,7 +90,7 @@ class ConfigValidator:
             errors.append(target_error)
             return ValidationResult(valid=False, errors=errors)
 
-        reference = self._store.known_references[target_name]
+        reference = self._store.known_targets[target_name]
 
         # Validate required fields
         missing_errors = self._missing_field_errors(config, reference, config_path)
@@ -106,15 +106,15 @@ class ConfigValidator:
         self, target: str, config_path: str
     ) -> TargetNotFoundError | None:
         """Return TargetNotFoundError if target is not registered, else None."""
-        if target not in self._store.known_references:
-            available = list(self._store.known_references.keys())
+        if target not in self._store.known_targets:
+            available = list(self._store.known_targets.keys())
             return TargetNotFoundError(target, available, config_path)
         return None
 
     def _missing_field_errors(
         self,
         config: dict[str, Any],
-        reference: ConfigReference,
+        reference: TargetEntry,
         config_path: str,
     ) -> list[MissingFieldError]:
         """Return list of MissingFieldError for any required fields not present."""
@@ -138,7 +138,7 @@ class ConfigValidator:
     def _type_errors(
         self,
         config: dict[str, Any],
-        reference: ConfigReference,
+        reference: TargetEntry,
         config_path: str,
     ) -> list[ValidationError]:
         """Return list of type validation errors for config values."""
@@ -211,7 +211,7 @@ class ConfigValidator:
         :param target_name: The target name from the config.
         :param expected_type: The expected type from the parent's type hint.
         """
-        if target_name in self._store.known_references:
+        if target_name in self._store.known_targets:
             return
 
         class_type = extract_class_from_hint(expected_type)
@@ -306,10 +306,10 @@ class ConfigValidator:
             return errors
 
         target_name = value[TARGET_KEY]
-        if target_name not in self._store.known_references:
+        if target_name not in self._store.known_targets:
             return errors  # Target not found error already handled elsewhere
 
-        target_class = self._store.known_references[target_name].target_class
+        target_class = self._store.known_targets[target_name].target_class
 
         # Check if target_class is a subclass of expected type
         try:
@@ -510,10 +510,10 @@ class ConfigValidator:
             return None
 
         target_name = config[TARGET_KEY]
-        if target_name not in self._store.known_references:
+        if target_name not in self._store.known_targets:
             return None
 
-        reference = self._store.known_references[target_name]
+        reference = self._store.known_targets[target_name]
 
         try:
             type_hints = get_type_hints(reference.target_class)

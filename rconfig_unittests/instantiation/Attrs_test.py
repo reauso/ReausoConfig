@@ -10,7 +10,7 @@ from unittest import TestCase
 import attrs
 from attrs import define, frozen, field, Factory
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 from rconfig.validation import ConfigValidator
 from rconfig.instantiation import ConfigInstantiator
 
@@ -18,12 +18,12 @@ from rconfig.instantiation import ConfigInstantiator
 class AttrsInstantiationTests(TestCase):
     """Tests for basic attrs class instantiation."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -211,12 +211,12 @@ class AttrsInstantiationTests(TestCase):
 class AttrsFrozenClassTests(TestCase):
     """Tests for frozen attrs class instantiation and immutability."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -298,12 +298,12 @@ class AttrsFrozenClassTests(TestCase):
 class AttrsImplicitTargetTests(TestCase):
     """Tests for implicit target inference with attrs classes."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -422,12 +422,12 @@ class AttrsImplicitTargetTests(TestCase):
 class AttrsListTests(TestCase):
     """Tests for attrs classes with list fields."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 

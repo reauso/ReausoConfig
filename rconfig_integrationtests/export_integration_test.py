@@ -44,7 +44,7 @@ class ExportIntegrationTests(TestCase):
     """Integration tests for config export with real YAML files."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -116,7 +116,7 @@ class FileExportIntegrationTests(TestCase):
     """Integration tests for file-based export."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -211,7 +211,7 @@ class ExportWithInstanceSharingTests(TestCase):
     """Tests for export with _instance_ references."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.output_dir = Path(self.temp_dir.name)
 
@@ -232,7 +232,7 @@ class ExportEdgeCasesTests(TestCase):
     """Edge case tests for export."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.output_dir = Path(self.temp_dir.name)
 
@@ -258,7 +258,7 @@ class RefGraphIntegrationTests(TestCase):
     """Tests for ref_graph tracking during composition."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 
@@ -293,7 +293,7 @@ class JsonExportIntegrationTests(TestCase):
     """Integration tests for JSON export with real config files."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -382,7 +382,7 @@ class TomlExportIntegrationTests(TestCase):
     """Integration tests for TOML export with real config files."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -471,7 +471,7 @@ class CrossFormatExportIntegrationTests(TestCase):
     """Integration tests for cross-format export scenarios."""
 
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
         self.temp_dir = tempfile.TemporaryDirectory()

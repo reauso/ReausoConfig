@@ -154,7 +154,7 @@ class MLTrainingIntegrationTests(TestCase):
 
     def setUp(self):
         """Clear store and register all targets before each test."""
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("trainer_app", TrainerApp)
 
     def tearDown(self):
@@ -295,7 +295,7 @@ class MLTrainingVGGTests(TestCase):
 
     def setUp(self):
         """Clear store and register all targets before each test."""
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("trainer_app", TrainerAppVGG)
         rc.register("vgg", VGG)
 
@@ -328,7 +328,7 @@ class MLTrainingRefCompositionTests(TestCase):
 
     def setUp(self):
         """Clear store and register all targets before each test."""
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("trainer_app", TrainerApp)
         rc.register("resnet", ResNet)
 
@@ -379,7 +379,7 @@ class MLTrainingInstanceSharingTests(TestCase):
 
     def setUp(self):
         """Clear store and register all targets before each test."""
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("trainer_app", TrainerApp)
 
     def tearDown(self):
@@ -421,7 +421,7 @@ class MLTrainingProvenanceTests(TestCase):
 
     def setUp(self):
         """Clear store and register all targets before each test."""
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("trainer_app", TrainerApp)
         rc.register("resnet", ResNet)
 
@@ -510,7 +510,7 @@ class MLTrainingAutoRegistrationTests(TestCase):
 
     def setUp(self):
         """Clear store and register minimal targets before each test."""
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         # Only register the root target - rely on auto-registration for nested types
 
     def tearDown(self):
@@ -531,7 +531,7 @@ class MLTrainingAutoRegistrationTests(TestCase):
         # Assert
         self.assertTrue(result.valid)
         # Verify nested types were auto-registered
-        self.assertIn("resnet", rc._store._known_references)
+        self.assertIn("resnet", rc._store._known_targets)
 
     def test_instantiate__FullAppMinimalRegistration__AllTypesCorrect(self):
         """Full app.yaml with minimal pre-registration still works."""
@@ -576,8 +576,8 @@ class MLTrainingAutoRegistrationTests(TestCase):
         # Assert
         self.assertTrue(result.valid)
         # Optimizer and Scheduler should be auto-registered from _ref_ files
-        self.assertIn("optimizer", rc._store._known_references)
-        self.assertIn("scheduler", rc._store._known_references)
+        self.assertIn("optimizer", rc._store._known_targets)
+        self.assertIn("scheduler", rc._store._known_targets)
 
     # === ERROR CASES ===
 

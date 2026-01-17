@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Union
 from unittest import TestCase
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 from rconfig._internal.type_utils import (
     TARGET_KEY,
     could_be_implicit_nested,
@@ -168,8 +168,8 @@ class CouldBeImplicitNestedTests(TestCase):
 class FindRegisteredSubclassesTests(TestCase):
     """Tests for find_registered_subclasses function."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -240,8 +240,8 @@ class FindRegisteredSubclassesTests(TestCase):
 class FindExactMatchTests(TestCase):
     """Tests for find_exact_match function."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -281,8 +281,8 @@ class FindExactMatchTests(TestCase):
 class IsConcreteTypeTests(TestCase):
     """Tests for is_concrete_type function."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -332,7 +332,7 @@ class IsConcreteTypeTests(TestCase):
         self.assertEqual(target_name, "myclass")
         self.assertIn("myclass", matching)
         # Verify it was actually registered
-        self.assertIn("myclass", store.known_references)
+        self.assertIn("myclass", store.known_targets)
 
     def test_isConcrete__ConcreteWithSubclasses__ReturnsFalse(self):
         store = self._empty_store()

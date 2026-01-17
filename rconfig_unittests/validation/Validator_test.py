@@ -4,7 +4,7 @@ from typing import Optional, Union
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 from rconfig.validation import ConfigValidator, ValidationResult
 from rconfig._internal.type_utils import (
     could_be_implicit_nested,
@@ -24,8 +24,8 @@ from rconfig.errors import (
 
 
 class ConfigValidatorTests(TestCase):
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -290,8 +290,8 @@ class ConfigValidatorTests(TestCase):
 class ValidatorAmbiguousTargetErrorTests(TestCase):
     """Tests for AmbiguousTargetError when root _target_ is missing."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -410,8 +410,8 @@ class ValidationResultTests(TestCase):
 class ConfigValidatorEdgeCaseTests(TestCase):
     """Tests for edge cases and uncovered code paths."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -761,8 +761,8 @@ class ConfigValidatorEdgeCaseTests(TestCase):
 class ConfigValidatorImplicitTargetTests(TestCase):
     """Tests for implicit _target_ inference in nested configs."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -1170,7 +1170,7 @@ class ConfigValidatorImplicitTargetTests(TestCase):
 
         self.assertTrue(result.valid)
         # Verify Inner was auto-registered
-        self.assertIn("inner", store._known_references)
+        self.assertIn("inner", store._known_targets)
 
     def test_validate__NoTypeHintForField__SkipsTypeValidation(self):
         """Test field without type hint is skipped (line 148-149)."""
@@ -1511,8 +1511,8 @@ class ConfigValidatorImplicitTargetTests(TestCase):
 class ConfigValidatorAutoRegistrationTests(TestCase):
     """Tests for auto-registration of concrete types from type hints."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -1544,7 +1544,7 @@ class ConfigValidatorAutoRegistrationTests(TestCase):
 
         # Assert
         self.assertTrue(result.valid)
-        self.assertIn("inner", store._known_references)
+        self.assertIn("inner", store._known_targets)
 
     def test_validate__ExplicitTargetCaseInsensitive__AutoRegisters(self):
         """Target name matching is case-insensitive (e.g., 'myclass' matches MyClass)."""
@@ -1571,7 +1571,7 @@ class ConfigValidatorAutoRegistrationTests(TestCase):
 
         # Assert
         self.assertTrue(result.valid)
-        self.assertIn("myclass", store._known_references)
+        self.assertIn("myclass", store._known_targets)
 
     def test_validate__DeeplyNestedExplicitTargets__AutoRegistersAll(self):
         """Multiple levels of nested explicit targets are auto-registered."""
@@ -1605,8 +1605,8 @@ class ConfigValidatorAutoRegistrationTests(TestCase):
 
         # Assert
         self.assertTrue(result.valid)
-        self.assertIn("level2", store._known_references)
-        self.assertIn("level3", store._known_references)
+        self.assertIn("level2", store._known_targets)
+        self.assertIn("level3", store._known_targets)
 
     def test_validate__ExplicitTargetWithOptionalType__AutoRegisters(self):
         """Optional[SomeClass] type hint with matching _target_ auto-registers."""
@@ -1633,7 +1633,7 @@ class ConfigValidatorAutoRegistrationTests(TestCase):
 
         # Assert
         self.assertTrue(result.valid)
-        self.assertIn("inner", store._known_references)
+        self.assertIn("inner", store._known_targets)
 
     # === ERROR CASES ===
 
@@ -1715,7 +1715,7 @@ class ConfigValidatorAutoRegistrationTests(TestCase):
         # Assert - validation passes because nested config isn't validated without type hint
         self.assertTrue(result.valid)
         # "unknown" is not auto-registered (no type hint to infer from)
-        self.assertNotIn("unknown", store._known_references)
+        self.assertNotIn("unknown", store._known_targets)
 
     def test_validate__ExplicitTargetUnionType__ReturnsTargetNotFoundError(self):
         """Union[A, B] type hint can't auto-register (ambiguous)."""
@@ -1808,8 +1808,8 @@ class ConfigValidatorAutoRegistrationTests(TestCase):
 class ValidateOverridePathTests(TestCase):
     """Tests for validate_override_path method (lines 543-599)."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -2001,8 +2001,8 @@ class ValidateOverridePathTests(TestCase):
 class GetFieldTypeTests(TestCase):
     """Tests for _get_field_type method (lines 601-622)."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -2077,8 +2077,8 @@ class GetFieldTypeTests(TestCase):
 class IsClassTypeTests(TestCase):
     """Tests for _is_class_type edge cases (lines 207-208)."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -2098,8 +2098,8 @@ class IsClassTypeTests(TestCase):
 class FindRegisteredSubclassesTests(TestCase):
     """Tests for find_registered_subclasses error handling."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -2131,8 +2131,8 @@ class FindRegisteredSubclassesTests(TestCase):
 class CheckTargetTypeCompatibilityTests(TestCase):
     """Tests for _check_target_type_compatibility edge cases (lines 415-444)."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -2202,8 +2202,8 @@ class CheckTargetTypeCompatibilityTests(TestCase):
 class TypeReprTests(TestCase):
     """Tests for _type_repr edge cases (lines 531, 536, 541)."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
@@ -2261,8 +2261,8 @@ class CouldBeImplicitNestedTests(TestCase):
 class ConfigValidatorCoverageTests(TestCase):
     """Tests to improve ConfigValidator coverage for edge cases."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 

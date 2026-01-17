@@ -31,7 +31,7 @@ CONFIG_DIR = Path(__file__).parent / "config_files"
 
 class OverrideIntegrationTests(TestCase):
     def setUp(self):
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         rc.register("model", ModelConfig)
         rc.register("trainer", TrainerConfig)
 

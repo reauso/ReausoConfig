@@ -9,7 +9,7 @@ from unittest import TestCase
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 from rconfig.validation import ConfigValidator
 from rconfig.instantiation import ConfigInstantiator
 
@@ -17,12 +17,12 @@ from rconfig.instantiation import ConfigInstantiator
 class PydanticInstantiationTests(TestCase):
     """Tests for basic Pydantic BaseModel instantiation."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -179,12 +179,12 @@ class PydanticInstantiationTests(TestCase):
 class PydanticFrozenModelTests(TestCase):
     """Tests for frozen Pydantic model instantiation and immutability."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -270,12 +270,12 @@ class PydanticFrozenModelTests(TestCase):
 class PydanticImplicitTargetTests(TestCase):
     """Tests for implicit target inference with Pydantic models."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 
@@ -386,12 +386,12 @@ class PydanticImplicitTargetTests(TestCase):
 class PydanticListTests(TestCase):
     """Tests for Pydantic models with list fields."""
 
-    def _empty_store(self) -> ConfigStore:
-        store = ConfigStore()
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
         store.clear()
         return store
 
-    def _create_instantiator(self, store: ConfigStore) -> ConfigInstantiator:
+    def _create_instantiator(self, store: TargetRegistry) -> ConfigInstantiator:
         validator = ConfigValidator(store)
         return ConfigInstantiator(store, validator)
 

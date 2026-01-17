@@ -174,7 +174,7 @@ class ErrorIntegrationTestBase(TestCase):
 
     def setUp(self):
         """Clear store before each test."""
-        rc._store._known_references.clear()
+        rc._store._known_targets.clear()
         self._register_test_classes()
 
     def tearDown(self):

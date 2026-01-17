@@ -12,7 +12,7 @@ from typing import Any
 from unittest import TestCase
 
 from rconfig._internal.singleton import Singleton
-from rconfig.store import ConfigStore
+from rconfig.target import TargetRegistry
 from rconfig.loaders import register_loader, unregister_loader, get_loader, PositionMap
 from rconfig.loaders.base import ConfigFileLoader
 from rconfig.composition.IncrementalComposer import set_cache_size, clear_cache
@@ -56,11 +56,11 @@ class SingletonThreadSafetyTests(TestCase):
         self.assertEqual(len(errors), 0)
 
 
-class ConfigStoreThreadSafetyTests(TestCase):
-    """Thread safety tests for ConfigStore."""
+class TargetRegistryThreadSafetyTests(TestCase):
+    """Thread safety tests for TargetRegistry."""
 
     def setUp(self) -> None:
-        self.store = ConfigStore()
+        self.store = TargetRegistry()
         self.store.clear()
 
     def tearDown(self) -> None:
@@ -85,7 +85,7 @@ class ConfigStoreThreadSafetyTests(TestCase):
                 pass
 
         self.assertEqual(len(errors), 0)
-        self.assertEqual(len(self.store.known_references), num_classes)
+        self.assertEqual(len(self.store.known_targets), num_classes)
 
     def test_concurrent_register_unregister__no_errors(self) -> None:
         """Verify mixed register/unregister operations don't cause errors."""
@@ -138,7 +138,7 @@ class ConfigStoreThreadSafetyTests(TestCase):
         def reader() -> None:
             try:
                 for _ in range(10):
-                    refs = self.store.known_references
+                    refs = self.store.known_targets
                     reads.append(len(refs))
             except Exception as e:
                 errors.append(e)

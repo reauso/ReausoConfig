@@ -136,22 +136,22 @@ class ProvenanceBuilder:
 
     def resolve_targets(
         self,
-        known_references: dict[str, Any],
+        known_targets: dict[str, Any],
         auto_registered: set[str] | None = None,
     ) -> None:
         """Resolve target class information from registered targets.
 
         For each entry with a target_name, looks up the target in the
-        known_references and populates target_class and target_module.
+        known_targets and populates target_class and target_module.
 
-        :param known_references: Mapping of target names to ConfigReference objects.
-                                Each ConfigReference must have a `target_class` attribute.
+        :param known_targets: Mapping of target names to TargetEntry objects.
+                                Each TargetEntry must have a `target_class` attribute.
         :param auto_registered: Optional set of target names that were auto-registered.
                                These will be marked with target_auto_registered=True.
 
         Example::
 
-            builder.resolve_targets(store.known_references)
+            builder.resolve_targets(store.known_targets)
         """
         auto_registered = auto_registered or set()
 
@@ -159,8 +159,8 @@ class ProvenanceBuilder:
             if entry.target_name is None:
                 continue
 
-            # Look up the target in known_references
-            ref = known_references.get(entry.target_name)
+            # Look up the target in known_targets
+            ref = known_targets.get(entry.target_name)
             if ref is None:
                 # Target not registered - leave target_class as None
                 continue
