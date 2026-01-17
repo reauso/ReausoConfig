@@ -59,8 +59,7 @@ from .multirun import (
 )
 
 if TYPE_CHECKING:
-    from .composition import Provenance
-    from .composition.ProvenanceBuilder import ProvenanceBuilder
+    from .provenance import Provenance, ProvenanceBuilder
 from .diff import (
     ConfigDiff,
     DiffEntry,
@@ -80,11 +79,19 @@ from .composition import (
     ConfigComposer,
     set_cache_size,
     clear_cache,
+)
+from .provenance import (
     Provenance,
     ProvenanceEntry,
+    ProvenanceBuilder,
     InstanceRef,
     EntrySourceType,
     NodeSourceType,
+    ProvenanceFormat,
+    ProvenancePreset,
+    ProvenanceFormatContext,
+    ProvenanceLayout,
+    TreeLayout,
 )
 from .override import (
     Override,
@@ -1081,7 +1088,7 @@ def get_provenance(
         prov = rc.get_provenance(Path("config.yaml"), cli_overrides=False)
     """
     from rconfig.interpolation import resolve_interpolations
-    from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+    from rconfig.provenance import ProvenanceBuilder
     from rconfig.composition.IncrementalComposer import IncrementalComposer
     from rconfig.composition.InstanceResolver import InstanceResolver
 

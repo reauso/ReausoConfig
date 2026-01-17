@@ -3,7 +3,7 @@
 import warnings
 from unittest import TestCase
 
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import ProvenanceBuilder
 from rconfig.deprecation.detector import (
     auto_map_deprecated_values,
     check_deprecation,

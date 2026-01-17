@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .Provenance import Provenance, ProvenanceEntry, ProvenanceNode
+    from rconfig.provenance.provenance import Provenance
+    from rconfig.provenance.models import ProvenanceEntry, ProvenanceNode
 
 
 @dataclass

@@ -1,7 +1,16 @@
+"""Tests for provenance models and Provenance container."""
+
 from unittest import TestCase
 
-from rconfig.composition import InstanceRef, Provenance, ProvenanceEntry
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import (
+    EntrySourceType,
+    InstanceRef,
+    NodeSourceType,
+    Provenance,
+    ProvenanceBuilder,
+    ProvenanceEntry,
+    ProvenanceNode,
+)
 
 
 class ProvenanceEntryTests(TestCase):
@@ -396,8 +405,6 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__AllFieldsSet__IncludesAll(self):
         """Test that all fields are included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode, NodeSourceType
-
         node = ProvenanceNode(
             source_type=NodeSourceType.CLI,
             path="/model.lr",
@@ -427,8 +434,6 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__CliArg__IncludesCliArg(self):
         """Test that cli_arg is included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode, NodeSourceType
-
         node = ProvenanceNode(
             source_type=NodeSourceType.CLI,
             cli_arg="--lr=0.01",
@@ -443,8 +448,6 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__EnvVar__IncludesEnvVar(self):
         """Test that env_var is included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode, NodeSourceType
-
         node = ProvenanceNode(
             source_type=NodeSourceType.ENV,
             env_var="DATA_PATH",
@@ -459,8 +462,6 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__Expression__IncludesExpression(self):
         """Test that expression is included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode, NodeSourceType
-
         node = ProvenanceNode(
             source_type=NodeSourceType.INTERPOLATION,
             expression="${/defaults.lr * 2}",
@@ -475,8 +476,6 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__Operator__IncludesOperator(self):
         """Test that operator is included when set."""
         # Arrange
-        from rconfig.composition import ProvenanceNode, NodeSourceType
-
         node = ProvenanceNode(
             source_type=NodeSourceType.OPERATOR,
             operator="*",
@@ -491,8 +490,6 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__EmptyChildren__OmitsChildren(self):
         """Test that empty children list is omitted."""
         # Arrange
-        from rconfig.composition import ProvenanceNode, NodeSourceType
-
         node = ProvenanceNode(source_type=NodeSourceType.FILE)
 
         # Act
@@ -504,8 +501,6 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__ValueIsFalse__IncludesValue(self):
         """Test that False value is included (not omitted as falsy)."""
         # Arrange
-        from rconfig.composition import ProvenanceNode, NodeSourceType
-
         node = ProvenanceNode(source_type=NodeSourceType.FILE, value=False)
 
         # Act
@@ -520,8 +515,6 @@ class ProvenanceNodeToDictTests(TestCase):
     def test_toDict__ValueIsZero__IncludesValue(self):
         """Test that zero value is included (not omitted as falsy)."""
         # Arrange
-        from rconfig.composition import ProvenanceNode, NodeSourceType
-
         node = ProvenanceNode(source_type=NodeSourceType.FILE, value=0)
 
         # Act
@@ -608,8 +601,6 @@ class ProvenanceEntryToDictExtendedTests(TestCase):
     def test_toDict__WithEnvVar__IncludesEnvVar(self):
         """Test that env_var is included."""
         # Arrange
-        from rconfig.composition import EntrySourceType
-
         entry = ProvenanceEntry(
             file="<override>",
             line=0,
@@ -680,8 +671,6 @@ class ProvenanceEntryTraceTests(TestCase):
     def test_trace__FileSourceType__ReturnsFileNode(self):
         """Test that file source type creates file node."""
         # Arrange
-        from rconfig.composition import EntrySourceType
-
         entry = ProvenanceEntry(
             file="config.yaml",
             line=5,
@@ -701,8 +690,6 @@ class ProvenanceEntryTraceTests(TestCase):
     def test_trace__CliSourceType__ReturnsCliNode(self):
         """Test that CLI source type creates cli node."""
         # Arrange
-        from rconfig.composition import EntrySourceType
-
         entry = ProvenanceEntry(
             file="<override>",
             line=0,
@@ -721,8 +708,6 @@ class ProvenanceEntryTraceTests(TestCase):
     def test_trace__EnvSourceType__ReturnsEnvNode(self):
         """Test that env source type creates env node."""
         # Arrange
-        from rconfig.composition import EntrySourceType
-
         entry = ProvenanceEntry(
             file="<override>",
             line=0,
@@ -741,8 +726,6 @@ class ProvenanceEntryTraceTests(TestCase):
     def test_trace__ProgrammaticSourceType__ReturnsProgrammaticNode(self):
         """Test that programmatic source type creates programmatic node."""
         # Arrange
-        from rconfig.composition import EntrySourceType
-
         entry = ProvenanceEntry(
             file="<override>",
             line=0,

@@ -13,7 +13,7 @@ from .registry import get_deprecation_registry
 from rconfig.errors import DeprecatedKeyError
 
 if TYPE_CHECKING:
-    from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+    from rconfig.provenance import ProvenanceBuilder
 
 # Marker key for in-config deprecation
 _DEPRECATED_KEY = "_deprecated_"

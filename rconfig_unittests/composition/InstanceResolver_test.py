@@ -3,7 +3,7 @@
 from unittest import TestCase
 
 from rconfig.composition import InstanceMarker, InstanceResolver
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import ProvenanceBuilder
 from rconfig.errors import CircularInstanceError, InstanceResolutionError
 
 

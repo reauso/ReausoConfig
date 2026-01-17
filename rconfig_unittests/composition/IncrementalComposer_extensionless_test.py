@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from rconfig.composition import IncrementalComposer, clear_cache
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import ProvenanceBuilder
 from rconfig.errors import AmbiguousRefError, RefResolutionError
 
 

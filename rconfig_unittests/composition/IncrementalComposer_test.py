@@ -11,7 +11,7 @@ from rconfig.composition import (
     set_cache_size,
     IncrementalComposer,
 )
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import ProvenanceBuilder
 from rconfig.loaders.position_map import PositionMap
 
 

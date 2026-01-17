@@ -6,8 +6,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from rconfig.help import FlatHelpIntegration
-from rconfig.composition import Provenance
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import Provenance, ProvenanceBuilder
 
 
 def _build_prov(*entries):

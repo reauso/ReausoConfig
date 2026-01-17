@@ -5,8 +5,7 @@ from typing import Any, Optional, Union
 from unittest import TestCase
 
 from rconfig.help import GroupedHelpIntegration
-from rconfig.composition import Provenance
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import Provenance, ProvenanceBuilder
 
 
 def _build_prov(*entries):

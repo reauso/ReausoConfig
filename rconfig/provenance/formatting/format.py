@@ -9,11 +9,11 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Self
 
-from .ProvenanceLayout import ProvenanceFormatContext
+from .layout import ProvenanceFormatContext
 
 if TYPE_CHECKING:
-    from .Provenance import Provenance
-    from .ProvenanceLayout import ProvenanceLayout
+    from rconfig.provenance.provenance import Provenance
+    from .layout import ProvenanceLayout
 
 
 class ProvenancePreset(Enum):
@@ -71,7 +71,7 @@ class ProvenanceFormat:
 
         # Import here to avoid circular imports
         if layout is None:
-            from .TreeLayout import TreeLayout
+            from .tree import TreeLayout
 
             layout = TreeLayout()
 
