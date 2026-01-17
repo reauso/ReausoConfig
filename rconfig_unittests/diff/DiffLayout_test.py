@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from rconfig.diff import DiffFormatContext, DiffLayout
-from rconfig.diff.Diff import ConfigDiff, DiffEntry, DiffEntryType
+from rconfig.diff import ConfigDiff, DiffEntry, DiffEntryType, DiffFormatContext, DiffLayout
 
 
 class TestDiffFormatContext:
