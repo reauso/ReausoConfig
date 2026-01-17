@@ -21,25 +21,35 @@ Usage::
     print(diff.format().show_provenance().tree())
 """
 
-from .Diff import ConfigDiff, DiffEntry, DiffEntryType
-from .DiffBuilder import DiffBuilder
-from .DiffFlatLayout import DiffFlatLayout
-from .DiffFormat import DiffFormat, DiffPreset
-from .DiffLayout import DiffFormatContext, DiffLayout
-from .DiffMarkdownLayout import DiffMarkdownLayout
-from .DiffTreeLayout import DiffTreeLayout
+# Core models
+from .models import DiffEntry, DiffEntryType
+
+# Main classes
+from .diff import ConfigDiff
+from .builder import DiffBuilder
+
+# Formatting subsystem
+from .formatting import (
+    DiffFormat,
+    DiffPreset,
+    DiffFormatContext,
+    DiffLayout,
+    DiffFlatLayout,
+    DiffTreeLayout,
+    DiffMarkdownLayout,
+)
 
 __all__ = [
-    # Core data structures
-    "ConfigDiff",
-    "DiffEntry",
+    # Enums
     "DiffEntryType",
-    # Builder
+    # Data classes
+    "DiffEntry",
+    # Main classes
+    "ConfigDiff",
     "DiffBuilder",
-    # Format
+    # Formatting
     "DiffFormat",
     "DiffPreset",
-    # Layout
     "DiffFormatContext",
     "DiffLayout",
     "DiffFlatLayout",

@@ -10,13 +10,13 @@ from copy import deepcopy
 from enum import Enum
 from typing import TYPE_CHECKING, Self
 
-from .DiffFlatLayout import DiffFlatLayout
-from .DiffLayout import DiffFormatContext, DiffLayout
-from .DiffMarkdownLayout import DiffMarkdownLayout
-from .DiffTreeLayout import DiffTreeLayout
+from .flat import DiffFlatLayout
+from .layout import DiffFormatContext, DiffLayout
+from .markdown import DiffMarkdownLayout
+from .tree import DiffTreeLayout
 
 if TYPE_CHECKING:
-    from .Diff import ConfigDiff
+    from ..diff import ConfigDiff
 
 
 class DiffPreset(Enum):
