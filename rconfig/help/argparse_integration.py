@@ -13,7 +13,7 @@ from .integration import HelpIntegration
 from .multirun_help import MULTIRUN_HELP
 
 if TYPE_CHECKING:
-    from rconfig.composition.Provenance import Provenance
+    from rconfig.provenance import Provenance
 
 
 class ArgparseHelpIntegration(HelpIntegration):

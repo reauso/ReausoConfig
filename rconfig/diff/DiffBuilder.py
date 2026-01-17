@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from .Diff import ConfigDiff, DiffEntry, DiffEntryType
 
 if TYPE_CHECKING:
-    from rconfig.composition.Provenance import Provenance, ProvenanceEntry
+    from rconfig.provenance import Provenance, ProvenanceEntry
 
 
 class DiffBuilder:

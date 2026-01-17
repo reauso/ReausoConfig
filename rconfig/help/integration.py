@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from rconfig.composition.Provenance import Provenance
+    from rconfig.provenance import Provenance
 
 
 class HelpIntegration(ABC):

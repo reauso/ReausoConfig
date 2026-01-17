@@ -11,8 +11,7 @@ from typing import Any
 from .IncrementalComposer import InstanceMarker
 from rconfig.errors import CircularInstanceError, InstanceResolutionError
 from rconfig._internal.path_utils import build_child_path, get_value_at_path
-from .Provenance import InstanceRef
-from .ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import InstanceRef, ProvenanceBuilder
 
 
 # Special key for instance markers

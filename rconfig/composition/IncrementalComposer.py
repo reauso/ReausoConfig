@@ -34,7 +34,7 @@ from rconfig.loaders.position_map import PositionMap
 
 from .DependencyAnalyzer import DependencyAnalyzer
 from .Merger import deep_merge
-from .ProvenanceBuilder import ProvenanceBuilder
+from rconfig.provenance import ProvenanceBuilder
 
 
 # Special keys

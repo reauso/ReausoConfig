@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 from lark import Token, Transformer, v_args
 
 if TYPE_CHECKING:
-    from rconfig.composition import Provenance
+    from rconfig.provenance import Provenance
 
 
 @dataclass

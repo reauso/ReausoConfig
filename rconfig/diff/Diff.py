@@ -14,7 +14,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Iterator
 
 if TYPE_CHECKING:
-    from rconfig.composition.Provenance import ProvenanceEntry
+    from rconfig.provenance import ProvenanceEntry
 
     from .DiffFormat import DiffFormat
 

@@ -2,7 +2,7 @@
 
 from unittest import TestCase
 
-from rconfig.composition import (
+from rconfig.provenance import (
     ProvenanceFormatContext,
     ProvenanceLayout,
     ProvenanceNode,

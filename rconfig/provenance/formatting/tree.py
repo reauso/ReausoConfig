@@ -9,10 +9,11 @@ from __future__ import annotations
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Any
 
-from .ProvenanceLayout import ProvenanceFormatContext, ProvenanceLayout
+from .layout import ProvenanceFormatContext, ProvenanceLayout
 
 if TYPE_CHECKING:
-    from .Provenance import Provenance, ProvenanceEntry, ProvenanceNode
+    from rconfig.provenance.provenance import Provenance
+    from rconfig.provenance.models import ProvenanceEntry, ProvenanceNode
 
 
 class TreeLayout(ProvenanceLayout):

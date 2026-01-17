@@ -2,14 +2,14 @@
 
 from unittest import TestCase
 
-from rconfig.composition import (
-    ProvenanceFormatContext,
+from rconfig.provenance import (
     InstanceRef,
     Provenance,
+    ProvenanceBuilder,
     ProvenanceEntry,
+    ProvenanceFormatContext,
     TreeLayout,
 )
-from rconfig.composition.ProvenanceBuilder import ProvenanceBuilder
 from rconfig.interpolation.evaluator import InterpolationSource
 
 
@@ -958,7 +958,7 @@ class TreeLayoutTargetDisplayTests(TestCase):
         self.assertNotIn("Target:", result)
 
 
-class TreeLayoutFormatValueTests(TestCase):
+class TreeLayoutFormatValueEdgeCaseTests(TestCase):
     """Tests for TreeLayout.format_value() edge cases."""
 
     def setUp(self) -> None:
@@ -1048,3 +1048,130 @@ class TreeLayoutTargetWithoutModuleTests(TestCase):
         # Assert
         self.assertIn("Target: model -> MyModel", result)
         self.assertIn("(auto-registered)", result)
+
+
+class TreeLayoutDeprecationTests(TestCase):
+    """Tests for TreeLayout deprecation formatting."""
+
+    def setUp(self) -> None:
+        from rconfig.deprecation.info import DeprecationInfo
+
+        self.layout = TreeLayout()
+        builder = ProvenanceBuilder()
+        builder.add(
+            "old_key",
+            file="config.yaml",
+            line=5,
+            deprecation=DeprecationInfo(
+                pattern="old_key",
+                new_key="new_key",
+                message="Custom deprecation message",
+                remove_in="3.0.0",
+            ),
+        )
+        builder.set_config({"old_key": 42})
+        self.provenance = builder.build()
+
+    def test_formatEntry__WithDeprecation__ShowsDeprecatedMarker(self) -> None:
+        entry = self.provenance.get("old_key")
+        ctx = ProvenanceFormatContext()
+
+        result = self.layout.format_entry(entry, "old_key", ctx)
+
+        self.assertIn("DEPRECATED", result)
+
+    def test_formatEntry__WithNewKey__ShowsNewKeyInArrow(self) -> None:
+        entry = self.provenance.get("old_key")
+        ctx = ProvenanceFormatContext()
+
+        result = self.layout.format_entry(entry, "old_key", ctx)
+
+        self.assertIn("-> new_key", result)
+
+    def test_formatEntry__WithRemoveIn__ShowsVersion(self) -> None:
+        entry = self.provenance.get("old_key")
+        ctx = ProvenanceFormatContext()
+
+        result = self.layout.format_entry(entry, "old_key", ctx)
+
+        self.assertIn("remove in 3.0.0", result)
+
+    def test_formatEntry__WithMessage__ShowsMessage(self) -> None:
+        entry = self.provenance.get("old_key")
+        ctx = ProvenanceFormatContext()
+
+        result = self.layout.format_entry(entry, "old_key", ctx)
+
+        self.assertIn("Message: Custom deprecation message", result)
+
+    def test_formatEntry__HideDeprecations__OmitsDeprecationInfo(self) -> None:
+        entry = self.provenance.get("old_key")
+        ctx = ProvenanceFormatContext(show_deprecations=False)
+
+        result = self.layout.format_entry(entry, "old_key", ctx)
+
+        self.assertNotIn("DEPRECATED", result)
+        self.assertNotIn("new_key", result)
+
+    def test_formatEntry__MinimalDeprecation__ShowsOnlyDeprecated(self) -> None:
+        from rconfig.deprecation.info import DeprecationInfo
+
+        # Entry with only pattern, no new_key/message/remove_in
+        entry = ProvenanceEntry(
+            file="config.yaml",
+            line=10,
+            value="val",
+            deprecation=DeprecationInfo(pattern="simple"),
+        )
+        ctx = ProvenanceFormatContext()
+
+        result = self.layout.format_entry(entry, "simple", ctx)
+
+        self.assertIn("DEPRECATED", result)
+        self.assertNotIn("->", result)  # No new_key
+        self.assertNotIn("remove in", result)  # No remove_in
+        self.assertNotIn("Message:", result)  # No message
+
+    def test_formatProvenance__DeprecationsOnly__FiltersCorrectly(self) -> None:
+        from rconfig.deprecation.info import DeprecationInfo
+
+        # Build a provenance with both deprecated and normal entries
+        builder = ProvenanceBuilder()
+        builder.add(
+            "old_key",
+            file="config.yaml",
+            line=5,
+            deprecation=DeprecationInfo(
+                pattern="old_key",
+                new_key="new_key",
+                message="Custom deprecation message",
+                remove_in="3.0.0",
+            ),
+        )
+        builder.add("normal", file="config.yaml", line=20)
+        builder.set_config({"old_key": 42, "normal": "normal_value"})
+        prov = builder.build()
+        ctx = ProvenanceFormatContext(deprecations_only=True)
+
+        result = self.layout.format_provenance(prov, ctx)
+
+        self.assertIn("old_key", result)
+        self.assertNotIn("normal", result)
+
+    def test_formatProvenance__DeprecationsOnly__AddsHeader(self) -> None:
+        ctx = ProvenanceFormatContext(deprecations_only=True)
+
+        result = self.layout.format_provenance(self.provenance, ctx)
+
+        self.assertIn("Deprecated Keys:", result)
+
+    def test_formatProvenance__DeprecationsOnlyEmpty__ShowsMessage(self) -> None:
+        builder = ProvenanceBuilder()
+        builder.add("normal", file="config.yaml", line=1)
+        builder.set_config({"normal": 42})
+        empty_prov = builder.build()
+        ctx = ProvenanceFormatContext(deprecations_only=True)
+
+        result = self.layout.format_provenance(empty_prov, ctx)
+
+        self.assertEqual("No deprecated keys found.", result)
