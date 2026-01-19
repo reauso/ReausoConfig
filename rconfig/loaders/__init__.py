@@ -10,6 +10,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from rconfig._internal.path_utils import StrOrPath, ensure_path
 from rconfig.errors import ConfigFileError
 from rconfig.loaders.base import ConfigFileLoader
 from rconfig.loaders.position_map import Position, PositionMap
@@ -66,16 +67,17 @@ def unregister_loader(extension: str) -> None:
         del _extension_to_loader[ext_lower]
 
 
-def get_loader(path: Path) -> ConfigFileLoader:
+def get_loader(path: StrOrPath) -> ConfigFileLoader:
     """Get the appropriate loader for a config file.
 
     Thread-safe: takes a snapshot of registry before lookup.
     Extensions are matched case-insensitively.
 
-    :param path: Path to the config file.
+    :param path: Path to the config file. Accepts str, Path, or any os.PathLike.
     :return: A ConfigFileLoader that can handle the file.
     :raises ConfigFileError: If no loader supports the file format.
     """
+    path = ensure_path(path)
     ext = path.suffix.lower()
 
     with _loaders_lock:
@@ -144,12 +146,12 @@ def supported_loader_extensions() -> frozenset[str]:
         return frozenset(_extension_to_loader.keys())
 
 
-def load_config(path: Path) -> dict[str, Any]:
+def load_config(path: StrOrPath) -> dict[str, Any]:
     """Load a config file with automatic format detection.
 
     Finds the appropriate loader based on file extension and loads the file.
 
-    :param path: Path to the config file.
+    :param path: Path to the config file. Accepts str, Path, or any os.PathLike.
     :return: Parsed config as a dictionary.
     :raises ConfigFileError: If format is unsupported or file cannot be loaded.
 
@@ -158,6 +160,7 @@ def load_config(path: Path) -> dict[str, Any]:
         config = load_config(Path("config.yaml"))
         print(config["_target_"])
     """
+    path = ensure_path(path)
     loader = get_loader(path)
     return loader.load(path)
 

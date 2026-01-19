@@ -6,6 +6,7 @@ Exports resolved config to a single file with format auto-detection.
 from pathlib import Path
 from typing import Any
 
+from rconfig._internal.path_utils import StrOrPath, ensure_path
 from rconfig.export.file_base import FileExporter
 from rconfig.export.registry import get_exporter
 
@@ -42,19 +43,23 @@ class SingleFileExporter(FileExporter):
     def export_to_file(
         self,
         config: dict[str, Any],
-        output_path: Path,
+        output_path: StrOrPath,
         *,
-        source_path: Path | None = None,
+        source_path: StrOrPath | None = None,
         ref_graph: dict[str, list[str]] | None = None,
     ) -> None:
         """Export config to a single file with format auto-detection.
 
         :param config: Fully resolved config dictionary.
         :param output_path: Output file path (extension determines format).
+                           Accepts str, Path, or any os.PathLike.
         :param source_path: Original config file path (unused for single file export).
+                           Accepts str, Path, or any os.PathLike.
         :param ref_graph: Graph of _ref_ relationships (unused for single file export).
         :raises ConfigFileError: If the output file extension is not supported.
         """
+        output_path = ensure_path(output_path)
+
         # Get the appropriate exporter for this file extension
         base_exporter = get_exporter(output_path)
 
