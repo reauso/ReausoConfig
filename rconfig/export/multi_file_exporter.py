@@ -7,6 +7,7 @@ import copy
 from pathlib import Path
 from typing import Any
 
+from rconfig._internal.path_utils import StrOrPath, ensure_path
 from rconfig.export.file_base import FileExporter
 from rconfig.export.registry import get_exporter
 
@@ -57,28 +58,33 @@ class MultiFileExporter(FileExporter):
     def export_to_file(
         self,
         config: dict[str, Any],
-        output_path: Path,
+        output_path: StrOrPath,
         *,
-        source_path: Path | None = None,
+        source_path: StrOrPath | None = None,
         ref_graph: dict[str, list[str]] | None = None,
     ) -> None:
         """Export config preserving file structure with format auto-detection.
 
         :param config: Fully resolved config dictionary.
         :param output_path: Output root file path (extension determines root file format).
+                           Accepts str, Path, or any os.PathLike.
         :param source_path: Original config file path (optional, enables multi-file export).
+                           Accepts str, Path, or any os.PathLike.
         :param ref_graph: Mapping of source file -> list of referenced file paths.
         :raises ConfigFileError: If an output file extension is not supported.
 
         Note: If source_path is None, only the root file is written.
         """
+        output_path = ensure_path(output_path)
+        source_path_resolved = ensure_path(source_path) if source_path is not None else None
+
         # Create parent directory for the output root file
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if source_path is None or ref_graph is None or not ref_graph:
+        if source_path_resolved is None or ref_graph is None or not ref_graph:
             self._export_single_file(config, output_path)
         else:
-            self._export_multi_file(config, output_path, source_path, ref_graph)
+            self._export_multi_file(config, output_path, source_path_resolved, ref_graph)
 
     def _export_single_file(
         self,

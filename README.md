@@ -72,18 +72,18 @@ The `_target_` key maps to a registered class name.
 
 ```python
 import rconfig as rc
-from pathlib import Path
 
 # Register your class
 rc.register(name="model", target=ModelConfig)
 
 # Instantiate the object (validates automatically)
-model = rc.instantiate(path=Path("config.yaml"), expected_type=ModelConfig)
+# String paths work directly - no need for Path()
+model = rc.instantiate(path="config.yaml", expected_type=ModelConfig)
 print(model.hidden_size)  # 256
 print(model.dropout)      # 0.2
 
 # Optional: validate without instantiating (dry-run)
-result = rc.validate(path=Path("config.yaml"))
+result = rc.validate(path="config.yaml")
 if not result.valid:
     for error in result.errors:
         print(error)
@@ -104,10 +104,14 @@ ReausoConfig has built-in support for three configuration formats:
 The loader is selected automatically based on file extension:
 
 ```python
-# All work the same way
+# All work the same way - string paths work directly
+model = rc.instantiate(path="config.yaml")
+model = rc.instantiate(path="config.json")
+model = rc.instantiate(path="config.toml")
+
+# Path objects also work
+from pathlib import Path
 model = rc.instantiate(path=Path("config.yaml"))
-model = rc.instantiate(path=Path("config.json"))
-model = rc.instantiate(path=Path("config.toml"))
 ```
 
 **Cross-format composition:** You can mix formats with `_ref_`:
@@ -2226,6 +2230,10 @@ single_result = results[3]
 
 ## API Reference
 
+### Type Aliases
+
+- **`StrOrPath`**: `str | os.PathLike[str]` - All path parameters accept strings directly, Path objects, or any os.PathLike implementation. Import with `from rconfig import StrOrPath` for type annotations in your own code.
+
 ### Common API
 
 Core functions for everyday use. These are the primary interfaces most users will interact with.
@@ -2333,7 +2341,7 @@ Load, compose, validate, and instantiate a configuration file into Python object
 
 | Parameter         | Type                      | Default   | Description                                                                                                                                     |
 | ----------------- | ------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `path`          | `Path`                  | required  | Path to the configuration file. Supports `.yaml`, `.yml`, `.json`, `.toml`.                                                             |
+| `path`          | `StrOrPath`             | required  | Path to the configuration file. Accepts str, Path, or any os.PathLike. Supports `.yaml`, `.yml`, `.json`, `.toml`.                      |
 | `expected_type` | `type[T] \| None`        | `None`  | Optional type for type-safe returns. Enables IDE autocompletion and type checking.                                                              |
 | `inner_path`    | `str \| None`            | `None`  | Dot-notation path to instantiate only a section (e.g.,`"model.encoder"` or `"trainer.callbacks[0]"`). Interpolations are resolved from the full config before extraction. When specified, the root-level `_target_` is optional and types can be inferred from parent's type hints (including list element types from `list[X]`). |
 | `overrides`     | `dict[str, Any] \| None` | `None`  | Config overrides using dot notation keys. Applied before CLI overrides.                                                                         |
@@ -2362,24 +2370,28 @@ Load, compose, validate, and instantiate a configuration file into Python object
 **Examples:**
 
 ```python
-# Basic usage
-model = rc.instantiate(path=Path("config.yaml"))
+# Basic usage - string paths work directly
+model = rc.instantiate(path="config.yaml")
 
 # Type-safe with IDE autocompletion
-model = rc.instantiate(path=Path("config.yaml"), expected_type=ModelConfig)
+model = rc.instantiate(path="config.yaml", expected_type=ModelConfig)
 
 # Partial instantiation
-encoder = rc.instantiate(path=Path("trainer.yaml"), inner_path="model.encoder")
+encoder = rc.instantiate(path="trainer.yaml", inner_path="model.encoder")
 
 # With overrides, no CLI parsing (for tests)
 model = rc.instantiate(
-    path=Path("config.yaml"),
+    path="config.yaml",
     overrides={"learning_rate": 0.001},
     cli_overrides=False,
 )
 
 # Lazy instantiation
-app = rc.instantiate(path=Path("app.yaml"), lazy=True)
+app = rc.instantiate(path="app.yaml", lazy=True)
+
+# Path objects also work
+from pathlib import Path
+model = rc.instantiate(path=Path("config.yaml"))
 ```
 
 #### `rc.instantiate_multirun(path, expected_type=None, *, sweep=None, experiments=None, overrides=None, inner_path=None, cli_overrides=True, lazy=False)`
@@ -2390,7 +2402,7 @@ Generate and instantiate multiple config combinations from sweep parameters and 
 
 | Parameter         | Type                              | Default   | Description                                                                                                                                     |
 | ----------------- | --------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `path`          | `Path`                          | required  | Path to the base configuration file.                                                                                                            |
+| `path`          | `StrOrPath`                     | required  | Path to the base configuration file. Accepts str, Path, or any os.PathLike.                                                                     |
 | `expected_type` | `type[T] \| None`                | `None`  | Optional type for type-safe returns.                                                                                                            |
 | `sweep`         | `dict[str, list[Any]] \| None`  | `None`  | Dict of parameter paths to lists of values. All combinations (cartesian product) are generated.                                                |
 | `experiments`   | `list[dict[str, Any]] \| None`  | `None`  | List of explicit experiment override dicts.                                                                                                     |
@@ -2412,9 +2424,9 @@ Generate and instantiate multiple config combinations from sweep parameters and 
 **Examples:**
 
 ```python
-# Sweep with partial instantiation
+# Sweep with partial instantiation - string paths work directly
 for result in rc.instantiate_multirun(
-    path=Path("trainer.yaml"),
+    path="trainer.yaml",
     inner_path="model",
     sweep={"lr": [0.01, 0.001]},
 ):
@@ -2422,7 +2434,7 @@ for result in rc.instantiate_multirun(
 
 # Combined sweep and experiments
 for result in rc.instantiate_multirun(
-    path=Path("config.yaml"),
+    path="config.yaml",
     experiments=[{"model": "resnet"}, {"model": "vit"}],
     sweep={"lr": [0.01, 0.001]},
 ):
@@ -2461,7 +2473,7 @@ Compose a config file and track the origin of each value.
 
 | Parameter       | Type                      | Default  | Description                                                                         |
 | --------------- | ------------------------- | -------- | ----------------------------------------------------------------------------------- |
-| `path`          | `Path`                  | required | Path to the entry-point config file.                                                |
+| `path`          | `StrOrPath`             | required | Path to the entry-point config file. Accepts str, Path, or any os.PathLike.         |
 | `inner_path`    | `str \| None`            | `None` | If specified, returns provenance only for this section. Uses lazy loading.          |
 | `overrides`     | `dict[str, Any] \| None` | `None` | Dictionary of config overrides using dot notation keys.                             |
 | `cli_overrides` | `bool`                  | `True` | Whether to parse CLI overrides from `sys.argv`. Set to `False` for tests or library usage. |
@@ -2478,7 +2490,8 @@ Use `rc.format(prov)` for customized output formatting.
 **Examples:**
 
 ```python
-prov = rc.get_provenance(path=Path("trainer.yaml"))
+# String paths work directly
+prov = rc.get_provenance(path="trainer.yaml")
 print(prov)  # Default formatting
 
 entry = prov.get("model.layers")
@@ -2489,7 +2502,7 @@ print(rc.format(prov).minimal())
 print(rc.format(prov).for_path("/model.*"))
 
 # Partial provenance - only loads files needed for model section
-prov = rc.get_provenance(path=Path("trainer.yaml"), inner_path="model")
+prov = rc.get_provenance(path="trainer.yaml", inner_path="model")
 
 # With overrides
 prov = rc.get_provenance(

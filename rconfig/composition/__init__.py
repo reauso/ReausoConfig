@@ -7,7 +7,7 @@ The composition uses an incremental algorithm that only loads files
 needed for the requested inner_path (lazy composition optimization).
 """
 
-from .Composer import ConfigComposer, compose, compose_with_provenance
+from .composer import ConfigComposer, compose, compose_with_provenance
 from .IncrementalComposer import (
     IncrementalComposer,
     BlockingRef,

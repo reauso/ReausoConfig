@@ -11,6 +11,7 @@ needed for the requested inner_path (lazy composition optimization).
 from pathlib import Path
 from typing import Any
 
+from rconfig._internal.path_utils import StrOrPath, ensure_path
 from .IncrementalComposer import IncrementalComposer, clear_cache, set_cache_size
 from .InstanceResolver import InstanceResolver
 from rconfig.provenance import Provenance, ProvenanceBuilder
@@ -50,13 +51,14 @@ class ConfigComposer:
         config = composer.compose(Path("/project/configs/app.yaml"), inner_path="model")
     """
 
-    def __init__(self, config_root: Path | None = None) -> None:
+    def __init__(self, config_root: StrOrPath | None = None) -> None:
         """Initialize the composer.
 
         :param config_root: Root directory for absolute path resolution.
                            If None, derived from the composed file's parent.
+                           Accepts str, Path, or any os.PathLike.
         """
-        self._config_root = config_root
+        self._config_root = ensure_path(config_root) if config_root is not None else None
         self._provenance: Provenance | None = None
         self._provenance_builder: ProvenanceBuilder | None = None
         self._instance_resolver: InstanceResolver | None = None
@@ -66,7 +68,7 @@ class ConfigComposer:
 
     def compose(
         self,
-        path: Path,
+        path: StrOrPath,
         inner_path: str | None = None,
     ) -> dict[str, Any]:
         """Compose a config file by resolving all _ref_ references.
@@ -75,7 +77,7 @@ class ConfigComposer:
         to reach and resolve the specified inner_path. When inner_path is
         None or empty, all files are loaded (full composition).
 
-        :param path: Path to the entry-point config file.
+        :param path: Path to the entry-point config file. Accepts str, Path, or any os.PathLike.
         :param inner_path: Optional path to target subtree. If provided,
                           only files needed for this path are loaded.
         :return: Fully composed config dictionary.
@@ -87,6 +89,8 @@ class ConfigComposer:
         :raises CircularInstanceError: If circular _instance_ references detected.
         :raises InvalidInnerPathError: If inner_path doesn't exist.
         """
+        path = ensure_path(path)
+
         # Create builder for accumulating provenance during composition
         self._provenance_builder = ProvenanceBuilder()
 
@@ -201,12 +205,12 @@ class ConfigComposer:
 
     def compose_with_provenance(
         self,
-        path: Path,
+        path: StrOrPath,
         inner_path: str | None = None,
     ) -> Provenance:
         """Compose a config file and track the origin of each value.
 
-        :param path: Path to the entry-point config file.
+        :param path: Path to the entry-point config file. Accepts str, Path, or any os.PathLike.
         :param inner_path: Optional path to target subtree.
         :return: Provenance object with origin information.
         :raises ConfigFileError: If a file cannot be loaded.
@@ -228,13 +232,13 @@ class ConfigComposer:
         return self._provenance
 
 
-def compose(path: Path, inner_path: str | None = None) -> dict[str, Any]:
+def compose(path: StrOrPath, inner_path: str | None = None) -> dict[str, Any]:
     """Compose a config file by resolving all _ref_ references.
 
     This is a convenience function that creates a ConfigComposer and
     composes the given file.
 
-    :param path: Path to the entry-point config file.
+    :param path: Path to the entry-point config file. Accepts str, Path, or any os.PathLike.
     :param inner_path: Optional path to target subtree for lazy loading.
     :return: Fully composed config dictionary.
     """
@@ -243,14 +247,14 @@ def compose(path: Path, inner_path: str | None = None) -> dict[str, Any]:
 
 
 def compose_with_provenance(
-    path: Path, inner_path: str | None = None
+    path: StrOrPath, inner_path: str | None = None
 ) -> Provenance:
     """Compose a config file and track the origin of each value.
 
     This is a convenience function that creates a ConfigComposer and
     composes the given file with provenance tracking.
 
-    :param path: Path to the entry-point config file.
+    :param path: Path to the entry-point config file. Accepts str, Path, or any os.PathLike.
     :param inner_path: Optional path to target subtree.
     :return: Provenance object with origin information.
     """

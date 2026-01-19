@@ -9,6 +9,7 @@ Thread-safe: All exporter registry operations are protected by an internal lock.
 import threading
 from pathlib import Path
 
+from rconfig._internal.path_utils import StrOrPath, ensure_path
 from rconfig.errors import ConfigFileError
 from rconfig.export.base import Exporter
 from rconfig.export.yaml_exporter import YamlExporter
@@ -59,16 +60,17 @@ def unregister_exporter(extension: str) -> None:
         del _extension_to_exporter[ext_lower]
 
 
-def get_exporter(path: Path) -> Exporter:
+def get_exporter(path: StrOrPath) -> Exporter:
     """Get the appropriate exporter for a config file.
 
     Thread-safe: takes a snapshot of registry before lookup.
     Extensions are matched case-insensitively.
 
-    :param path: Path to the config file.
+    :param path: Path to the config file. Accepts str, Path, or any os.PathLike.
     :return: An Exporter that can handle the file format.
     :raises ConfigFileError: If no exporter supports the file format.
     """
+    path = ensure_path(path)
     ext = path.suffix.lower()
 
     with _exporters_lock:
