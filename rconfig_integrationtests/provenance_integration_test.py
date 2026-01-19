@@ -86,7 +86,7 @@ class ProvenanceIntegrationTests(TestCase):
         provenance = composer.compose_with_provenance(config_path)
 
         # Act
-        output = str(provenance.format().minimal())
+        output = str(rc.format(provenance).minimal())
 
         # Assert - should have paths and files, no values
         self.assertIn("trainer_config.yaml", output)
@@ -100,7 +100,7 @@ class ProvenanceIntegrationTests(TestCase):
         provenance = composer.compose_with_provenance(config_path)
 
         # Act
-        output = str(provenance.format().compact())
+        output = str(rc.format(provenance).compact())
 
         # Assert - should have values and files
         self.assertIn("trainer_config.yaml", output)
@@ -118,7 +118,7 @@ class ProvenanceIntegrationTests(TestCase):
         provenance = composer.compose_with_provenance(config_path)
 
         # Act
-        output = str(provenance.format().full())
+        output = str(rc.format(provenance).full())
 
         # Assert - should have paths, values, and files
         self.assertIn("trainer_config.yaml", output)
@@ -132,7 +132,7 @@ class ProvenanceIntegrationTests(TestCase):
         provenance = composer.compose_with_provenance(config_path)
 
         # Act
-        output = str(provenance.format().for_path("/model.*"))
+        output = str(rc.format(provenance).for_path("/model.*"))
 
         # Assert - should only have model paths
         self.assertIn("/model", output)
@@ -207,8 +207,8 @@ class ProvenanceIntegrationTests(TestCase):
         provenance = composer.compose_with_provenance(config_path)
 
         # Act
-        method_output = str(provenance.format().minimal())
-        enum_output = str(provenance.format().preset(ProvenancePreset.MINIMAL))
+        method_output = str(rc.format(provenance).minimal())
+        enum_output = str(rc.format(provenance).preset(ProvenancePreset.MINIMAL))
 
         # Assert
         self.assertEqual(method_output, enum_output)
@@ -221,8 +221,8 @@ class ProvenanceIntegrationTests(TestCase):
         provenance = composer.compose_with_provenance(config_path)
 
         # Act
-        method_output = str(provenance.format().full())
-        enum_output = str(provenance.format().preset(ProvenancePreset.FULL))
+        method_output = str(rc.format(provenance).full())
+        enum_output = str(rc.format(provenance).preset(ProvenancePreset.FULL))
 
         # Assert
         self.assertEqual(method_output, enum_output)
@@ -318,7 +318,7 @@ class ProvenanceWithOverridesIntegrationTests(TestCase):
         provenance = builder.build()
 
         # Act
-        output = str(provenance.format().full())
+        output = str(rc.format(provenance).full())
 
         # Assert
         self.assertIn("CLI", output)
@@ -425,7 +425,7 @@ class ProvenanceTargetIntegrationTests(TestCase):
 
         # Act
         prov = rc.get_provenance(config_path)
-        output = str(prov.format().compact())
+        output = str(rc.format(prov).compact())
 
         # Assert - the target name is captured but not resolved
         root_entry = prov.get("")
@@ -441,7 +441,7 @@ class ProvenanceTargetIntegrationTests(TestCase):
 
         # Act
         prov = rc.get_provenance(config_path)
-        output = str(prov.format().minimal())
+        output = str(rc.format(prov).minimal())
 
         # Assert
         self.assertNotIn("Target:", output)
@@ -453,7 +453,7 @@ class ProvenanceTargetIntegrationTests(TestCase):
 
         # Act
         prov = rc.get_provenance(config_path)
-        output = str(prov.format().full())
+        output = str(rc.format(prov).full())
 
         # Assert
         self.assertIn("Target:", output)

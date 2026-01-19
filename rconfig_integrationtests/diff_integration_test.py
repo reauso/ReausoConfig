@@ -294,7 +294,7 @@ class TestDiffWithInnerPath:
         diff = rc.diff(config_v1, config_v2)
 
         # Use path filter to show only model section in output
-        output = diff.format().for_path("model.*").terminal()
+        output = rc.format(diff).for_path("model.*").terminal()
 
         assert "model.lr" in output
         assert "model.layers" in output
@@ -380,7 +380,7 @@ class TestDiffOutputFormats:
         config_v2.write_text("model:\n  lr: 0.01\n  dropout: 0.1\n")
 
         diff = rc.diff(config_v1, config_v2)
-        output = diff.format().terminal()
+        output = rc.format(diff).terminal()
 
         assert "+ model.dropout" in output
         assert "~ model.lr" in output
@@ -396,7 +396,7 @@ class TestDiffOutputFormats:
         config_v2.write_text("model:\n  lr: 0.01\n  dropout: 0.1\n")
 
         diff = rc.diff(config_v1, config_v2)
-        output = diff.format().tree()
+        output = rc.format(diff).tree()
 
         assert "ConfigDiff:" in output
         assert "Added:" in output
@@ -412,7 +412,7 @@ class TestDiffOutputFormats:
         config_v2.write_text("model:\n  lr: 0.01\n")
 
         diff = rc.diff(config_v1, config_v2)
-        output = diff.format().markdown()
+        output = rc.format(diff).markdown()
 
         assert "| Type |" in output
         assert "| Path |" in output
@@ -428,7 +428,7 @@ class TestDiffOutputFormats:
         config_v2.write_text("model:\n  lr: 0.01\n")
 
         diff = rc.diff(config_v1, config_v2)
-        output = diff.format().json()
+        output = rc.format(diff).json()
 
         assert isinstance(output, dict)
         assert "model.lr" in output
@@ -445,11 +445,11 @@ class TestDiffOutputFormats:
         diff = rc.diff(config_v1, config_v2)
 
         # With provenance
-        output_with_prov = diff.format().show_provenance().terminal()
+        output_with_prov = rc.format(diff).show_provenance().terminal()
         assert "v1.yaml" in output_with_prov or "v2.yaml" in output_with_prov
 
         # Hide counts
-        output_no_counts = diff.format().hide_counts().terminal()
+        output_no_counts = rc.format(diff).hide_counts().terminal()
         assert "Changed: 1" not in output_no_counts
 
     def test_str_uses_default_format(self, tmp_path: Path) -> None:
@@ -479,7 +479,7 @@ class TestDiffPresets:
         config_v2.write_text("model:\n  lr: 0.01\n  layers: 4\n")
 
         diff = rc.diff(config_v1, config_v2)
-        output = diff.format().changes_only().terminal()
+        output = rc.format(diff).changes_only().terminal()
 
         assert "model.lr" in output
         assert "model.layers" not in output  # Unchanged, should be hidden
@@ -493,7 +493,7 @@ class TestDiffPresets:
         config_v2.write_text("model:\n  lr: 0.01\n  layers: 4\n")
 
         diff = rc.diff(config_v1, config_v2)
-        output = diff.format().with_context().terminal()
+        output = rc.format(diff).with_context().terminal()
 
         assert "model.lr" in output
         assert "model.layers" in output  # Unchanged, should be visible
@@ -507,7 +507,7 @@ class TestDiffPresets:
         config_v2.write_text("model:\n  lr: 0.01\n")
 
         diff = rc.diff(config_v1, config_v2)
-        output = diff.format().full().terminal()
+        output = rc.format(diff).full().terminal()
 
         assert "model.lr" in output
         # Should include provenance (file info)
@@ -522,7 +522,7 @@ class TestDiffPresets:
         config_v2.write_text("model:\n  lr: 0.01\n  dropout: 0.1\n")
 
         diff = rc.diff(config_v1, config_v2)
-        output = diff.format().summary().terminal()
+        output = rc.format(diff).summary().terminal()
 
         # Should only show counts, not individual entries
         assert "Added: 1" in output or "Changed: 1" in output

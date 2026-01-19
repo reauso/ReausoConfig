@@ -6,15 +6,11 @@ similar to git diff output style.
 
 from __future__ import annotations
 
-from fnmatch import fnmatch
-from typing import TYPE_CHECKING
+from rconfig._internal.format_utils import indent
 
 from ..models import DiffEntryType
-from .layout import DiffFormatContext, DiffLayout
-
-if TYPE_CHECKING:
-    from ..diff import ConfigDiff
-    from ..models import DiffEntry
+from .model import DiffDisplayModel, DiffEntryDisplayModel
+from .layout import DiffLayout
 
 
 class DiffFlatLayout(DiffLayout):
@@ -35,149 +31,109 @@ class DiffFlatLayout(DiffLayout):
         ~ data.batch_size: 32 -> 64
 
         Added: 2, Removed: 1, Changed: 2
+
+    :param indent_size: Number of spaces per indentation level.
     """
 
-    def format_diff(self, diff: ConfigDiff, ctx: DiffFormatContext) -> str:
-        """Format the entire diff object.
+    def __init__(self, indent_size: int = 2) -> None:
+        """Initialize the flat layout.
 
-        :param diff: The ConfigDiff object to format.
-        :param ctx: Format context with show/hide settings.
+        :param indent_size: Number of spaces per indentation level.
+        """
+        self._indent_size = indent_size
+
+    def render(self, model: DiffDisplayModel) -> str:
+        """Render the diff model to string output.
+
+        :param model: The display model.
         :return: Formatted string representation.
         """
-        if diff.is_empty() and not ctx.show_unchanged:
-            return "No differences found."
+        if model.empty_message:
+            return model.empty_message
 
-        entries: list[str] = []
+        entries = [self._render_entry(e) for e in model.entries]
+        result = "\n".join(entries)
 
-        # Sort paths for consistent output
-        for path in sorted(diff.keys()):
-            entry = diff[path]
-
-            # Apply filters
-            if not self._matches_filters(path, entry, ctx):
-                continue
-
-            # Check visibility flags
-            if entry.diff_type == DiffEntryType.ADDED and not ctx.show_added:
-                continue
-            if entry.diff_type == DiffEntryType.REMOVED and not ctx.show_removed:
-                continue
-            if entry.diff_type == DiffEntryType.CHANGED and not ctx.show_changed:
-                continue
-            if entry.diff_type == DiffEntryType.UNCHANGED and not ctx.show_unchanged:
-                continue
-
-            formatted = self.format_entry(entry, ctx)
-            if formatted:
-                entries.append(formatted)
-
-        result = self.join_entries(entries, ctx)
-
-        # Add summary if enabled
-        if ctx.show_counts:
-            summary = self.format_summary(diff, ctx)
-            if summary:
-                if result:
-                    result = result + "\n\n" + summary
-                else:
-                    result = summary
+        if model.summary:
+            result = f"{result}\n\n{model.summary}"
 
         return result
 
-    def format_entry(self, entry: DiffEntry, ctx: DiffFormatContext) -> str:
-        """Format a single diff entry.
+    def _render_entry(self, entry: DiffEntryDisplayModel) -> str:
+        """Render a single diff entry.
 
-        :param entry: The diff entry to format.
-        :param ctx: Format context with show/hide settings.
-        :return: Formatted string for this entry.
+        :param entry: The entry display model.
+        :return: Formatted entry string.
         """
-        if entry.diff_type == DiffEntryType.ADDED:
-            line = self.format_added(entry, ctx)
-        elif entry.diff_type == DiffEntryType.REMOVED:
-            line = self.format_removed(entry, ctx)
-        elif entry.diff_type == DiffEntryType.CHANGED:
-            line = self.format_changed(entry, ctx)
-        else:
-            line = self.format_unchanged(entry, ctx)
+        parts: list[str] = []
 
-        # Add provenance info if enabled
-        if ctx.show_provenance:
-            provenance_info = self._format_provenance(entry, ctx)
-            if provenance_info:
-                line = line + "\n" + self.indent(provenance_info, 1, ctx)
+        # Entry line (path, type, values)
+        entry_line = self._format_entry_line(entry)
+        if entry_line:
+            parts.append(entry_line)
 
-        return line
+        # Provenance
+        if entry.left_provenance or entry.right_provenance:
+            prov = self._format_provenance(entry)
+            if prov:
+                parts.append(prov)
 
-    def _format_provenance(self, entry: DiffEntry, ctx: DiffFormatContext) -> str:
+        return "\n".join(parts)
+
+    def _format_entry_line(self, entry: DiffEntryDisplayModel) -> str:
+        """Format the main line for an entry.
+
+        :param entry: The entry display model.
+        :return: Formatted entry line string.
+        """
+        indicator = entry.diff_type.indicator
+
+        match entry.diff_type:
+            case DiffEntryType.ADDED:
+                # + path: new_value
+                parts = [f"{indicator} {entry.path}"]
+                if entry.right_value is not None:
+                    parts.append(f": {entry.right_value}")
+                return "".join(parts)
+
+            case DiffEntryType.REMOVED:
+                # - path: old_value
+                parts = [f"{indicator} {entry.path}"]
+                if entry.left_value is not None:
+                    parts.append(f": {entry.left_value}")
+                return "".join(parts)
+
+            case DiffEntryType.CHANGED:
+                # ~ path: old_value -> new_value
+                parts = [f"{indicator} {entry.path}"]
+                if entry.left_value is not None and entry.right_value is not None:
+                    parts.append(f": {entry.left_value} -> {entry.right_value}")
+                return "".join(parts)
+
+            case DiffEntryType.UNCHANGED:
+                # space path: value
+                parts = [f"{indicator} {entry.path}"]
+                if entry.left_value is not None:
+                    parts.append(f": {entry.left_value}")
+                return "".join(parts)
+
+    def _format_provenance(self, entry: DiffEntryDisplayModel) -> str | None:
         """Format provenance information for an entry.
 
-        :param entry: The diff entry.
-        :param ctx: Format context.
-        :return: Formatted provenance string.
+        :param entry: The entry display model.
+        :return: Formatted provenance string or None.
         """
         parts: list[str] = []
 
         if entry.left_provenance:
-            loc = self.format_location(
-                entry.left_provenance.file,
-                entry.left_provenance.line,
-                ctx,
-            )
-            if loc:
-                parts.append(f"left: {loc}")
+            loc = f"{entry.left_provenance.file}:{entry.left_provenance.line}"
+            parts.append(f"left: {loc}")
 
         if entry.right_provenance:
-            loc = self.format_location(
-                entry.right_provenance.file,
-                entry.right_provenance.line,
-                ctx,
-            )
-            if loc:
-                parts.append(f"right: {loc}")
+            loc = f"{entry.right_provenance.file}:{entry.right_provenance.line}"
+            parts.append(f"right: {loc}")
 
-        return ", ".join(parts)
+        if not parts:
+            return None
 
-    def _matches_filters(
-        self, path: str, entry: DiffEntry, ctx: DiffFormatContext
-    ) -> bool:
-        """Check if an entry matches the configured filters.
-
-        :param path: The config path.
-        :param entry: The diff entry.
-        :param ctx: Format context with filters.
-        :return: True if entry matches all filters.
-        """
-        # If no filters, everything matches
-        if not ctx.path_filters and not ctx.file_filters:
-            return True
-
-        # Check path filters (OR logic)
-        if ctx.path_filters:
-            path_match = any(
-                fnmatch(f"/{path}", pattern) or fnmatch(path, pattern)
-                for pattern in ctx.path_filters
-            )
-            if not path_match:
-                return False
-
-        # Check file filters (OR logic on either provenance)
-        if ctx.file_filters:
-            files_to_check = []
-            if entry.left_provenance:
-                files_to_check.append(entry.left_provenance.file)
-            if entry.right_provenance:
-                files_to_check.append(entry.right_provenance.file)
-
-            if files_to_check:
-                file_match = any(
-                    fnmatch(f, pattern)
-                    for f in files_to_check
-                    for pattern in ctx.file_filters
-                )
-                if not file_match:
-                    return False
-            else:
-                # No provenance to check against file filters
-                return False
-
-        return True
+        return indent(", ".join(parts), 1, self._indent_size)

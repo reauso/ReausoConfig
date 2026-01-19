@@ -4,7 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from rconfig.diff import ConfigDiff, DiffEntry, DiffEntryType, DiffFormatContext, DiffTreeLayout
+from rconfig.diff import ConfigDiff, DiffEntry, DiffEntryType, DiffFormat, DiffFormatContext, DiffTreeLayout
+
+
+def build_and_render(layout: DiffTreeLayout, diff: ConfigDiff, ctx: DiffFormatContext) -> str:
+    """Helper to build display model and render with layout.
+
+    Uses DiffFormat to build the model since filtering logic is in Format.
+    """
+    fmt = DiffFormat(diff)
+    fmt._ctx = ctx
+    model = fmt._build_model()
+    return layout.render(model)
 
 
 class TestDiffTreeLayout:
@@ -16,7 +27,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff({})
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "No differences found" in result
 
     def test_format_has_header(self) -> None:
@@ -28,7 +39,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert result.startswith("ConfigDiff:")
 
     def test_added_section(self) -> None:
@@ -42,7 +53,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Added:" in result
         assert "model.dropout" in result
 
@@ -57,7 +68,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Removed:" in result
         assert "legacy.param" in result
 
@@ -72,7 +83,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Changed:" in result
         assert "model.lr" in result
 
@@ -87,7 +98,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_unchanged=True)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Unchanged:" in result
         assert "model.layers" in result
 
@@ -101,7 +112,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Unchanged:" not in result
 
     def test_sections_grouped(self) -> None:
@@ -115,7 +126,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         # Both added entries should appear after the Added: header
         lines = result.split("\n")
         added_idx = next(i for i, line in enumerate(lines) if "Added:" in line)
@@ -138,23 +149,27 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Added: 1" in result
         assert "Removed: 1" in result
 
     def test_summary_hidden_when_disabled(self) -> None:
-        """Summary hidden when show_counts=False."""
-        layout = DiffTreeLayout()
+        """Summary hidden when show_counts=False.
+
+        Note: Layout always calculates summary from entries.
+        Use the fluent API to test the Format behavior.
+        """
         entries = {
             "a": DiffEntry("a", DiffEntryType.ADDED, right_value=1),
         }
         diff = ConfigDiff(entries)
-        ctx = DiffFormatContext(show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        # Use the fluent API which respects show_counts
+        result = DiffFormat(diff).hide_counts().tree()
+        # The "Added:" section header should exist but not count summary
         assert "Added:" in result  # Section header
-        # But not the count summary
         lines = result.split("\n")
+        # But not the count summary at the end
         assert not any("Added: 1" in line for line in lines[-3:])
 
     def test_sorted_entries_within_section(self) -> None:
@@ -168,7 +183,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         # Find positions in output
         a_pos = result.find("a.value")
         m_pos = result.find("m.value")
@@ -185,7 +200,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_added=False, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Added:" not in result
         assert "Removed:" in result
 
@@ -199,7 +214,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_removed=False, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Added:" in result
         assert "Removed:" not in result
 
@@ -213,7 +228,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_changed=False, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Added:" in result
         assert "Changed:" not in result
 
@@ -229,7 +244,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(path_filters=["model.*"], show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "model.lr" in result
         assert "data.batch_size" not in result
 
@@ -242,7 +257,7 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         lines = result.split("\n")
 
         # Header has no indent
@@ -273,18 +288,5 @@ class TestDiffTreeLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_provenance=True, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "config.yaml" in result
-
-    def test_format_entry_delegates_correctly(self) -> None:
-        """format_entry delegates to correct type formatter."""
-        layout = DiffTreeLayout()
-        ctx = DiffFormatContext()
-
-        added = DiffEntry("a", DiffEntryType.ADDED, right_value=1)
-        removed = DiffEntry("b", DiffEntryType.REMOVED, left_value=2)
-        changed = DiffEntry("c", DiffEntryType.CHANGED, 3, 4)
-
-        assert "+" in layout.format_entry(added, ctx)
-        assert "-" in layout.format_entry(removed, ctx)
-        assert "~" in layout.format_entry(changed, ctx)
