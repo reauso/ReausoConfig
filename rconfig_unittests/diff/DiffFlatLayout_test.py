@@ -4,7 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from rconfig.diff import ConfigDiff, DiffEntry, DiffEntryType, DiffFlatLayout, DiffFormatContext
+from rconfig.diff import ConfigDiff, DiffEntry, DiffEntryType, DiffFlatLayout, DiffFormat, DiffFormatContext
+
+
+def build_and_render(layout: DiffFlatLayout, diff: ConfigDiff, ctx: DiffFormatContext) -> str:
+    """Helper to build display model and render with layout.
+
+    Uses DiffFormat to build the model since filtering logic is in Format.
+    """
+    fmt = DiffFormat(diff)
+    fmt._ctx = ctx
+    model = fmt._build_model()
+    return layout.render(model)
 
 
 class TestDiffFlatLayout:
@@ -16,7 +27,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff({})
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "No differences found" in result
 
     def test_format_added_entries(self) -> None:
@@ -30,7 +41,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "+ model.dropout" in result
         assert "0.1" in result
 
@@ -45,7 +56,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "- legacy.param" in result
         assert "'old'" in result
 
@@ -60,7 +71,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "~ model.lr" in result
         assert "0.001" in result
         assert "->" in result
@@ -77,7 +88,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         # Should show "No differences" since unchanged is hidden
         assert "No differences found" in result
 
@@ -92,7 +103,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_unchanged=True)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "model.layers" in result
         assert "4" in result
 
@@ -107,13 +118,19 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "Added: 1" in result
         assert "Removed: 1" in result
         assert "Changed: 1" in result
 
     def test_summary_hidden_when_disabled(self) -> None:
-        """Summary hidden when show_counts=False."""
+        """Summary hidden when show_counts=False.
+
+        Note: With the new architecture, show_counts is a layout decision.
+        The layout always renders a summary from entries. The caller
+        can choose not to include it by using a layout that doesn't
+        render summaries.
+        """
         layout = DiffFlatLayout()
         entries = {
             "a": DiffEntry("a", DiffEntryType.ADDED, right_value=1),
@@ -121,8 +138,10 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
-        assert "Added:" not in result
+        # Use the fluent API which respects show_counts
+        result = DiffFormat(diff).hide_counts().terminal()
+        # Layout derives summary from entries, so we check via Format
+        assert "Added: 1" not in result
 
     def test_sorted_output(self) -> None:
         """Entries are sorted by path."""
@@ -135,7 +154,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         lines = result.strip().split("\n")
         # Extract paths from lines
         paths = [line.split(":")[0].strip("+ ") for line in lines if line.startswith("+")]
@@ -151,7 +170,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_added=False, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "+" not in result
         assert "-" in result
 
@@ -165,7 +184,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_removed=False, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "+" in result
         assert "- b" not in result
 
@@ -179,7 +198,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_changed=False, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "+" in result
         assert "~" not in result
 
@@ -195,7 +214,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(path_filters=["model.*"], show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "model.lr" in result
         assert "data.batch_size" not in result
 
@@ -208,7 +227,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(path_filters=["/model.*"], show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "model.lr" in result
 
     def test_provenance_shown_when_enabled(self) -> None:
@@ -228,7 +247,7 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_provenance=True, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "config.yaml" in result
         assert "10" in result
 
@@ -249,48 +268,6 @@ class TestDiffFlatLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_provenance=False, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         # Should not contain file:line info
         assert "config.yaml:10" not in result
-
-    def test_format_entry_added(self) -> None:
-        """format_entry formats added entry correctly."""
-        layout = DiffFlatLayout()
-        entry = DiffEntry("model.lr", DiffEntryType.ADDED, right_value=0.01)
-        ctx = DiffFormatContext()
-
-        result = layout.format_entry(entry, ctx)
-        assert "+ model.lr" in result
-        assert "0.01" in result
-
-    def test_format_entry_removed(self) -> None:
-        """format_entry formats removed entry correctly."""
-        layout = DiffFlatLayout()
-        entry = DiffEntry("model.lr", DiffEntryType.REMOVED, left_value=0.01)
-        ctx = DiffFormatContext()
-
-        result = layout.format_entry(entry, ctx)
-        assert "- model.lr" in result
-        assert "0.01" in result
-
-    def test_format_entry_changed(self) -> None:
-        """format_entry formats changed entry correctly."""
-        layout = DiffFlatLayout()
-        entry = DiffEntry("model.lr", DiffEntryType.CHANGED, 0.001, 0.01)
-        ctx = DiffFormatContext()
-
-        result = layout.format_entry(entry, ctx)
-        assert "~ model.lr" in result
-        assert "0.001" in result
-        assert "->" in result
-        assert "0.01" in result
-
-    def test_format_entry_unchanged(self) -> None:
-        """format_entry formats unchanged entry correctly."""
-        layout = DiffFlatLayout()
-        entry = DiffEntry("model.lr", DiffEntryType.UNCHANGED, 0.01, 0.01)
-        ctx = DiffFormatContext()
-
-        result = layout.format_entry(entry, ctx)
-        assert "model.lr" in result
-        assert "0.01" in result

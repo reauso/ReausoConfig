@@ -266,12 +266,12 @@ class TestConfigDiff:
         assert "a" in result
         assert "1" in result
 
-    def test_format_returns_builder(self) -> None:
-        """format() returns a DiffFormat builder."""
+    def test_can_be_formatted(self) -> None:
+        """ConfigDiff can be formatted with DiffFormat."""
         from rconfig.diff import DiffFormat
 
         diff = ConfigDiff({})
-        fmt = diff.format()
+        fmt = DiffFormat(diff)
         assert isinstance(fmt, DiffFormat)
 
     def test_immutability(self) -> None:

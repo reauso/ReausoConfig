@@ -16,6 +16,7 @@ from rconfig.diff import (
     DiffPreset,
     DiffTreeLayout,
 )
+from rconfig.diff.formatting.model import DiffDisplayModel
 
 
 class TestDiffFormatShowHideToggles:
@@ -291,19 +292,20 @@ class TestDiffFormatLayout:
         return ConfigDiff(entries)
 
     def test_default_layout_is_flat(self, diff: ConfigDiff) -> None:
-        """Default layout is DiffFlatLayout."""
+        """Default layout is DiffFlatLayout when _get_layout() is called."""
         fmt = DiffFormat(diff)
-        assert isinstance(fmt._layout, DiffFlatLayout)
+        # Layout is None until _get_layout() is called
+        assert fmt._layout is None
+        # When _get_layout() is called, it returns DiffFlatLayout
+        layout = fmt._get_layout()
+        assert isinstance(layout, DiffFlatLayout)
 
     def test_set_custom_layout(self, diff: ConfigDiff) -> None:
         """layout() sets custom layout."""
 
         class CustomLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
+            def render(self, model: DiffDisplayModel) -> str:
                 return "custom"
-
-            def format_entry(self, entry, ctx):
-                return ""
 
         fmt = DiffFormat(diff)
         fmt.layout(CustomLayout())
@@ -408,7 +410,7 @@ class TestDiffFormatIntegration:
         diff = ConfigDiff(entries)
 
         result = (
-            diff.format()
+            DiffFormat(diff)
             .show_unchanged()
             .for_path("model.*")
             .hide_counts()
@@ -429,7 +431,7 @@ class TestDiffFormatIntegration:
         diff = ConfigDiff(entries)
 
         # Start with full preset, then hide provenance
-        fmt = diff.format().full().hide_provenance()
+        fmt = DiffFormat(diff).full().hide_provenance()
 
         assert fmt._ctx.show_unchanged is True  # From preset
         assert fmt._ctx.show_provenance is False  # Overridden

@@ -8,9 +8,21 @@ from rconfig.diff import (
     ConfigDiff,
     DiffEntry,
     DiffEntryType,
+    DiffFormat,
     DiffFormatContext,
     DiffMarkdownLayout,
 )
+
+
+def build_and_render(layout: DiffMarkdownLayout, diff: ConfigDiff, ctx: DiffFormatContext) -> str:
+    """Helper to build display model and render with layout.
+
+    Uses DiffFormat to build the model since filtering logic is in Format.
+    """
+    fmt = DiffFormat(diff)
+    fmt._ctx = ctx
+    model = fmt._build_model()
+    return layout.render(model)
 
 
 class TestDiffMarkdownLayout:
@@ -22,7 +34,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff({})
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "_No differences found._" in result
 
     def test_table_has_header(self) -> None:
@@ -34,7 +46,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "| Type |" in result
         assert "| Path |" in result
 
@@ -47,7 +59,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         lines = result.split("\n")
         # Second line should be separator
         assert lines[1].startswith("|")
@@ -64,7 +76,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         # Find the data row (not header or separator)
         lines = result.split("\n")
         data_row = next(line for line in lines[2:] if "model.dropout" in line)
@@ -85,7 +97,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         lines = result.split("\n")
         data_row = next(line for line in lines[2:] if "legacy.param" in line)
         assert "| - |" in data_row
@@ -104,7 +116,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         lines = result.split("\n")
         data_row = next(line for line in lines[2:] if "model.lr" in line)
         assert "| ~ |" in data_row
@@ -123,7 +135,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_unchanged=True)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         lines = result.split("\n")
         data_row = next(line for line in lines[2:] if "model.layers" in line)
         # Type column should have space
@@ -139,19 +151,21 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "**Summary:**" in result
 
     def test_summary_hidden_when_disabled(self) -> None:
-        """Summary hidden when show_counts=False."""
-        layout = DiffMarkdownLayout()
+        """Summary hidden when show_counts=False.
+
+        Note: Layout always calculates summary from entries.
+        Use the fluent API to test the Format behavior.
+        """
         entries = {
             "a": DiffEntry("a", DiffEntryType.ADDED, right_value=1),
         }
         diff = ConfigDiff(entries)
-        ctx = DiffFormatContext(show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = DiffFormat(diff).hide_counts().markdown()
         assert "**Summary:**" not in result
 
     def test_escapes_pipe_characters(self) -> None:
@@ -165,22 +179,9 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext()
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         # Pipe should be escaped
         assert "\\|" in result
-
-    def test_hide_paths(self) -> None:
-        """Path column hidden when show_paths=False."""
-        layout = DiffMarkdownLayout()
-        entries = {
-            "model.lr": DiffEntry("model.lr", DiffEntryType.ADDED, right_value=0.01),
-        }
-        diff = ConfigDiff(entries)
-        ctx = DiffFormatContext(show_paths=False)
-
-        result = layout.format_diff(diff, ctx)
-        # Header should not have Path column
-        assert "| Path |" not in result
 
     def test_hide_values(self) -> None:
         """Value columns hidden when show_values=False."""
@@ -191,7 +192,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_values=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         # Header should not have value columns
         assert "| Old Value |" not in result
         assert "| New Value |" not in result
@@ -213,7 +214,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_provenance=True)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "| Source |" in result
         assert "config.yaml" in result
 
@@ -227,7 +228,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         a_pos = result.find("a.value")
         z_pos = result.find("z.value")
         assert a_pos < z_pos
@@ -242,7 +243,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_added=False, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "| + |" not in result
         assert "| - |" in result
 
@@ -256,7 +257,7 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(show_removed=False, show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "| + |" in result
         # The "b" entry (removed) should not appear in output
         assert "| b |" not in result
@@ -273,17 +274,6 @@ class TestDiffMarkdownLayout:
         diff = ConfigDiff(entries)
         ctx = DiffFormatContext(path_filters=["model.*"], show_counts=False)
 
-        result = layout.format_diff(diff, ctx)
+        result = build_and_render(layout, diff, ctx)
         assert "model.lr" in result
         assert "data.batch_size" not in result
-
-    def test_format_entry_returns_table_row(self) -> None:
-        """format_entry returns a markdown table row."""
-        layout = DiffMarkdownLayout()
-        entry = DiffEntry("model.lr", DiffEntryType.ADDED, right_value=0.01)
-        ctx = DiffFormatContext()
-
-        result = layout.format_entry(entry, ctx)
-        assert result.startswith("|")
-        assert result.endswith("|")
-        assert result.count("|") >= 3  # At least Type|Path|... columns

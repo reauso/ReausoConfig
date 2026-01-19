@@ -91,7 +91,8 @@ from .provenance import (
     ProvenancePreset,
     ProvenanceFormatContext,
     ProvenanceLayout,
-    TreeLayout,
+    ProvenanceTreeLayout,
+    TreeLayout,  # Backwards compatibility alias
 )
 from .override import (
     Override,
@@ -1249,6 +1250,59 @@ def diff(
     return builder.compute_diff(left_prov, right_prov)
 
 
+# === Formatting API ===
+
+
+@overload
+def format(obj: "Provenance", layout: "ProvenanceLayout | None" = None) -> ProvenanceFormat: ...
+@overload
+def format(obj: ConfigDiff) -> DiffFormat: ...
+
+
+@singledispatch
+def format(obj: Any, layout: Any = None) -> Any:
+    """Format provenance or diff objects for display.
+
+    Returns a fluent builder for configuring output format. Use method
+    chaining to customize what information is shown and how it's formatted.
+
+    :param obj: A Provenance or ConfigDiff object to format.
+    :param layout: Optional custom layout (Provenance only).
+    :return: ProvenanceFormat or DiffFormat builder for method chaining.
+    :raises TypeError: If obj is not a supported type.
+
+    Example::
+
+        import rconfig as rc
+        from pathlib import Path
+
+        # Format provenance
+        prov = rc.get_provenance(Path("config.yaml"))
+        print(rc.format(prov))                    # Default tree format
+        print(rc.format(prov).minimal())          # Minimal preset
+        print(rc.format(prov).hide_chain())       # Hide interpolation chain
+
+        # Format diff
+        diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
+        print(rc.format(diff).terminal())         # Terminal output
+        print(rc.format(diff).markdown())         # Markdown table
+        print(rc.format(diff).show_provenance())  # Include file:line info
+    """
+    raise TypeError(f"Cannot format object of type {type(obj).__name__}")
+
+
+@format.register(Provenance)
+def _format_provenance(
+    obj: "Provenance", layout: "ProvenanceLayout | None" = None
+) -> ProvenanceFormat:
+    return ProvenanceFormat(obj, layout)
+
+
+@format.register(ConfigDiff)
+def _format_diff(obj: ConfigDiff) -> DiffFormat:
+    return DiffFormat(obj)
+
+
 # === Deprecation API ===
 
 
@@ -1828,6 +1882,7 @@ __all__ = [
     "resolver",
     # Diff API
     "diff",
+    "format",
     "ConfigDiff",
     "DiffEntry",
     "DiffEntryType",

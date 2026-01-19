@@ -1473,20 +1473,20 @@ print(f"Description: {entry.description}")  # "Learning rate for optimizer"
 
 ```python
 # Use presets
-print(prov.format().minimal())
-print(prov.format().compact())
-print(prov.format().full())  # Default
+print(rc.format(prov).minimal())
+print(rc.format(prov).compact())
+print(rc.format(prov).full())  # Default
 
 # Enum alternative
 from rconfig.composition import ProvenancePreset
-print(prov.format().preset(ProvenancePreset.MINIMAL))
+print(rc.format(prov).preset(ProvenancePreset.MINIMAL))
 ```
 
 #### Show/Hide Toggles
 
 ```python
 # All toggles (each has show/hide variant)
-prov.format()
+rc.format(prov)
     .show_paths()      .hide_paths()      # Config paths (/model.lr)
     .show_values()     .hide_values()     # Resolved values
     .show_files()      .hide_files()      # Source file names
@@ -1499,23 +1499,23 @@ prov.format()
     .show_descriptions().hide_descriptions() # Field descriptions
 
 # Combine with presets
-print(prov.format().minimal().show_values())
-print(prov.format().compact().hide_chain())
+print(rc.format(prov).minimal().show_values())
+print(rc.format(prov).compact().hide_chain())
 ```
 
 #### Filtering
 
 ```python
 # Filter by config path (glob patterns)
-print(prov.format().for_path("/model.*"))      # Only model paths
-print(prov.format().for_path("/training.*"))   # Only training paths
+print(rc.format(prov).for_path("/model.*"))      # Only model paths
+print(rc.format(prov).for_path("/training.*"))   # Only training paths
 
 # Filter by source file
-print(prov.format().from_file("trainer.yaml")) # Only from trainer.yaml
-print(prov.format().from_file("models/*.yaml"))# From any file in models/
+print(rc.format(prov).from_file("trainer.yaml")) # Only from trainer.yaml
+print(rc.format(prov).from_file("models/*.yaml"))# From any file in models/
 
 # Combine filters (multiple calls = OR logic)
-print(prov.format()
+print(rc.format(prov)
     .for_path("/model.*")
     .from_file("config.yaml")
 )
@@ -1604,20 +1604,19 @@ tree_data = prov.trace("model.lr").to_dict()
 Create custom output formats by extending ProvenanceLayout:
 
 ```python
-from rconfig.composition import ProvenanceLayout, ProvenanceFormatContext
+from rconfig.provenance.formatting import ProvenanceLayout, ProvenanceDisplayModel
 
 class TableLayout(ProvenanceLayout):
-    def format_provenance(self, provenance, ctx: ProvenanceFormatContext) -> str:
+    def render(self, model: ProvenanceDisplayModel) -> str:
+        if model.empty_message:
+            return model.empty_message
         lines = ["| Path | File | Line |", "|------|------|------|"]
-        for path, entry in provenance.items():
-            lines.append(f"| {path} | {entry.file} | {entry.line} |")
+        for entry in model.entries:
+            lines.append(f"| /{entry.path} | {entry.file} | {entry.line} |")
         return "\n".join(lines)
 
-    def format_entry(self, entry, path, ctx: ProvenanceFormatContext) -> str:
-        return f"| {path} | {entry.file} | {entry.line} |"
-
 # Use custom layout
-print(prov.format().layout(TableLayout()))
+print(rc.format(prov).layout(TableLayout()))
 ```
 
 ### Config Diffing
@@ -1686,7 +1685,7 @@ diff = rc.diff(prov_v1, prov_v2)
 diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
 
 # Terminal output (default flat layout)
-print(diff.format().terminal())
+print(rc.format(diff).terminal())
 # + model.dropout: 0.1
 # - model.legacy: 'old'
 # ~ model.lr: 0.001 -> 0.01
@@ -1694,7 +1693,7 @@ print(diff.format().terminal())
 # Added: 1, Removed: 1, Changed: 1
 
 # Tree layout (grouped by change type)
-print(diff.format().tree())
+print(rc.format(diff).tree())
 # ConfigDiff:
 #   Added:
 #     + model.dropout: 0.1
@@ -1704,7 +1703,7 @@ print(diff.format().tree())
 #     ~ model.lr: 0.001 -> 0.01
 
 # Markdown table
-print(diff.format().markdown())
+print(rc.format(diff).markdown())
 # | Type | Path | Old Value | New Value |
 # |------|------|-----------|-----------|
 # | + | model.dropout | - | 0.1 |
@@ -1712,7 +1711,7 @@ print(diff.format().markdown())
 # | ~ | model.lr | 0.001 | 0.01 |
 
 # Dictionary for JSON serialization
-data = diff.format().json()
+data = rc.format(diff).json()
 ```
 
 #### Formatting Presets
@@ -1721,16 +1720,16 @@ data = diff.format().json()
 diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
 
 # changes_only (default) - only show added/removed/changed
-diff.format().changes_only().terminal()
+rc.format(diff).changes_only().terminal()
 
 # with_context - show changes plus unchanged entries
-diff.format().with_context().terminal()
+rc.format(diff).with_context().terminal()
 
 # full - show everything including provenance info
-diff.format().full().terminal()
+rc.format(diff).full().terminal()
 
 # summary - only show statistics
-diff.format().summary().terminal()
+rc.format(diff).summary().terminal()
 # Added: 2, Removed: 1, Changed: 3
 ```
 
@@ -1740,16 +1739,16 @@ diff.format().summary().terminal()
 diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
 
 # Show provenance (file:line) info
-diff.format().show_provenance().terminal()
+rc.format(diff).show_provenance().terminal()
 
 # Hide summary statistics
-diff.format().hide_counts().terminal()
+rc.format(diff).hide_counts().terminal()
 
 # Show only specific change types
-diff.format().hide_added().hide_removed().terminal()
+rc.format(diff).hide_added().hide_removed().terminal()
 
 # Chain multiple options
-diff.format().show_provenance().show_unchanged().hide_counts().markdown()
+rc.format(diff).show_provenance().show_unchanged().hide_counts().markdown()
 ```
 
 #### Filtering
@@ -1758,13 +1757,13 @@ diff.format().show_provenance().show_unchanged().hide_counts().markdown()
 diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
 
 # Filter by path pattern
-diff.format().for_path("model.*").terminal()
+rc.format(diff).for_path("model.*").terminal()
 
 # Filter by source file
-diff.format().from_file("*.yaml").terminal()
+rc.format(diff).from_file("*.yaml").terminal()
 
 # Combine filters
-diff.format().for_path("training.*").from_file("configs/*.yaml").terminal()
+rc.format(diff).for_path("training.*").from_file("configs/*.yaml").terminal()
 ```
 
 #### Custom Layouts
@@ -1772,27 +1771,25 @@ diff.format().for_path("training.*").from_file("configs/*.yaml").terminal()
 Create custom output formats by extending DiffLayout:
 
 ```python
-from rconfig.diff import DiffLayout, DiffFormatContext, ConfigDiff, DiffEntry
+from rconfig.diff.formatting import DiffLayout, DiffDisplayModel
 
 class JsonLinesLayout(DiffLayout):
-    def format_diff(self, diff: ConfigDiff, ctx: DiffFormatContext) -> str:
+    def render(self, model: DiffDisplayModel) -> str:
         import json
+        if model.empty_message:
+            return model.empty_message
         lines = []
-        for path, entry in diff.items():
+        for entry in model.entries:
             lines.append(json.dumps({
-                "path": path,
+                "path": entry.path,
                 "type": entry.diff_type.value,
                 "left": entry.left_value,
                 "right": entry.right_value,
             }))
         return "\n".join(lines)
 
-    def format_entry(self, entry: DiffEntry, ctx: DiffFormatContext) -> str:
-        import json
-        return json.dumps({"path": entry.path, "type": entry.diff_type.value})
-
 # Use custom layout
-print(diff.format().layout(JsonLinesLayout()))
+print(rc.format(diff).layout(JsonLinesLayout()))
 ```
 
 ### Deprecation Warnings
@@ -1863,7 +1860,7 @@ Use the `.deprecations()` preset to view only deprecated keys:
 prov = rc.get_provenance(path=Path("config.yaml"))
 
 # Show only deprecated keys
-print(prov.format().deprecations())
+print(rc.format(prov).deprecations())
 # Deprecated Keys:
 # ----------------
 # /learning_rate
@@ -1934,7 +1931,7 @@ The default handler uses Python's `warnings.warn()` with `RconfigDeprecationWarn
 | `rc.set_deprecation_policy(policy)`                             | Set global policy (warn/error/ignore)              |
 | `rc.set_deprecation_handler(handler)`                           | Set custom warning handler                         |
 | `@rc.deprecation_handler`                                       | Decorator to register a function as handler        |
-| `prov.format().deprecations()`                                  | Show only deprecated keys in provenance            |
+| `rc.format(prov).deprecations()`                                | Show only deprecated keys in provenance            |
 
 ### Immutable / Frozen Configs
 
@@ -2473,9 +2470,10 @@ Compose a config file and track the origin of each value.
 
 - `get(path: str) -> ProvenanceEntry | None`: Get entry for a specific config path
 - `items() -> Iterator[tuple[str, ProvenanceEntry]]`: Iterate all (path, entry) tuples
-- `format() -> ProvenanceLayout`: Get fluent builder for customized output
 - `trace(path: str) -> ProvenanceNode | None`: Get full tree for a path
 - `to_dict() -> dict`: Export as dictionary
+
+Use `rc.format(prov)` for customized output formatting.
 
 **Examples:**
 
@@ -2487,8 +2485,8 @@ entry = prov.get("model.layers")
 print(f"Defined at: {entry.file}:{entry.line}")
 
 # Custom formatting
-print(prov.format().minimal())
-print(prov.format().for_path("/model.*"))
+print(rc.format(prov).minimal())
+print(rc.format(prov).for_path("/model.*"))
 
 # Partial provenance - only loads files needed for model section
 prov = rc.get_provenance(path=Path("trainer.yaml"), inner_path="model")
