@@ -7,6 +7,8 @@ for configuration loading, validation, and instantiation errors.
 from pathlib import Path
 from typing import Any
 
+from rconfig._internal.path_utils import StrOrPath, ensure_path
+
 
 def _format_location(config_path: str) -> str:
     """Format a config path for error messages.
@@ -24,16 +26,16 @@ class ConfigError(Exception):
 class ConfigFileError(ConfigError):
     """Raised when a config file cannot be read or parsed.
 
-    :param path: Path to the problematic config file.
+    :param path: Path to the problematic config file. Accepts str, Path, or any os.PathLike.
     :param reason: Description of what went wrong.
     :param hint: Optional hint for how to fix the error.
     """
 
-    def __init__(self, path: Path, reason: str, hint: str = "") -> None:
-        self.path = path
+    def __init__(self, path: StrOrPath, reason: str, hint: str = "") -> None:
+        self.path = ensure_path(path)
         self.reason = reason
         self.hint = hint
-        message = f"Failed to load config file '{path}': {reason}"
+        message = f"Failed to load config file '{self.path}': {reason}"
         if hint:
             message += f"\nHint: {hint}"
         super().__init__(message)

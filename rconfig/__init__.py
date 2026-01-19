@@ -37,6 +37,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Callable, TypeVar, overload
 
+from ._internal.path_utils import StrOrPath, ensure_path
 from .target import TargetRegistry, TargetEntry
 from .help import (
     HelpIntegration,
@@ -278,7 +279,7 @@ def unregister(name: str) -> None:
 
 
 def validate(
-    path: Path,
+    path: StrOrPath,
     *,
     inner_path: str | None = None,
     overrides: dict[str, Any] | None = None,
@@ -290,7 +291,7 @@ def validate(
     any overrides, and validates against registered targets. Also checks that
     all _required_ values have been satisfied.
 
-    :param path: Path to config file.
+    :param path: Path to config file. Accepts str, Path, or any os.PathLike.
     :param inner_path: Optional path to validate only a section of the config.
                        When specified, only the sub-config at this path is validated
                        and _required_ markers outside this section are ignored.
@@ -317,6 +318,8 @@ def validate(
     """
     from rconfig.validation.required import find_required_markers
     from rconfig.errors import RequiredValueError
+
+    path = ensure_path(path)
 
     # Handle --help/-h when cli_overrides is enabled
     if cli_overrides and ("--help" in sys.argv or "-h" in sys.argv):
@@ -396,16 +399,16 @@ def validate(
 
 
 @overload
-def instantiate(path: Path, *, cli_overrides: bool = ..., lazy: bool = ...) -> Any: ...
+def instantiate(path: StrOrPath, *, cli_overrides: bool = ..., lazy: bool = ...) -> Any: ...
 @overload
-def instantiate(path: Path, expected_type: type[T], *, cli_overrides: bool = ..., lazy: bool = ...) -> T: ...
+def instantiate(path: StrOrPath, expected_type: type[T], *, cli_overrides: bool = ..., lazy: bool = ...) -> T: ...
 @overload
 def instantiate(
-    path: Path, *, overrides: dict[str, Any], cli_overrides: bool = ..., lazy: bool = ...
+    path: StrOrPath, *, overrides: dict[str, Any], cli_overrides: bool = ..., lazy: bool = ...
 ) -> Any: ...
 @overload
 def instantiate(
-    path: Path,
+    path: StrOrPath,
     expected_type: type[T],
     *,
     overrides: dict[str, Any],
@@ -414,11 +417,11 @@ def instantiate(
 ) -> T: ...
 @overload
 def instantiate(
-    path: Path, *, inner_path: str, cli_overrides: bool = ..., lazy: bool = ...
+    path: StrOrPath, *, inner_path: str, cli_overrides: bool = ..., lazy: bool = ...
 ) -> Any: ...
 @overload
 def instantiate(
-    path: Path,
+    path: StrOrPath,
     expected_type: type[T],
     *,
     inner_path: str,
@@ -427,7 +430,7 @@ def instantiate(
 ) -> T: ...
 @overload
 def instantiate(
-    path: Path,
+    path: StrOrPath,
     *,
     inner_path: str,
     overrides: dict[str, Any],
@@ -436,7 +439,7 @@ def instantiate(
 ) -> Any: ...
 @overload
 def instantiate(
-    path: Path,
+    path: StrOrPath,
     expected_type: type[T],
     *,
     inner_path: str,
@@ -447,7 +450,7 @@ def instantiate(
 
 
 def instantiate(
-    path: Path,
+    path: StrOrPath,
     expected_type: type[T] | None = None,
     *,
     inner_path: str | None = None,
@@ -461,7 +464,7 @@ def instantiate(
     any overrides, validates against registered targets, and instantiates
     the final object tree.
 
-    :param path: Path to config file.
+    :param path: Path to config file. Accepts str, Path, or any os.PathLike.
     :param expected_type: Optional type for type-safe returns.
     :param inner_path: Optional path to instantiate only a section of the config.
                        Interpolations are resolved from the full config before
@@ -506,6 +509,8 @@ def instantiate(
         # CLI help (--help or -h) shows config entries and exits
         # python main.py --help
     """
+    path = ensure_path(path)
+
     # Handle --help/-h when cli_overrides is enabled
     if cli_overrides and ("--help" in sys.argv or "-h" in sys.argv):
         integration = current_help_integration()
@@ -614,7 +619,7 @@ def instantiate(
 
 @overload
 def instantiate_multirun(
-    path: Path,
+    path: StrOrPath,
     *,
     sweep: dict[str, list[Any]],
     inner_path: str | None = ...,
@@ -623,7 +628,7 @@ def instantiate_multirun(
 ) -> MultirunIterator[Any]: ...
 @overload
 def instantiate_multirun(
-    path: Path,
+    path: StrOrPath,
     expected_type: type[T],
     *,
     sweep: dict[str, list[Any]],
@@ -633,7 +638,7 @@ def instantiate_multirun(
 ) -> MultirunIterator[T]: ...
 @overload
 def instantiate_multirun(
-    path: Path,
+    path: StrOrPath,
     *,
     experiments: list[dict[str, Any]],
     inner_path: str | None = ...,
@@ -642,7 +647,7 @@ def instantiate_multirun(
 ) -> MultirunIterator[Any]: ...
 @overload
 def instantiate_multirun(
-    path: Path,
+    path: StrOrPath,
     expected_type: type[T],
     *,
     experiments: list[dict[str, Any]],
@@ -652,7 +657,7 @@ def instantiate_multirun(
 ) -> MultirunIterator[T]: ...
 @overload
 def instantiate_multirun(
-    path: Path,
+    path: StrOrPath,
     *,
     sweep: dict[str, list[Any]],
     experiments: list[dict[str, Any]],
@@ -662,7 +667,7 @@ def instantiate_multirun(
 ) -> MultirunIterator[Any]: ...
 @overload
 def instantiate_multirun(
-    path: Path,
+    path: StrOrPath,
     expected_type: type[T],
     *,
     sweep: dict[str, list[Any]],
@@ -673,7 +678,7 @@ def instantiate_multirun(
 ) -> MultirunIterator[T]: ...
 @overload
 def instantiate_multirun(
-    path: Path,
+    path: StrOrPath,
     *,
     sweep: dict[str, list[Any]] | None = ...,
     experiments: list[dict[str, Any]] | None = ...,
@@ -684,7 +689,7 @@ def instantiate_multirun(
 ) -> MultirunIterator[Any]: ...
 @overload
 def instantiate_multirun(
-    path: Path,
+    path: StrOrPath,
     expected_type: type[T],
     *,
     sweep: dict[str, list[Any]] | None = ...,
@@ -697,7 +702,7 @@ def instantiate_multirun(
 
 
 def instantiate_multirun(
-    path: Path,
+    path: StrOrPath,
     expected_type: type[T] | None = None,
     *,
     sweep: dict[str, list[Any]] | None = None,
@@ -713,7 +718,7 @@ def instantiate_multirun(
     product) and/or explicit experiments. Each iteration yields a MultirunResult
     containing the resolved config, applied overrides, and instantiated object.
 
-    :param path: Path to the base config file.
+    :param path: Path to the base config file. Accepts str, Path, or any os.PathLike.
     :param expected_type: Optional type for type-safe returns.
     :param sweep: Dict of parameter paths to lists of values (cartesian product).
     :param experiments: List of explicit experiment override dicts.
@@ -788,6 +793,8 @@ def instantiate_multirun(
     from rconfig.interpolation import resolve_interpolations
     from rconfig.validation.required import find_required_markers
     from rconfig.override import apply_cli_overrides_with_ref_shorthand
+
+    path = ensure_path(path)
 
     # Validate inputs
     sweep = sweep or {}
@@ -1052,7 +1059,7 @@ def resolver(*path: str) -> Callable[[F], F]:
 
 
 def get_provenance(
-    path: Path,
+    path: StrOrPath,
     *,
     inner_path: str | None = None,
     overrides: dict[str, Any] | None = None,
@@ -1060,7 +1067,7 @@ def get_provenance(
 ) -> "Provenance":
     """Compose a config file and track the origin of each value.
 
-    :param path: Path to the entry-point config file.
+    :param path: Path to the entry-point config file. Accepts str, Path, or any os.PathLike.
     :param inner_path: If specified, returns provenance only for this section.
                       Also uses lazy loading to only load needed files.
     :param overrides: Dictionary of config overrides using dot notation keys.
@@ -1092,6 +1099,8 @@ def get_provenance(
     from rconfig.provenance import ProvenanceBuilder
     from rconfig.composition.IncrementalComposer import IncrementalComposer
     from rconfig.composition.InstanceResolver import InstanceResolver
+
+    path = ensure_path(path)
 
     # Handle --help/-h when cli_overrides is enabled
     if cli_overrides and ("--help" in sys.argv or "-h" in sys.argv):
@@ -1156,8 +1165,8 @@ def get_provenance(
 
 
 def diff(
-    left: "Path | Provenance",
-    right: "Path | Provenance",
+    left: "StrOrPath | Provenance",
+    right: "StrOrPath | Provenance",
     *,
     left_inner_path: str | None = None,
     right_inner_path: str | None = None,
@@ -1167,12 +1176,12 @@ def diff(
 ) -> ConfigDiff:
     """Compare two configurations and report differences.
 
-    Accepts either Path objects (which are resolved to Provenance internally)
+    Accepts either path objects (which are resolved to Provenance internally)
     or Provenance objects directly. Returns a ConfigDiff with added, removed,
     changed, and unchanged entries.
 
-    :param left: Left (original/base) config - Path or Provenance.
-    :param right: Right (new/updated) config - Path or Provenance.
+    :param left: Left (original/base) config - str, Path, os.PathLike, or Provenance.
+    :param right: Right (new/updated) config - str, Path, os.PathLike, or Provenance.
     :param left_inner_path: Optional path to compare only a section of left config.
     :param right_inner_path: Optional path to compare only a section of right config.
     :param left_overrides: Overrides to apply to left config (Path only).
@@ -1224,9 +1233,9 @@ def diff(
         diff = rc.diff(prov1, prov2)
     """
     # Resolve left to Provenance if needed
-    if isinstance(left, Path):
+    if not isinstance(left, Provenance):
         left_prov = get_provenance(
-            left,
+            ensure_path(left),
             inner_path=left_inner_path,
             overrides=left_overrides,
             cli_overrides=cli_overrides,
@@ -1235,9 +1244,9 @@ def diff(
         left_prov = left
 
     # Resolve right to Provenance if needed
-    if isinstance(right, Path):
+    if not isinstance(right, Provenance):
         right_prov = get_provenance(
-            right,
+            ensure_path(right),
             inner_path=right_inner_path,
             overrides=right_overrides,
             cli_overrides=cli_overrides,
@@ -1442,20 +1451,22 @@ def deprecation_handler(func: H) -> H:
 
 
 def _resolved_config(
-    path: Path,
+    path: StrOrPath,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
 ) -> tuple[dict[str, Any], ConfigComposer]:
     """Internal helper: run resolution pipeline without instantiation.
 
-    :param path: Path to config file.
+    :param path: Path to config file. Accepts str, Path, or any os.PathLike.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv.
     :return: Tuple of (resolved config dict, composer instance).
     """
     from rconfig.interpolation import resolve_interpolations
     from rconfig.validation.required import find_required_markers
+
+    path = ensure_path(path)
 
     # Handle --help/-h when cli_overrides is enabled
     if cli_overrides and ("--help" in sys.argv or "-h" in sys.argv):
@@ -1508,7 +1519,7 @@ def _resolved_config(
 
 
 def export(
-    path: Path,
+    path: StrOrPath,
     exporter: Exporter,
     *,
     overrides: dict[str, Any] | None = None,
@@ -1516,7 +1527,7 @@ def export(
 ) -> Any:
     """Export resolved config using a custom exporter.
 
-    :param path: Path to config file.
+    :param path: Path to config file. Accepts str, Path, or any os.PathLike.
     :param exporter: Exporter instance to use.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv.
@@ -1536,7 +1547,7 @@ def export(
 
 
 def to_dict(
-    path: Path,
+    path: StrOrPath,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
@@ -1544,7 +1555,7 @@ def to_dict(
 ) -> dict[str, Any]:
     """Export resolved config as a Python dictionary.
 
-    :param path: Path to config file.
+    :param path: Path to config file. Accepts str, Path, or any os.PathLike.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv.
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
@@ -1569,7 +1580,7 @@ def to_dict(
 
 
 def to_yaml(
-    path: Path,
+    path: StrOrPath,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
@@ -1577,7 +1588,7 @@ def to_yaml(
 ) -> str:
     """Export resolved config as a YAML string.
 
-    :param path: Path to config file.
+    :param path: Path to config file. Accepts str, Path, or any os.PathLike.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv.
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
@@ -1599,7 +1610,7 @@ def to_yaml(
 
 
 def to_json(
-    path: Path,
+    path: StrOrPath,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
@@ -1608,7 +1619,7 @@ def to_json(
 ) -> str:
     """Export resolved config as a JSON string.
 
-    :param path: Path to config file.
+    :param path: Path to config file. Accepts str, Path, or any os.PathLike.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv.
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
@@ -1634,7 +1645,7 @@ def to_json(
 
 
 def to_toml(
-    path: Path,
+    path: StrOrPath,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
@@ -1642,7 +1653,7 @@ def to_toml(
 ) -> str:
     """Export resolved config as a TOML string.
 
-    :param path: Path to config file.
+    :param path: Path to config file. Accepts str, Path, or any os.PathLike.
     :param overrides: Dictionary of config overrides using dot notation keys.
     :param cli_overrides: Whether to parse CLI overrides from sys.argv.
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
@@ -1665,8 +1676,8 @@ def to_toml(
 
 @singledispatch
 def to_file(
-    source: Path | dict[str, Any],
-    output_path: Path,
+    source: StrOrPath | dict[str, Any],
+    output_path: StrOrPath,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
@@ -1677,8 +1688,8 @@ def to_file(
     All references are flattened into a single standalone file.
     Format is determined by the output file extension.
 
-    :param source: Source config (Path to file, or dict).
-    :param output_path: Output file path (extension determines format).
+    :param source: Source config (str, Path, os.PathLike to file, or dict).
+    :param output_path: Output file path (extension determines format). Accepts str, Path, or any os.PathLike.
     :param overrides: Config overrides (only used with Path input).
     :param cli_overrides: Parse CLI overrides (only used with Path input).
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
@@ -1702,10 +1713,10 @@ def to_file(
     raise TypeError(f"Unsupported source type: {type(source)}")
 
 
-@to_file.register
+@to_file.register(Path)
 def _to_file_from_path(
     source: Path,
-    output_path: Path,
+    output_path: StrOrPath,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
@@ -1715,24 +1726,40 @@ def _to_file_from_path(
         source, overrides=overrides, cli_overrides=cli_overrides
     )
     file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
-    file_exporter.export_to_file(config, output_path)
+    file_exporter.export_to_file(config, ensure_path(output_path))
 
 
-@to_file.register
+@to_file.register(str)
+def _to_file_from_str(
+    source: str,
+    output_path: StrOrPath,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> None:
+    config, _ = _resolved_config(
+        ensure_path(source), overrides=overrides, cli_overrides=cli_overrides
+    )
+    file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
+    file_exporter.export_to_file(config, ensure_path(output_path))
+
+
+@to_file.register(dict)
 def _to_file_from_dict(
     source: dict,
-    output_path: Path,
+    output_path: StrOrPath,
     *,
     exclude_markers: bool = False,
 ) -> None:
     file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
-    file_exporter.export_to_file(source, output_path)
+    file_exporter.export_to_file(source, ensure_path(output_path))
 
 
 @singledispatch
 def to_files(
-    source: Path | dict[str, Any],
-    config_root_file: Path,
+    source: StrOrPath | dict[str, Any],
+    config_root_file: StrOrPath,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
@@ -1740,7 +1767,7 @@ def to_files(
 ) -> None:
     """Export config preserving file structure with format auto-detection.
 
-    When source is a Path, each referenced file is exported separately with
+    When source is a path, each referenced file is exported separately with
     interpolations resolved. The _ref_ paths are preserved.
 
     When source is a dict, only the root file is written (no ref_graph available).
@@ -1749,8 +1776,8 @@ def to_files(
     - Root file: format from config_root_file extension
     - Referenced files: preserve original extension from source files
 
-    :param source: Source config (Path to file, or dict).
-    :param config_root_file: Output root file path (extension determines root format).
+    :param source: Source config (str, Path, os.PathLike to file, or dict).
+    :param config_root_file: Output root file path (extension determines root format). Accepts str, Path, or any os.PathLike.
     :param overrides: Config overrides (only used with Path input).
     :param cli_overrides: Parse CLI overrides (only used with Path input).
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
@@ -1771,10 +1798,10 @@ def to_files(
     raise TypeError(f"Unsupported source type: {type(source)}")
 
 
-@to_files.register
+@to_files.register(Path)
 def _to_files_from_path(
     source: Path,
-    config_root_file: Path,
+    config_root_file: StrOrPath,
     *,
     overrides: dict[str, Any] | None = None,
     cli_overrides: bool = True,
@@ -1787,23 +1814,46 @@ def _to_files_from_path(
     file_exporter = MultiFileExporter(exclude_markers=exclude_markers)
     file_exporter.export_to_file(
         config,
-        config_root_file,
+        ensure_path(config_root_file),
         source_path=source,
         ref_graph=ref_graph,
     )
 
 
-@to_files.register
+@to_files.register(str)
+def _to_files_from_str(
+    source: str,
+    config_root_file: StrOrPath,
+    *,
+    overrides: dict[str, Any] | None = None,
+    cli_overrides: bool = True,
+    exclude_markers: bool = False,
+) -> None:
+    source_path = ensure_path(source)
+    config, composer = _resolved_config(
+        source_path, overrides=overrides, cli_overrides=cli_overrides
+    )
+    ref_graph = composer.ref_graph()
+    file_exporter = MultiFileExporter(exclude_markers=exclude_markers)
+    file_exporter.export_to_file(
+        config,
+        ensure_path(config_root_file),
+        source_path=source_path,
+        ref_graph=ref_graph,
+    )
+
+
+@to_files.register(dict)
 def _to_files_from_dict(
     source: dict,
-    config_root_file: Path,
+    config_root_file: StrOrPath,
     *,
     exclude_markers: bool = False,
 ) -> None:
     file_exporter = MultiFileExporter(exclude_markers=exclude_markers)
     file_exporter.export_to_file(
         source,
-        config_root_file,
+        ensure_path(config_root_file),
         source_path=None,
         ref_graph=None,
     )
@@ -1812,25 +1862,25 @@ def _to_files_from_dict(
 @to_file.register(MultirunResult)
 def _to_file_from_multirun_result(
     source: MultirunResult[Any],
-    output_path: Path,
+    output_path: StrOrPath,
     *,
     exclude_markers: bool = False,
 ) -> None:
     """Export a MultirunResult config to a single file.
 
     :param source: MultirunResult from instantiate_multirun iteration.
-    :param output_path: Output file path (extension determines format).
+    :param output_path: Output file path (extension determines format). Accepts str, Path, or any os.PathLike.
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
     """
     config = dict(source.config)  # Convert from MappingProxyType
     file_exporter = SingleFileExporter(exclude_markers=exclude_markers)
-    file_exporter.export_to_file(config, output_path)
+    file_exporter.export_to_file(config, ensure_path(output_path))
 
 
 @to_files.register(MultirunResult)
 def _to_files_from_multirun_result(
     source: MultirunResult[Any],
-    config_root_file: Path,
+    config_root_file: StrOrPath,
     *,
     exclude_markers: bool = False,
 ) -> None:
@@ -1839,14 +1889,14 @@ def _to_files_from_multirun_result(
     Note: Since MultirunResult doesn't have ref_graph, this exports as single file.
 
     :param source: MultirunResult from instantiate_multirun iteration.
-    :param config_root_file: Output root file path.
+    :param config_root_file: Output root file path. Accepts str, Path, or any os.PathLike.
     :param exclude_markers: If True, remove internal markers (_target_, etc.).
     """
     config = dict(source.config)  # Convert from MappingProxyType
     file_exporter = MultiFileExporter(exclude_markers=exclude_markers)
     file_exporter.export_to_file(
         config,
-        config_root_file,
+        ensure_path(config_root_file),
         source_path=None,
         ref_graph=None,
     )
@@ -1859,6 +1909,8 @@ def _to_files_from_multirun_result(
 #   from rconfig.composition import ConfigComposer, Provenance
 #   from rconfig.override import Override
 __all__ = [
+    # Type aliases
+    "StrOrPath",
     # Module-level API functions (primary interface)
     "register",
     "unregister",

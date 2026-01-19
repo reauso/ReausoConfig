@@ -1,13 +1,23 @@
 """Path parsing utilities for config paths.
 
 This module provides utilities for parsing and navigating config paths
-that support dot notation and list indexing.
+that support dot notation and list indexing, as well as path type utilities
+for the public API.
 """
 
+from __future__ import annotations
+
+import os
 import re
+from pathlib import Path
 from typing import Any
 
+# Type alias for public API - accepts strings and any PathLike
+StrOrPath = str | os.PathLike[str]
+
 __all__ = [
+    "StrOrPath",
+    "ensure_path",
     "parse_path_segments",
     "PathNavigationError",
     "navigate_path",
@@ -16,6 +26,17 @@ __all__ = [
     "set_value_at_path",
     "build_child_path",
 ]
+
+
+def ensure_path(path: StrOrPath) -> Path:
+    """Convert str or PathLike to Path for internal use.
+
+    :param path: A string, Path, or any os.PathLike object.
+    :return: A pathlib.Path object.
+    """
+    if isinstance(path, Path):
+        return path
+    return Path(path)
 
 # Regex for parsing instance paths with list indices
 PATH_SEGMENT_RE = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
