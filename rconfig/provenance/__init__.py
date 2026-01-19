@@ -35,7 +35,8 @@ from .formatting import (
     ProvenancePreset,
     ProvenanceFormatContext,
     ProvenanceLayout,
-    TreeLayout,
+    ProvenanceTreeLayout,
+    TreeLayout,  # Backwards compatibility alias
 )
 
 __all__ = [
@@ -54,5 +55,6 @@ __all__ = [
     "ProvenancePreset",
     "ProvenanceFormatContext",
     "ProvenanceLayout",
-    "TreeLayout",
+    "ProvenanceTreeLayout",
+    "TreeLayout",  # Backwards compatibility alias
 ]

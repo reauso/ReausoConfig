@@ -6,12 +6,9 @@ This module provides ConfigDiff: an immutable mapping of paths to diff entries.
 from __future__ import annotations
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import Any, Iterator
 
 from .models import DiffEntry, DiffEntryType
-
-if TYPE_CHECKING:
-    from .formatting import DiffFormat
 
 
 class ConfigDiff:
@@ -171,23 +168,6 @@ class ConfigDiff:
         """
         return len(self._added) == 0 and len(self._removed) == 0 and len(self._changed) == 0
 
-    def format(self) -> DiffFormat:
-        """Create a format builder for this diff.
-
-        Returns a fluent builder for configuring output format.
-
-        Usage::
-
-            diff.format().terminal()  # Default flat layout
-            diff.format().show_provenance().markdown()
-            diff.format().hide_unchanged().tree()
-
-        :return: DiffFormat builder for this diff.
-        """
-        from .formatting import DiffFormat
-
-        return DiffFormat(self)
-
     def to_dict(self) -> dict[str, dict[str, Any]]:
         """Convert diff to a plain dictionary.
 
@@ -222,4 +202,6 @@ class ConfigDiff:
 
         :return: Formatted diff string.
         """
-        return str(self.format())
+        from .formatting import DiffFormat
+
+        return str(DiffFormat(self))

@@ -15,6 +15,7 @@ from rconfig.provenance import (
     ProvenancePreset,
     TreeLayout,
 )
+from rconfig.provenance.formatting.model import ProvenanceDisplayModel
 
 
 class ProvenanceFormatBuilderTests(TestCase):
@@ -28,12 +29,12 @@ class ProvenanceFormatBuilderTests(TestCase):
         self.provenance = builder.build()
 
     def test_format__Default__ReturnsProvenanceFormat(self) -> None:
-        result = self.provenance.format()
+        result = ProvenanceFormat(self.provenance)
 
         self.assertIsInstance(result, ProvenanceFormat)
 
     def test_format__ShowHidePaths__SetsOverride(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         fmt.show_paths()
         ctx = fmt._ctx
@@ -44,7 +45,7 @@ class ProvenanceFormatBuilderTests(TestCase):
         self.assertFalse(ctx.show_paths)
 
     def test_format__ShowHideValues__SetsOverride(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         fmt.show_values()
         ctx = fmt._ctx
@@ -55,7 +56,7 @@ class ProvenanceFormatBuilderTests(TestCase):
         self.assertFalse(ctx.show_values)
 
     def test_format__ShowHideFiles__SetsOverride(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         fmt.show_files()
         ctx = fmt._ctx
@@ -66,7 +67,7 @@ class ProvenanceFormatBuilderTests(TestCase):
         self.assertFalse(ctx.show_files)
 
     def test_format__ShowHideLines__SetsOverride(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         fmt.show_lines()
         ctx = fmt._ctx
@@ -77,7 +78,7 @@ class ProvenanceFormatBuilderTests(TestCase):
         self.assertFalse(ctx.show_lines)
 
     def test_format__ShowHideSourceType__SetsOverride(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         fmt.show_source_type()
         ctx = fmt._ctx
@@ -88,7 +89,7 @@ class ProvenanceFormatBuilderTests(TestCase):
         self.assertFalse(ctx.show_source_type)
 
     def test_format__ShowHideChain__SetsOverride(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         fmt.show_chain()
         ctx = fmt._ctx
@@ -99,7 +100,7 @@ class ProvenanceFormatBuilderTests(TestCase):
         self.assertFalse(ctx.show_chain)
 
     def test_format__ShowHideOverrides__SetsOverride(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         fmt.show_overrides()
         ctx = fmt._ctx
@@ -110,7 +111,7 @@ class ProvenanceFormatBuilderTests(TestCase):
         self.assertFalse(ctx.show_overrides)
 
     def test_format__ShowHideTargets__SetsOverride(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         fmt.show_targets()
         ctx = fmt._ctx
@@ -121,7 +122,7 @@ class ProvenanceFormatBuilderTests(TestCase):
         self.assertFalse(ctx.show_targets)
 
     def test_format__MethodChaining__ReturnsSelf(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         result = fmt.show_paths().hide_values().show_files()
 
@@ -138,7 +139,7 @@ class ProvenanceFormatPresetTests(TestCase):
         self.provenance = builder.build()
 
     def test_format__MinimalPreset__HidesValuesAndChain(self) -> None:
-        fmt = self.provenance.format().minimal()
+        fmt = ProvenanceFormat(self.provenance).minimal()
         ctx = fmt._ctx
 
         self.assertTrue(ctx.show_paths)
@@ -151,7 +152,7 @@ class ProvenanceFormatPresetTests(TestCase):
         self.assertFalse(ctx.show_targets)
 
     def test_format__CompactPreset__HidesChainAndOverrides(self) -> None:
-        fmt = self.provenance.format().compact()
+        fmt = ProvenanceFormat(self.provenance).compact()
         ctx = fmt._ctx
 
         self.assertTrue(ctx.show_paths)
@@ -164,7 +165,7 @@ class ProvenanceFormatPresetTests(TestCase):
         self.assertTrue(ctx.show_targets)
 
     def test_format__FullPreset__ShowsEverything(self) -> None:
-        fmt = self.provenance.format().full()
+        fmt = ProvenanceFormat(self.provenance).full()
         ctx = fmt._ctx
 
         self.assertTrue(ctx.show_paths)
@@ -177,8 +178,8 @@ class ProvenanceFormatPresetTests(TestCase):
         self.assertTrue(ctx.show_targets)
 
     def test_format__PresetEnum__WorksLikeMethod(self) -> None:
-        fmt_method = self.provenance.format().minimal()
-        fmt_enum = self.provenance.format().preset(ProvenancePreset.MINIMAL)
+        fmt_method = ProvenanceFormat(self.provenance).minimal()
+        fmt_enum = ProvenanceFormat(self.provenance).preset(ProvenancePreset.MINIMAL)
 
         ctx_method = fmt_method._ctx
         ctx_enum = fmt_enum._ctx
@@ -187,7 +188,7 @@ class ProvenanceFormatPresetTests(TestCase):
         self.assertEqual(ctx_method.show_chain, ctx_enum.show_chain)
 
     def test_format__PresetWithOverride__OverrideWins(self) -> None:
-        fmt = self.provenance.format().minimal().show_values()
+        fmt = ProvenanceFormat(self.provenance).minimal().show_values()
         ctx = fmt._ctx
 
         # Minimal sets show_values=False, but explicit override sets True
@@ -206,25 +207,25 @@ class ProvenanceFormatFilterTests(TestCase):
         self.provenance = builder.build()
 
     def test_format__ForPath__AddsFilter(self) -> None:
-        fmt = self.provenance.format().for_path("/model.*")
+        fmt = ProvenanceFormat(self.provenance).for_path("/model.*")
         ctx = fmt._ctx
 
         self.assertEqual(["/model.*"], ctx.path_filters)
 
     def test_format__ForPathMultiple__AddsAllFilters(self) -> None:
-        fmt = self.provenance.format().for_path("/model.*").for_path("/data.*")
+        fmt = ProvenanceFormat(self.provenance).for_path("/model.*").for_path("/data.*")
         ctx = fmt._ctx
 
         self.assertEqual(["/model.*", "/data.*"], ctx.path_filters)
 
     def test_format__FromFile__AddsFilter(self) -> None:
-        fmt = self.provenance.format().from_file("config.yaml")
+        fmt = ProvenanceFormat(self.provenance).from_file("config.yaml")
         ctx = fmt._ctx
 
         self.assertEqual(["config.yaml"], ctx.file_filters)
 
     def test_format__FromFileMultiple__AddsAllFilters(self) -> None:
-        fmt = self.provenance.format().from_file("*.yaml").from_file("*.json")
+        fmt = ProvenanceFormat(self.provenance).from_file("*.yaml").from_file("*.json")
         ctx = fmt._ctx
 
         self.assertEqual(["*.yaml", "*.json"], ctx.file_filters)
@@ -241,52 +242,13 @@ class ProvenanceFormatLayoutTests(TestCase):
 
     def test_format__CustomLayout__UsesCustomLayout(self) -> None:
         class TestLayout(ProvenanceLayout):
-            def format_provenance(self, prov, ctx):
+            def render(self, model: ProvenanceDisplayModel) -> str:
                 return "CUSTOM OUTPUT"
 
-            def format_entry(self, entry, path, ctx):
-                return f"{path}={entry.value}"
-
-        fmt = self.provenance.format().layout(TestLayout())
+        fmt = ProvenanceFormat(self.provenance).layout(TestLayout())
         result = str(fmt)
 
         self.assertEqual("CUSTOM OUTPUT", result)
-
-    def test_format__LayoutWithDefaults__UsesLayoutDefaults(self) -> None:
-        class NoValuesLayout(ProvenanceLayout):
-            def get_default_context(self):
-                ctx = ProvenanceFormatContext()
-                ctx.show_values = False
-                return ctx
-
-            def format_provenance(self, prov, ctx):
-                return f"show_values={ctx.show_values}"
-
-            def format_entry(self, entry, path, ctx):
-                return ""
-
-        fmt = self.provenance.format().layout(NoValuesLayout())
-        result = str(fmt)
-
-        self.assertEqual("show_values=False", result)
-
-    def test_format__LayoutWithBuilderOverride__OverrideWins(self) -> None:
-        class NoValuesLayout(ProvenanceLayout):
-            def get_default_context(self):
-                ctx = ProvenanceFormatContext()
-                ctx.show_values = False
-                return ctx
-
-            def format_provenance(self, prov, ctx):
-                return f"show_values={ctx.show_values}"
-
-            def format_entry(self, entry, path, ctx):
-                return ""
-
-        fmt = self.provenance.format().layout(NoValuesLayout()).show_values()
-        result = str(fmt)
-
-        self.assertEqual("show_values=True", result)
 
 
 class ProvenanceNodeTests(TestCase):
@@ -487,7 +449,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
     def test_format__Repr__ReturnsLayoutClassName(self) -> None:
         """Test that __repr__ returns layout class name."""
         # Arrange
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         # Act
         result = repr(fmt)
@@ -499,7 +461,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
     def test_format__IndentMethod__SetsIndentSize(self) -> None:
         """Test that indent() method sets indent size correctly."""
         # Arrange
-        fmt = self.provenance.format().indent(4)
+        fmt = ProvenanceFormat(self.provenance).indent(4)
 
         # Act
         ctx = fmt._ctx
@@ -511,7 +473,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         """Test that chaining filters adds them all."""
         # Arrange
         fmt = (
-            self.provenance.format()
+            ProvenanceFormat(self.provenance)
             .for_path("/model.*")
             .for_path("/data.*")
             .from_file("*.yaml")
@@ -528,7 +490,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
     def test_format__PresetEnumCompact__AppliesCorrectSettings(self) -> None:
         """Test that preset(COMPACT) applies compact settings."""
         # Arrange
-        fmt = self.provenance.format().preset(ProvenancePreset.COMPACT)
+        fmt = ProvenanceFormat(self.provenance).preset(ProvenancePreset.COMPACT)
 
         # Act
         ctx = fmt._ctx
@@ -543,7 +505,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
     def test_format__PresetEnumFull__AppliesCorrectSettings(self) -> None:
         """Test that preset(FULL) applies full settings."""
         # Arrange
-        fmt = self.provenance.format().preset(ProvenancePreset.FULL)
+        fmt = ProvenanceFormat(self.provenance).preset(ProvenancePreset.FULL)
 
         # Act
         ctx = fmt._ctx
@@ -558,7 +520,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
     def test_format__ForPath__MutatesContext(self) -> None:
         """Test that for_path mutates the context directly."""
         # Arrange
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         # Act
         fmt.for_path("/test")
@@ -567,31 +529,10 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         # Assert - filters are accumulated
         self.assertEqual(["/test", "/test2"], fmt._ctx.path_filters)
 
-    def test_format__LayoutSwitch__GetsNewDefaults(self) -> None:
-        """Test that switching layout gets new default context."""
-        # Arrange
-        class CustomLayout(ProvenanceLayout):
-            def get_default_context(self):
-                return ProvenanceFormatContext(show_values=False, indent_size=8)
-
-            def format_provenance(self, prov, ctx):
-                return f"custom: indent={ctx.indent_size}"
-
-            def format_entry(self, entry, path, ctx):
-                return ""
-
-        # Act
-        fmt = self.provenance.format().layout(CustomLayout())
-        result = str(fmt)
-
-        # Assert
-        self.assertIn("custom", result)
-        self.assertIn("indent=8", result)
-
     def test_format__PresetThenOverride__OverrideWins(self) -> None:
         """Test that override after preset wins."""
         # Arrange
-        fmt = self.provenance.format().minimal().show_values()
+        fmt = ProvenanceFormat(self.provenance).minimal().show_values()
 
         # Act
         ctx = fmt._ctx
@@ -602,7 +543,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
     def test_format__OverrideThenPreset__PresetWins(self) -> None:
         """Test that preset after override wins."""
         # Arrange
-        fmt = self.provenance.format().show_values().minimal()
+        fmt = ProvenanceFormat(self.provenance).show_values().minimal()
 
         # Act
         ctx = fmt._ctx
@@ -614,7 +555,7 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         """Test that formatting empty provenance returns empty string."""
         # Arrange
         empty_prov = Provenance()
-        fmt = empty_prov.format()
+        fmt = ProvenanceFormat(empty_prov)
 
         # Act
         result = str(fmt)
@@ -625,10 +566,10 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
     def test_format__MultipleFormatCalls__IndependentBuilders(self) -> None:
         """Test that each format() call creates an independent builder."""
         # Arrange & Act
-        fmt1 = self.provenance.format()
+        fmt1 = ProvenanceFormat(self.provenance)
         fmt1.hide_paths()
 
-        fmt2 = self.provenance.format()
+        fmt2 = ProvenanceFormat(self.provenance)
 
         # Assert - second builder should have default values
         self.assertFalse(fmt1._ctx.show_paths)
@@ -667,7 +608,7 @@ class ProvenanceFormatDeprecationTests(TestCase):
         self.provenance = builder.build()
 
     def test_format__ShowHideDeprecations__SetsOverride(self) -> None:
-        fmt = self.provenance.format()
+        fmt = ProvenanceFormat(self.provenance)
 
         fmt.show_deprecations()
         ctx = fmt._ctx
@@ -678,7 +619,7 @@ class ProvenanceFormatDeprecationTests(TestCase):
         self.assertFalse(ctx.show_deprecations)
 
     def test_format__DeprecationsPreset__SetsDeprecationsOnly(self) -> None:
-        fmt = self.provenance.format().deprecations()
+        fmt = ProvenanceFormat(self.provenance).deprecations()
         ctx = fmt._ctx
 
         self.assertTrue(ctx.deprecations_only)
@@ -690,7 +631,7 @@ class ProvenanceFormatDeprecationTests(TestCase):
         self.assertFalse(ctx.show_targets)
 
     def test_format__DeprecationsPreset__FiltersToDeprecatedOnly(self) -> None:
-        result = str(self.provenance.format().deprecations())
+        result = str(ProvenanceFormat(self.provenance).deprecations())
 
         # Should include deprecated keys
         self.assertIn("learning_rate", result)
@@ -699,7 +640,7 @@ class ProvenanceFormatDeprecationTests(TestCase):
         self.assertNotIn("/model.lr", result)
 
     def test_format__DeprecationsPreset__ShowsDeprecationInfo(self) -> None:
-        result = str(self.provenance.format().deprecations())
+        result = str(ProvenanceFormat(self.provenance).deprecations())
 
         # Should show deprecation details
         self.assertIn("DEPRECATED", result)
@@ -708,7 +649,7 @@ class ProvenanceFormatDeprecationTests(TestCase):
         self.assertIn("Use 'model.optimizer.lr' instead", result)
 
     def test_format__DeprecationsPreset__ShowsHeader(self) -> None:
-        result = str(self.provenance.format().deprecations())
+        result = str(ProvenanceFormat(self.provenance).deprecations())
 
         self.assertIn("Deprecated Keys:", result)
         self.assertIn("-" * 16, result)
@@ -720,12 +661,12 @@ class ProvenanceFormatDeprecationTests(TestCase):
         builder.set_config({"test": 42})
         empty_prov = builder.build()
 
-        result = str(empty_prov.format().deprecations())
+        result = str(ProvenanceFormat(empty_prov).deprecations())
 
         self.assertEqual("No deprecated keys found.", result)
 
     def test_format__HideDeprecations__OmitsDeprecationInfo(self) -> None:
-        result = str(self.provenance.format().hide_deprecations())
+        result = str(ProvenanceFormat(self.provenance).hide_deprecations())
 
         # Should NOT show deprecation details
         self.assertNotIn("DEPRECATED", result)

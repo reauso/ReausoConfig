@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from rconfig.diff import ConfigDiff, DiffEntry, DiffEntryType, DiffFormatContext, DiffLayout
+from rconfig.diff import ConfigDiff, DiffEntry, DiffEntryType, DiffFormat, DiffFormatContext, DiffLayout
+from rconfig.diff.formatting.model import DiffDisplayModel, DiffDisplayModelBuilder
+from rconfig.provenance.models import ProvenanceEntry
 
 
 class TestDiffFormatContext:
@@ -63,308 +65,128 @@ class TestDiffLayoutABC:
 
     def test_cannot_instantiate_directly(self) -> None:
         """DiffLayout is abstract and cannot be instantiated directly."""
-        # Attempting to instantiate would fail because of abstract methods
-        # But we can test by creating a minimal concrete subclass
-        pass
+        with pytest.raises(TypeError):
+            DiffLayout()  # type: ignore
 
-    def test_get_default_context(self) -> None:
-        """get_default_context returns DiffFormatContext."""
+    def test_concrete_subclass_must_implement_render(self) -> None:
+        """Concrete subclass must implement render method."""
+
+        class IncompleteLayout(DiffLayout):
+            pass
+
+        with pytest.raises(TypeError):
+            IncompleteLayout()  # type: ignore
+
+    def test_concrete_subclass_with_render_works(self) -> None:
+        """Concrete subclass with render method can be instantiated."""
 
         class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
+            def render(self, model: DiffDisplayModel) -> str:
+                return "rendered"
 
         layout = MinimalLayout()
-        ctx = layout.get_default_context()
+        assert layout is not None
 
-        assert isinstance(ctx, DiffFormatContext)
+
+class TestDiffFormatValueFormatting:
+    """Tests for DiffFormat value formatting.
+
+    With the new architecture, value formatting is done in DiffFormat._format_value().
+    """
 
     def test_format_value_none(self) -> None:
-        """format_value handles None."""
+        """_format_value handles None."""
+        diff = ConfigDiff({})
+        fmt = DiffFormat(diff)
 
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
-
-        assert layout.format_value(None, ctx) == "null"
+        assert fmt._format_value(None) == "null"
 
     def test_format_value_bool(self) -> None:
-        """format_value handles booleans."""
+        """_format_value handles booleans."""
+        diff = ConfigDiff({})
+        fmt = DiffFormat(diff)
 
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
-
-        assert layout.format_value(True, ctx) == "true"
-        assert layout.format_value(False, ctx) == "false"
+        assert fmt._format_value(True) == "true"
+        assert fmt._format_value(False) == "false"
 
     def test_format_value_string(self) -> None:
-        """format_value handles strings with quotes."""
+        """_format_value handles strings with quotes."""
+        diff = ConfigDiff({})
+        fmt = DiffFormat(diff)
 
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
-
-        assert layout.format_value("hello", ctx) == "'hello'"
+        assert fmt._format_value("hello") == "'hello'"
 
     def test_format_value_number(self) -> None:
-        """format_value handles numbers."""
+        """_format_value handles numbers."""
+        diff = ConfigDiff({})
+        fmt = DiffFormat(diff)
 
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
-
-        assert layout.format_value(42, ctx) == "42"
-        assert layout.format_value(3.14, ctx) == "3.14"
+        assert fmt._format_value(42) == "42"
+        assert fmt._format_value(3.14) == "3.14"
 
     def test_format_value_truncates_long_values(self) -> None:
-        """format_value truncates long lists/dicts."""
-
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
+        """_format_value truncates long lists/dicts."""
+        diff = ConfigDiff({})
+        fmt = DiffFormat(diff)
 
         long_list = list(range(100))
-        result = layout.format_value(long_list, ctx)
+        result = fmt._format_value(long_list)
         assert len(result) <= 50
         assert result.endswith("...")
 
-    def test_format_location(self) -> None:
-        """format_location formats file:line."""
 
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
+class TestDiffFormatBuildModel:
+    """Tests for DiffFormat._build_model()."""
 
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext(show_files=True, show_lines=True)
-
-        result = layout.format_location("test.yaml", 42, ctx)
-        assert result == "test.yaml:42"
-
-    def test_format_location_file_only(self) -> None:
-        """format_location shows file only when lines disabled."""
-
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext(show_files=True, show_lines=False)
-
-        result = layout.format_location("test.yaml", 42, ctx)
-        assert result == "test.yaml"
-
-    def test_format_location_line_only(self) -> None:
-        """format_location shows line only when files disabled."""
-
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext(show_files=False, show_lines=True)
-
-        result = layout.format_location("test.yaml", 42, ctx)
-        assert result == "42"
-
-    def test_format_location_none_file(self) -> None:
-        """format_location handles None file."""
-
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext(show_files=True, show_lines=True)
-
-        result = layout.format_location(None, 42, ctx)
-        assert result == ""
-
-    def test_format_summary(self) -> None:
-        """format_summary creates count string."""
-
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
-
+    def test_build_creates_display_model(self) -> None:
+        """_build_model() creates a complete display model."""
         entries = {
             "a": DiffEntry("a", DiffEntryType.ADDED, right_value=1),
-            "b": DiffEntry("b", DiffEntryType.ADDED, right_value=2),
-            "c": DiffEntry("c", DiffEntryType.REMOVED, left_value=3),
+            "b": DiffEntry("b", DiffEntryType.REMOVED, left_value=2),
+            "c": DiffEntry("c", DiffEntryType.CHANGED, 3, 4),
         }
         diff = ConfigDiff(entries)
+        fmt = DiffFormat(diff)
 
-        result = layout.format_summary(diff, ctx)
-        assert "Added: 2" in result
-        assert "Removed: 1" in result
+        model = fmt._build_model()
 
-    def test_format_added(self) -> None:
-        """format_added creates + prefix entry."""
+        assert len(model.entries) == 3
+        assert model.empty_message is None
 
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
+        # Check entry types
+        added = [e for e in model.entries if e.diff_type == DiffEntryType.ADDED]
+        removed = [e for e in model.entries if e.diff_type == DiffEntryType.REMOVED]
+        changed = [e for e in model.entries if e.diff_type == DiffEntryType.CHANGED]
+        assert len(added) == 1
+        assert len(removed) == 1
+        assert len(changed) == 1
 
-            def format_entry(self, entry, ctx):
-                return ""
+    def test_build_respects_visibility_flags(self) -> None:
+        """_build_model() respects show_added, show_removed, etc. flags."""
+        entries = {
+            "a": DiffEntry("a", DiffEntryType.ADDED, right_value=1),
+            "b": DiffEntry("b", DiffEntryType.REMOVED, left_value=2),
+        }
+        diff = ConfigDiff(entries)
+        fmt = DiffFormat(diff)
+        fmt._ctx.show_added = False
 
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
+        model = fmt._build_model()
 
-        entry = DiffEntry("model.lr", DiffEntryType.ADDED, right_value=0.01)
-        result = layout.format_added(entry, ctx)
+        # Added should be filtered out
+        added = [e for e in model.entries if e.diff_type == DiffEntryType.ADDED]
+        removed = [e for e in model.entries if e.diff_type == DiffEntryType.REMOVED]
+        assert len(added) == 0
+        assert len(removed) == 1
 
-        assert "+ model.lr" in result
-        assert "0.01" in result
+    def test_build_empty_diff_shows_message(self) -> None:
+        """_build_model() sets empty_message for empty diff."""
+        diff = ConfigDiff({})
+        fmt = DiffFormat(diff)
 
-    def test_format_removed(self) -> None:
-        """format_removed creates - prefix entry."""
+        model = fmt._build_model()
 
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
+        assert model.empty_message is not None
+        assert "No differences found" in model.empty_message
 
-            def format_entry(self, entry, ctx):
-                return ""
 
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
-
-        entry = DiffEntry("model.lr", DiffEntryType.REMOVED, left_value=0.01)
-        result = layout.format_removed(entry, ctx)
-
-        assert "- model.lr" in result
-        assert "0.01" in result
-
-    def test_format_changed(self) -> None:
-        """format_changed creates ~ prefix entry with arrow."""
-
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
-
-        entry = DiffEntry("model.lr", DiffEntryType.CHANGED, 0.001, 0.01)
-        result = layout.format_changed(entry, ctx)
-
-        assert "~ model.lr" in result
-        assert "0.001" in result
-        assert "->" in result
-        assert "0.01" in result
-
-    def test_format_unchanged(self) -> None:
-        """format_unchanged creates space prefix entry."""
-
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
-
-        entry = DiffEntry("model.lr", DiffEntryType.UNCHANGED, 0.01, 0.01)
-        result = layout.format_unchanged(entry, ctx)
-
-        assert "model.lr" in result
-        assert "0.01" in result
-        assert not result.startswith("+")
-        assert not result.startswith("-")
-        assert not result.startswith("~")
-
-    def test_indent(self) -> None:
-        """indent adds spaces based on depth and indent_size."""
-
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext(indent_size=2)
-
-        assert layout.indent("text", 0, ctx) == "text"
-        assert layout.indent("text", 1, ctx) == "  text"
-        assert layout.indent("text", 2, ctx) == "    text"
-
-        ctx_4 = DiffFormatContext(indent_size=4)
-        assert layout.indent("text", 1, ctx_4) == "    text"
-
-    def test_join_entries(self) -> None:
-        """join_entries combines entries with newlines."""
-
-        class MinimalLayout(DiffLayout):
-            def format_diff(self, diff, ctx):
-                return ""
-
-            def format_entry(self, entry, ctx):
-                return ""
-
-        layout = MinimalLayout()
-        ctx = DiffFormatContext()
-
-        entries = ["line1", "line2", "line3"]
-        result = layout.join_entries(entries, ctx)
-
-        assert result == "line1\nline2\nline3"

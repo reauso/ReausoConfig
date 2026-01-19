@@ -1,22 +1,57 @@
 """Fluent builder for diff formatting.
 
-This module provides DiffFormat and DiffPreset for
-configuring diff output format with method chaining.
+This module provides DiffFormat, DiffPreset, and DiffFormatContext
+for configuring diff output format with method chaining.
 """
 
 from __future__ import annotations
 
-from copy import deepcopy
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Self
+from fnmatch import fnmatch
+from typing import Any, Self
 
-from .flat import DiffFlatLayout
-from .layout import DiffFormatContext, DiffLayout
-from .markdown import DiffMarkdownLayout
-from .tree import DiffTreeLayout
+from ..diff import ConfigDiff
+from ..models import DiffEntry, DiffEntryType
+from .layout import DiffLayout
+from .model import DiffDisplayModelBuilder
 
-if TYPE_CHECKING:
-    from ..diff import ConfigDiff
+
+@dataclass
+class DiffFormatContext:
+    """Settings that control what information is displayed.
+
+    These settings are used by DiffRenderModelBuilder to determine
+    what data to include in the render model.
+
+    :param show_paths: Show the config paths.
+    :param show_values: Show values.
+    :param show_files: Show source file names from provenance.
+    :param show_lines: Show line numbers from provenance.
+    :param show_provenance: Show provenance information.
+    :param show_unchanged: Include unchanged entries.
+    :param show_added: Include added entries.
+    :param show_removed: Include removed entries.
+    :param show_changed: Include changed entries.
+    :param show_counts: Show summary statistics.
+    :param indent_size: Number of spaces per indentation level.
+    :param path_filters: Glob patterns to filter by config path.
+    :param file_filters: Glob patterns to filter by source file.
+    """
+
+    show_paths: bool = True
+    show_values: bool = True
+    show_files: bool = True
+    show_lines: bool = True
+    show_provenance: bool = False
+    show_unchanged: bool = False
+    show_added: bool = True
+    show_removed: bool = True
+    show_changed: bool = True
+    show_counts: bool = True
+    indent_size: int = 2
+    path_filters: list[str] = field(default_factory=list)
+    file_filters: list[str] = field(default_factory=list)
 
 
 class DiffPreset(Enum):
@@ -69,8 +104,184 @@ class DiffFormat:
         :param diff: The ConfigDiff to format.
         """
         self._diff = diff
-        self._layout: DiffLayout = DiffFlatLayout()
-        self._ctx: DiffFormatContext = self._layout.get_default_context()
+        self._layout: DiffLayout | None = None
+        self._ctx: DiffFormatContext = DiffFormatContext()
+
+    def _get_layout(self) -> DiffLayout:
+        """Get the layout, creating default FlatLayout if needed.
+
+        :return: The layout instance.
+        """
+        if self._layout is None:
+            from .flat import DiffFlatLayout
+
+            return DiffFlatLayout()
+        return self._layout
+
+    def _build_model(self):
+        """Build the display model from current context.
+
+        This method implements all WHAT logic: filtering entries,
+        checking visibility flags, and formatting values.
+
+        :return: The display model.
+        """
+        builder = DiffDisplayModelBuilder()
+
+        # Compute summary from original diff data if enabled
+        if self._ctx.show_counts:
+            summary = self._build_summary()
+            builder.set_summary(summary)
+
+        # Handle empty diff
+        if self._diff.is_empty() and not self._ctx.show_unchanged:
+            builder.set_empty_message("No differences found.")
+            return builder.build()
+
+        # Process entries in sorted order
+        for path in sorted(self._diff.keys()):
+            entry = self._diff[path]
+
+            # Apply filters
+            if not self._matches_filters(path, entry):
+                continue
+
+            # Check visibility flags
+            if not self._should_show_type(entry.diff_type):
+                continue
+
+            # Add entry with only visible data
+            builder.add_entry(
+                path=path,
+                diff_type=entry.diff_type,
+                left_value=self._format_value(entry.left_value)
+                if self._ctx.show_values and entry.left_value is not None
+                else None,
+                right_value=self._format_value(entry.right_value)
+                if self._ctx.show_values and entry.right_value is not None
+                else None,
+                left_provenance=entry.left_provenance
+                if self._ctx.show_provenance
+                else None,
+                right_provenance=entry.right_provenance
+                if self._ctx.show_provenance
+                else None,
+            )
+
+        # Set empty message if diff has no differences
+        model = builder.build()
+        if not model.entries and self._diff.is_empty():
+            builder.set_empty_message("No differences found.")
+            return builder.build()
+
+        return model
+
+    def _build_summary(self) -> str | None:
+        """Build summary string from original diff data.
+
+        :return: Summary string or None if no changes.
+        """
+        added = sum(
+            1 for e in self._diff.values() if e.diff_type == DiffEntryType.ADDED
+        )
+        removed = sum(
+            1 for e in self._diff.values() if e.diff_type == DiffEntryType.REMOVED
+        )
+        changed = sum(
+            1 for e in self._diff.values() if e.diff_type == DiffEntryType.CHANGED
+        )
+        unchanged = sum(
+            1 for e in self._diff.values() if e.diff_type == DiffEntryType.UNCHANGED
+        )
+
+        parts: list[str] = []
+        if added > 0:
+            parts.append(f"Added: {added}")
+        if removed > 0:
+            parts.append(f"Removed: {removed}")
+        if changed > 0:
+            parts.append(f"Changed: {changed}")
+        if unchanged > 0 and self._ctx.show_unchanged:
+            parts.append(f"Unchanged: {unchanged}")
+
+        return ", ".join(parts) if parts else None
+
+    def _should_show_type(self, diff_type: DiffEntryType) -> bool:
+        """Check if a diff type should be shown.
+
+        :param diff_type: The diff type to check.
+        :return: True if the type should be shown.
+        """
+        match diff_type:
+            case DiffEntryType.ADDED:
+                return self._ctx.show_added
+            case DiffEntryType.REMOVED:
+                return self._ctx.show_removed
+            case DiffEntryType.CHANGED:
+                return self._ctx.show_changed
+            case DiffEntryType.UNCHANGED:
+                return self._ctx.show_unchanged
+
+    def _matches_filters(self, path: str, entry: DiffEntry) -> bool:
+        """Check if an entry matches the configured filters.
+
+        :param path: The config path.
+        :param entry: The diff entry.
+        :return: True if entry matches all filters.
+        """
+        # If no filters, everything matches
+        if not self._ctx.path_filters and not self._ctx.file_filters:
+            return True
+
+        # Check path filters (OR logic)
+        if self._ctx.path_filters:
+            path_match = any(
+                fnmatch(f"/{path}", pattern) or fnmatch(path, pattern)
+                for pattern in self._ctx.path_filters
+            )
+            if not path_match:
+                return False
+
+        # Check file filters (OR logic on either provenance)
+        if self._ctx.file_filters:
+            files_to_check: list[str] = []
+            if entry.left_provenance:
+                files_to_check.append(entry.left_provenance.file)
+            if entry.right_provenance:
+                files_to_check.append(entry.right_provenance.file)
+
+            if files_to_check:
+                file_match = any(
+                    fnmatch(f, pattern)
+                    for f in files_to_check
+                    for pattern in self._ctx.file_filters
+                )
+                if not file_match:
+                    return False
+            else:
+                # No provenance to check against file filters
+                return False
+
+        return True
+
+    def _format_value(self, value: Any) -> str:
+        """Format a value for display.
+
+        :param value: The value to format.
+        :return: Formatted value string.
+        """
+        match value:
+            case None:
+                return "null"
+            case bool():
+                return "true" if value else "false"
+            case str():
+                return repr(value)
+            case list() | dict():
+                s = str(value)
+                return s[:47] + "..." if len(s) > 50 else s
+            case _:
+                return str(value)
 
     # Show/Hide toggles
 
@@ -336,14 +547,6 @@ class DiffFormat:
         :return: Self for chaining.
         """
         self._layout = layout
-        # Merge layout defaults with current context
-        # Keep user's explicit settings, fill in from layout defaults
-        layout_ctx = layout.get_default_context()
-        # Copy any list fields that might have been modified
-        if not self._ctx.path_filters:
-            self._ctx.path_filters = deepcopy(layout_ctx.path_filters)
-        if not self._ctx.file_filters:
-            self._ctx.file_filters = deepcopy(layout_ctx.file_filters)
         return self
 
     # Output methods
@@ -353,25 +556,33 @@ class DiffFormat:
 
         :return: Formatted string for terminal display.
         """
-        if not isinstance(self._layout, DiffFlatLayout):
-            self._layout = DiffFlatLayout()
-        return self._layout.format_diff(self._diff, self._ctx)
+        from .flat import DiffFlatLayout
+
+        self._layout = DiffFlatLayout()
+        model = self._build_model()
+        return self._layout.render(model)
 
     def tree(self) -> str:
         """Format as grouped tree structure.
 
         :return: Formatted string with tree layout.
         """
+        from .tree import DiffTreeLayout
+
         self._layout = DiffTreeLayout()
-        return self._layout.format_diff(self._diff, self._ctx)
+        model = self._build_model()
+        return self._layout.render(model)
 
     def markdown(self) -> str:
         """Format as markdown table.
 
         :return: Markdown-formatted string.
         """
+        from .markdown import DiffMarkdownLayout
+
         self._layout = DiffMarkdownLayout()
-        return self._layout.format_diff(self._diff, self._ctx)
+        model = self._build_model()
+        return self._layout.render(model)
 
     def json(self) -> dict:
         """Format as dictionary (for JSON serialization).
@@ -385,4 +596,6 @@ class DiffFormat:
 
         :return: Formatted diff string.
         """
-        return self._layout.format_diff(self._diff, self._ctx)
+        model = self._build_model()
+        layout = self._get_layout()
+        return layout.render(model)

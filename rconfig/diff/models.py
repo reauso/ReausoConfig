@@ -29,6 +29,22 @@ class DiffEntryType(StrEnum):
     CHANGED = "changed"
     UNCHANGED = "unchanged"
 
+    @property
+    def indicator(self) -> str:
+        """Return the visual indicator for this diff type.
+
+        :return: Single character indicator (+, -, ~, or space).
+        """
+        match self:
+            case DiffEntryType.ADDED:
+                return "+"
+            case DiffEntryType.REMOVED:
+                return "-"
+            case DiffEntryType.CHANGED:
+                return "~"
+            case DiffEntryType.UNCHANGED:
+                return " "
+
 
 @dataclass(frozen=True, slots=True)
 class DiffEntry:

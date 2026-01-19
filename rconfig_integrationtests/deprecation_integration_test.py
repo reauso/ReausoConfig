@@ -207,7 +207,7 @@ epochs: 100
         prov = builder.build()
 
         # Act
-        result = str(prov.format().deprecations())
+        result = str(rc.format(prov).deprecations())
 
         # Assert
         self.assertIn("Deprecated Keys:", result)

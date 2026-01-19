@@ -8,15 +8,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from rconfig._internal.path_utils import build_child_path
 
 from .models import ProvenanceEntry, ProvenanceNode
-
-if TYPE_CHECKING:
-    from rconfig.provenance.formatting.layout import ProvenanceLayout
-    from rconfig.provenance.formatting.format import ProvenanceFormat
 
 
 class Provenance(Mapping[str, ProvenanceEntry]):
@@ -107,30 +103,6 @@ class Provenance(Mapping[str, ProvenanceEntry]):
         return self._config
 
     # === Domain-specific methods ===
-
-    def format(self, layout: ProvenanceLayout | None = None) -> ProvenanceFormat:
-        """Create a format builder for customizing provenance output.
-
-        :param layout: Optional custom layout. Uses TreeLayout if None.
-        :return: ProvenanceFormat builder for method chaining.
-
-        Example::
-
-            # Use default full format
-            print(prov.format())
-
-            # Use minimal preset
-            print(prov.format().minimal())
-
-            # Custom options
-            print(prov.format().hide_chain().for_path("/model.*"))
-
-            # Custom layout
-            print(prov.format(layout=TableLayout()))
-        """
-        from rconfig.provenance.formatting.format import ProvenanceFormat
-
-        return ProvenanceFormat(self, layout)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the entire provenance to a dictionary.
