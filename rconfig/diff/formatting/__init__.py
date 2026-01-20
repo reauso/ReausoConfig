@@ -10,16 +10,27 @@ from .model import (
     DiffEntryDisplayModel,
 )
 from .flat import DiffFlatLayout
-from .format import DiffFormat, DiffFormatContext, DiffPreset
+from .format import DiffFormat, DiffFormatContext
 from .layout import DiffLayout
 from .markdown import DiffMarkdownLayout
 from .tree import DiffTreeLayout
+from .registry import (
+    DiffPresetEntry,
+    DiffRegistry,
+    get_diff_registry,
+)
+
+# Import presets module to trigger builtin registration
+from . import presets as _presets  # noqa: F401
 
 __all__ = [
     # Format builder
     "DiffFormat",
     "DiffFormatContext",
-    "DiffPreset",
+    # Registry
+    "DiffPresetEntry",
+    "DiffRegistry",
+    "get_diff_registry",
     # Display model
     "DiffDisplayModel",
     "DiffDisplayModelBuilder",

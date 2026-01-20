@@ -12,7 +12,6 @@ from rconfig.provenance import (
     ProvenanceFormatContext,
     ProvenanceLayout,
     ProvenanceNode,
-    ProvenancePreset,
     TreeLayout,
 )
 from rconfig.provenance.formatting.model import ProvenanceDisplayModel
@@ -177,15 +176,15 @@ class ProvenanceFormatPresetTests(TestCase):
         self.assertTrue(ctx.show_overrides)
         self.assertTrue(ctx.show_targets)
 
-    def test_format__PresetEnum__WorksLikeMethod(self) -> None:
+    def test_format__PresetString__WorksLikeMethod(self) -> None:
         fmt_method = ProvenanceFormat(self.provenance).minimal()
-        fmt_enum = ProvenanceFormat(self.provenance).preset(ProvenancePreset.MINIMAL)
+        fmt_string = ProvenanceFormat(self.provenance).preset("minimal")
 
         ctx_method = fmt_method._ctx
-        ctx_enum = fmt_enum._ctx
+        ctx_string = fmt_string._ctx
 
-        self.assertEqual(ctx_method.show_values, ctx_enum.show_values)
-        self.assertEqual(ctx_method.show_chain, ctx_enum.show_chain)
+        self.assertEqual(ctx_method.show_values, ctx_string.show_values)
+        self.assertEqual(ctx_method.show_chain, ctx_string.show_chain)
 
     def test_format__PresetWithOverride__OverrideWins(self) -> None:
         fmt = ProvenanceFormat(self.provenance).minimal().show_values()
@@ -487,10 +486,10 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         self.assertEqual(["/model.*", "/data.*"], ctx.path_filters)
         self.assertEqual(["*.yaml", "*.json"], ctx.file_filters)
 
-    def test_format__PresetEnumCompact__AppliesCorrectSettings(self) -> None:
-        """Test that preset(COMPACT) applies compact settings."""
+    def test_format__PresetStringCompact__AppliesCorrectSettings(self) -> None:
+        """Test that preset("compact") applies compact settings."""
         # Arrange
-        fmt = ProvenanceFormat(self.provenance).preset(ProvenancePreset.COMPACT)
+        fmt = ProvenanceFormat(self.provenance).preset("compact")
 
         # Act
         ctx = fmt._ctx
@@ -502,10 +501,10 @@ class ProvenanceFormatEdgeCaseTests(TestCase):
         self.assertFalse(ctx.show_chain)
         self.assertFalse(ctx.show_overrides)
 
-    def test_format__PresetEnumFull__AppliesCorrectSettings(self) -> None:
-        """Test that preset(FULL) applies full settings."""
+    def test_format__PresetStringFull__AppliesCorrectSettings(self) -> None:
+        """Test that preset("full") applies full settings."""
         # Arrange
-        fmt = ProvenanceFormat(self.provenance).preset(ProvenancePreset.FULL)
+        fmt = ProvenanceFormat(self.provenance).preset("full")
 
         # Act
         ctx = fmt._ctx

@@ -1,13 +1,13 @@
 """Fluent builder for diff formatting.
 
-This module provides DiffFormat, DiffPreset, and DiffFormatContext
-for configuring diff output format with method chaining.
+This module provides DiffFormat and DiffFormatContext for configuring
+diff output format with method chaining. Presets are managed via
+the DiffRegistry.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
 from fnmatch import fnmatch
 from typing import Any, Self
 
@@ -52,21 +52,6 @@ class DiffFormatContext:
     indent_size: int = 2
     path_filters: list[str] = field(default_factory=list)
     file_filters: list[str] = field(default_factory=list)
-
-
-class DiffPreset(Enum):
-    """Preset configurations for common diff output scenarios.
-
-    :cvar CHANGES_ONLY: Only added/removed/changed entries (default).
-    :cvar WITH_CONTEXT: Changes plus nearby unchanged entries.
-    :cvar FULL: All entries including unchanged.
-    :cvar SUMMARY: Only statistics, no individual entries.
-    """
-
-    CHANGES_ONLY = "changes_only"
-    WITH_CONTEXT = "with_context"
-    FULL = "full"
-    SUMMARY = "summary"
 
 
 class DiffFormat:
@@ -447,70 +432,87 @@ class DiffFormat:
 
     # Presets
 
-    def changes_only(self) -> Self:
-        """Apply CHANGES_ONLY preset: only added/removed/changed entries.
+    def preset(self, name: str) -> Self:
+        """Apply a preset by name.
+
+        :param name: The preset name (e.g., "changes_only", "full", "summary").
+        :return: Self for chaining.
+        :raises ValueError: If preset name is not registered.
+
+        Example::
+
+            # Apply a built-in preset
+            print(diff.format().preset("changes_only"))
+
+            # Apply a custom preset
+            print(diff.format().preset("my_custom_preset"))
+        """
+        from .registry import get_diff_registry
+
+        entry = get_diff_registry().get_preset(name)
+
+        if entry is None:
+            raise ValueError(f"Unknown preset '{name}' for diff formatting")
+
+        preset_ctx = entry.factory()
+        self._apply_context(preset_ctx)
+        return self
+
+    def _apply_context(self, preset_ctx: DiffFormatContext) -> None:
+        """Apply preset context values to current context.
+
+        :param preset_ctx: The preset context to apply.
+        """
+        for field_name in [
+            "show_paths",
+            "show_values",
+            "show_files",
+            "show_lines",
+            "show_provenance",
+            "show_unchanged",
+            "show_added",
+            "show_removed",
+            "show_changed",
+            "show_counts",
+            "indent_size",
+        ]:
+            if hasattr(preset_ctx, field_name):
+                setattr(self._ctx, field_name, getattr(preset_ctx, field_name))
+
+    def default(self) -> Self:
+        """Apply default preset: reset to default settings.
 
         :return: Self for chaining.
         """
-        self._ctx.show_added = True
-        self._ctx.show_removed = True
-        self._ctx.show_changed = True
-        self._ctx.show_unchanged = False
-        self._ctx.show_counts = True
-        return self
+        return self.preset("default")
+
+    def changes_only(self) -> Self:
+        """Apply changes_only preset: only added/removed/changed entries.
+
+        :return: Self for chaining.
+        """
+        return self.preset("changes_only")
 
     def with_context(self) -> Self:
-        """Apply WITH_CONTEXT preset: changes plus unchanged entries.
+        """Apply with_context preset: changes plus unchanged entries.
 
         :return: Self for chaining.
         """
-        self._ctx.show_added = True
-        self._ctx.show_removed = True
-        self._ctx.show_changed = True
-        self._ctx.show_unchanged = True
-        self._ctx.show_counts = True
-        return self
+        return self.preset("with_context")
 
     def full(self) -> Self:
-        """Apply FULL preset: all entries including unchanged.
+        """Apply full preset: all entries including unchanged.
 
         :return: Self for chaining.
         """
-        self._ctx.show_added = True
-        self._ctx.show_removed = True
-        self._ctx.show_changed = True
-        self._ctx.show_unchanged = True
-        self._ctx.show_provenance = True
-        self._ctx.show_counts = True
-        return self
+        return self.preset("full")
 
     def summary(self) -> Self:
-        """Apply SUMMARY preset: only statistics, no individual entries.
+        """Apply summary preset: only statistics, no individual entries.
 
         :return: Self for chaining.
         """
-        self._ctx.show_added = False
-        self._ctx.show_removed = False
-        self._ctx.show_changed = False
-        self._ctx.show_unchanged = False
-        self._ctx.show_counts = True
-        return self
-
-    def preset(self, preset: DiffPreset) -> Self:
-        """Apply a preset configuration.
-
-        :param preset: The preset to apply.
-        :return: Self for chaining.
-        """
-        if preset == DiffPreset.CHANGES_ONLY:
-            return self.changes_only()
-        elif preset == DiffPreset.WITH_CONTEXT:
-            return self.with_context()
-        elif preset == DiffPreset.FULL:
-            return self.full()
-        elif preset == DiffPreset.SUMMARY:
-            return self.summary()
-        return self
+        return self.preset("summary")
 
     # Filtering
 
