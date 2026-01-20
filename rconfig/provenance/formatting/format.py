@@ -1,17 +1,17 @@
 """Fluent builder for provenance formatting.
 
-This module provides the ProvenanceFormat builder class, ProvenancePreset
-enum, and ProvenanceFormatContext for configuring how provenance is displayed.
+This module provides the ProvenanceFormat builder class and ProvenanceFormatContext
+for configuring how provenance is displayed. Presets are managed via the
+ProvenanceRegistry.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
 from fnmatch import fnmatch
 from typing import Any, Self
 
-from rconfig.provenance.models import EntrySourceType, ProvenanceEntry
+from rconfig.provenance.models import ProvenanceEntry
 from rconfig.provenance.provenance import Provenance
 
 from .layout import ProvenanceLayout
@@ -62,21 +62,6 @@ class ProvenanceFormatContext:
     indent_size: int = 2
     path_filters: list[str] = field(default_factory=list)
     file_filters: list[str] = field(default_factory=list)
-
-
-class ProvenancePreset(Enum):
-    """Preset configurations for provenance formatting.
-
-    :cvar MINIMAL: Show only paths, files, and lines.
-    :cvar COMPACT: Show paths, values, files, lines, source type, and types.
-    :cvar FULL: Show everything including chains, overrides, types, and descriptions.
-    :cvar HELP: Show paths, types, values, and descriptions for CLI help.
-    """
-
-    MINIMAL = "minimal"
-    COMPACT = "compact"
-    FULL = "full"
-    HELP = "help"
 
 
 class ProvenanceFormat:
@@ -310,71 +295,89 @@ class ProvenanceFormat:
 
     # --- Presets ---
 
+    def preset(self, name: str) -> Self:
+        """Apply a preset by name.
+
+        :param name: The preset name (e.g., "minimal", "full", "values").
+        :return: Self for method chaining.
+        :raises ValueError: If preset name is not registered.
+
+        Example::
+
+            # Apply a built-in preset
+            print(prov.format().preset("minimal"))
+
+            # Apply a custom preset
+            print(prov.format().preset("my_custom_preset"))
+        """
+        from .registry import get_provenance_registry
+
+        entry = get_provenance_registry().get_preset(name)
+
+        if entry is None:
+            raise ValueError(f"Unknown preset '{name}' for provenance formatting")
+
+        preset_ctx = entry.factory()
+        self._apply_context(preset_ctx)
+        return self
+
+    def _apply_context(self, preset_ctx: ProvenanceFormatContext) -> None:
+        """Apply preset context values to current context.
+
+        :param preset_ctx: The preset context to apply.
+        """
+        for field_name in [
+            "show_paths",
+            "show_values",
+            "show_files",
+            "show_lines",
+            "show_source_type",
+            "show_chain",
+            "show_overrides",
+            "show_targets",
+            "show_deprecations",
+            "show_types",
+            "show_descriptions",
+            "deprecations_only",
+            "indent_size",
+        ]:
+            if hasattr(preset_ctx, field_name):
+                setattr(self._ctx, field_name, getattr(preset_ctx, field_name))
+
+    def default(self) -> Self:
+        """Apply default preset: reset to default settings.
+
+        :return: Self for method chaining.
+        """
+        return self.preset("default")
+
     def minimal(self) -> Self:
         """Apply minimal preset: paths, files, and lines only.
 
         :return: Self for method chaining.
         """
-        self._ctx.show_paths = True
-        self._ctx.show_values = False
-        self._ctx.show_files = True
-        self._ctx.show_lines = True
-        self._ctx.show_source_type = False
-        self._ctx.show_chain = False
-        self._ctx.show_overrides = False
-        self._ctx.show_targets = False
-        return self
+        return self.preset("minimal")
 
     def compact(self) -> Self:
         """Apply compact preset: paths, values, files, lines, source type, targets, types.
 
         :return: Self for method chaining.
         """
-        self._ctx.show_paths = True
-        self._ctx.show_values = True
-        self._ctx.show_files = True
-        self._ctx.show_lines = True
-        self._ctx.show_source_type = True
-        self._ctx.show_chain = False
-        self._ctx.show_overrides = False
-        self._ctx.show_targets = True
-        self._ctx.show_types = True
-        self._ctx.show_descriptions = False
-        return self
+        return self.preset("compact")
 
     def full(self) -> Self:
         """Apply full preset: show everything including types and descriptions.
 
         :return: Self for method chaining.
         """
-        self._ctx.show_paths = True
-        self._ctx.show_values = True
-        self._ctx.show_files = True
-        self._ctx.show_lines = True
-        self._ctx.show_source_type = True
-        self._ctx.show_chain = True
-        self._ctx.show_overrides = True
-        self._ctx.show_targets = True
-        self._ctx.show_types = True
-        self._ctx.show_descriptions = True
-        return self
+        return self.preset("full")
 
-    def preset(self, preset: ProvenancePreset) -> Self:
-        """Apply a preset by enum value.
+    def values(self) -> Self:
+        """Apply values preset: paths and values only.
 
-        :param preset: The preset to apply.
         :return: Self for method chaining.
         """
-        if preset == ProvenancePreset.MINIMAL:
-            return self.minimal()
-        elif preset == ProvenancePreset.COMPACT:
-            return self.compact()
-        elif preset == ProvenancePreset.FULL:
-            return self.full()
-        elif preset == ProvenancePreset.HELP:
-            return self.help()
-        else:
-            return self
+        return self.preset("values")
 
     def help(self) -> Self:
         """Apply help preset: paths, types, values, and descriptions for CLI help.
@@ -391,18 +394,7 @@ class ProvenanceFormat:
             # model.lr              float       0.001      Learning rate
             # model.hidden_size     int         256        Hidden layer size
         """
-        self._ctx.show_paths = True
-        self._ctx.show_types = True
-        self._ctx.show_values = True
-        self._ctx.show_descriptions = True
-        self._ctx.show_files = False
-        self._ctx.show_lines = False
-        self._ctx.show_source_type = False
-        self._ctx.show_chain = False
-        self._ctx.show_overrides = False
-        self._ctx.show_targets = False
-        self._ctx.show_deprecations = False
-        return self
+        return self.preset("help")
 
     def deprecations(self) -> Self:
         """Apply deprecations preset: show only deprecated keys.
@@ -423,17 +415,7 @@ class ProvenanceFormat:
             #   DEPRECATED -> model.optimizer.lr (remove in 2.0.0)
             #   Message: Use 'model.optimizer.lr' instead
         """
-        self._ctx.show_paths = True
-        self._ctx.show_values = True
-        self._ctx.show_files = True
-        self._ctx.show_lines = True
-        self._ctx.show_source_type = False
-        self._ctx.show_chain = False
-        self._ctx.show_overrides = False
-        self._ctx.show_targets = False
-        self._ctx.show_deprecations = True
-        self._ctx.deprecations_only = True
-        return self
+        return self.preset("deprecations")
 
     # --- Layout ---
 

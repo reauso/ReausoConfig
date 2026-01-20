@@ -13,7 +13,6 @@ from rconfig.diff import (
     DiffFormatContext,
     DiffLayout,
     DiffMarkdownLayout,
-    DiffPreset,
     DiffTreeLayout,
 )
 from rconfig.diff.formatting.model import DiffDisplayModel
@@ -223,10 +222,10 @@ class TestDiffFormatPresets:
         """preset() method applies named presets."""
         fmt = DiffFormat(diff)
 
-        fmt.preset(DiffPreset.FULL)
+        fmt.preset("full")
         assert fmt._ctx.show_provenance is True
 
-        fmt.preset(DiffPreset.SUMMARY)
+        fmt.preset("summary")
         assert fmt._ctx.show_added is False
 
     def test_preset_chaining(self, diff: ConfigDiff) -> None:

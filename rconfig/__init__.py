@@ -67,12 +67,15 @@ from .diff import (
     DiffEntryType,
     DiffBuilder,
     DiffFormat,
-    DiffPreset,
     DiffFormatContext,
     DiffLayout,
     DiffFlatLayout,
     DiffTreeLayout,
     DiffMarkdownLayout,
+    # Registry
+    DiffPresetEntry,
+    DiffRegistry,
+    get_diff_registry,
 )
 from .validation import ConfigValidator, ValidationResult
 from .instantiation import ConfigInstantiator, is_lazy_proxy, force_initialize
@@ -89,11 +92,14 @@ from .provenance import (
     EntrySourceType,
     NodeSourceType,
     ProvenanceFormat,
-    ProvenancePreset,
     ProvenanceFormatContext,
     ProvenanceLayout,
     ProvenanceTreeLayout,
     TreeLayout,  # Backwards compatibility alias
+    # Registry
+    ProvenancePresetEntry,
+    ProvenanceRegistry,
+    get_provenance_registry,
 )
 from .override import (
     Override,
@@ -1902,6 +1908,154 @@ def _to_files_from_multirun_result(
     )
 
 
+# === Format Preset API ===
+
+
+def register_provenance_preset(
+    name: str,
+    factory: Callable[[], ProvenanceFormatContext],
+    description: str = "",
+) -> None:
+    """Register a custom provenance format preset.
+
+    :param name: Unique name for the preset.
+    :param factory: Callable that returns a ProvenanceFormatContext.
+    :param description: Human-readable description.
+    :raises ValueError: If name conflicts with a built-in preset.
+
+    Example::
+
+        import rconfig as rc
+
+        rc.register_provenance_preset(
+            "my_preset",
+            lambda: rc.ProvenanceFormatContext(show_paths=True, show_values=True),
+            "My custom preset",
+        )
+    """
+    get_provenance_registry().register_preset(name, factory, description)
+
+
+def unregister_provenance_preset(name: str) -> None:
+    """Unregister a custom provenance format preset.
+
+    :param name: Name of the preset to unregister.
+    :raises KeyError: If preset is not registered.
+    :raises ValueError: If trying to unregister a built-in preset.
+    """
+    get_provenance_registry().unregister_preset(name)
+
+
+def known_provenance_presets() -> MappingProxyType[str, ProvenancePresetEntry]:
+    """Get all registered provenance presets.
+
+    :return: Read-only mapping of preset names to entries.
+
+    Example::
+
+        for name, entry in rc.known_provenance_presets().items():
+            print(f"{name}: {entry.description}")
+    """
+    return get_provenance_registry().known_presets
+
+
+def provenance_preset(
+    name: str,
+    description: str = "",
+) -> Callable[[Callable[[], ProvenanceFormatContext]], Callable[[], ProvenanceFormatContext]]:
+    """Decorator to register a function as a provenance preset.
+
+    :param name: Unique name for the preset.
+    :param description: Human-readable description.
+    :return: Decorator function.
+
+    Example::
+
+        import rconfig as rc
+
+        @rc.provenance_preset("debug", "Full debug output")
+        def debug_preset() -> rc.ProvenanceFormatContext:
+            return rc.ProvenanceFormatContext(
+                show_paths=True,
+                show_values=True,
+                show_chain=True,
+                show_types=True,
+            )
+
+        # Use it
+        print(rc.format(prov).preset("debug"))
+    """
+    def decorator(
+        factory: Callable[[], ProvenanceFormatContext],
+    ) -> Callable[[], ProvenanceFormatContext]:
+        get_provenance_registry().register_preset(name, factory, description)
+        return factory
+    return decorator
+
+
+def register_diff_preset(
+    name: str,
+    factory: Callable[[], DiffFormatContext],
+    description: str = "",
+) -> None:
+    """Register a custom diff format preset.
+
+    :param name: Unique name for the preset.
+    :param factory: Callable that returns a DiffFormatContext.
+    :param description: Human-readable description.
+    :raises ValueError: If name conflicts with a built-in preset.
+    """
+    get_diff_registry().register_preset(name, factory, description)
+
+
+def unregister_diff_preset(name: str) -> None:
+    """Unregister a custom diff format preset.
+
+    :param name: Name of the preset to unregister.
+    :raises KeyError: If preset is not registered.
+    :raises ValueError: If trying to unregister a built-in preset.
+    """
+    get_diff_registry().unregister_preset(name)
+
+
+def known_diff_presets() -> MappingProxyType[str, DiffPresetEntry]:
+    """Get all registered diff presets.
+
+    :return: Read-only mapping of preset names to entries.
+    """
+    return get_diff_registry().known_presets
+
+
+def diff_preset(
+    name: str,
+    description: str = "",
+) -> Callable[[Callable[[], DiffFormatContext]], Callable[[], DiffFormatContext]]:
+    """Decorator to register a function as a diff preset.
+
+    :param name: Unique name for the preset.
+    :param description: Human-readable description.
+    :return: Decorator function.
+
+    Example::
+
+        import rconfig as rc
+
+        @rc.diff_preset("added_only", "Show only added entries")
+        def added_only_preset() -> rc.DiffFormatContext:
+            return rc.DiffFormatContext(
+                show_added=True,
+                show_removed=False,
+                show_changed=False,
+            )
+    """
+    def decorator(
+        factory: Callable[[], DiffFormatContext],
+    ) -> Callable[[], DiffFormatContext]:
+        get_diff_registry().register_preset(name, factory, description)
+        return factory
+    return decorator
+
+
 # Public API - Minimal root exports
 # For classes like TargetRegistry, ConfigValidator, etc., import from submodules:
 #   from rconfig.target import TargetRegistry
@@ -1940,12 +2094,29 @@ __all__ = [
     "DiffEntryType",
     "DiffBuilder",
     "DiffFormat",
-    "DiffPreset",
     "DiffFormatContext",
     "DiffLayout",
     "DiffFlatLayout",
     "DiffTreeLayout",
     "DiffMarkdownLayout",
+    # Provenance Format Context
+    "ProvenanceFormatContext",
+    # Format Preset API (provenance)
+    "register_provenance_preset",
+    "unregister_provenance_preset",
+    "known_provenance_presets",
+    "provenance_preset",
+    "ProvenancePresetEntry",
+    "ProvenanceRegistry",
+    "get_provenance_registry",
+    # Format Preset API (diff)
+    "register_diff_preset",
+    "unregister_diff_preset",
+    "known_diff_presets",
+    "diff_preset",
+    "DiffPresetEntry",
+    "DiffRegistry",
+    "get_diff_registry",
     # Lazy instantiation utilities
     "is_lazy_proxy",
     "force_initialize",
