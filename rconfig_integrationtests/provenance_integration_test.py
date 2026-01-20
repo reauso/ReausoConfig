@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest import TestCase
 
 import rconfig as rc
-from rconfig.composition import ConfigComposer, ProvenancePreset
+from rconfig.composition import ConfigComposer
 
 
 # Test dataclasses
@@ -208,13 +208,13 @@ class ProvenanceIntegrationTests(TestCase):
 
         # Act
         method_output = str(rc.format(provenance).minimal())
-        enum_output = str(rc.format(provenance).preset(ProvenancePreset.MINIMAL))
+        string_output = str(rc.format(provenance).preset("minimal"))
 
         # Assert
-        self.assertEqual(method_output, enum_output)
+        self.assertEqual(method_output, string_output)
 
-    def test_presetEnum__Full__MatchesFullMethod(self):
-        """Test that enum preset matches method preset."""
+    def test_presetString__Full__MatchesFullMethod(self):
+        """Test that string preset matches method preset."""
         # Arrange
         config_path = CONFIG_DIR / "trainer_config.yaml"
         composer = ConfigComposer(config_path)
@@ -222,10 +222,10 @@ class ProvenanceIntegrationTests(TestCase):
 
         # Act
         method_output = str(rc.format(provenance).full())
-        enum_output = str(rc.format(provenance).preset(ProvenancePreset.FULL))
+        string_output = str(rc.format(provenance).preset("full"))
 
         # Assert
-        self.assertEqual(method_output, enum_output)
+        self.assertEqual(method_output, string_output)
 
     def test_setConfig__PopulatesValues(self):
         """Test that set_config populates entry values."""

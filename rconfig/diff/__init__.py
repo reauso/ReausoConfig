@@ -31,12 +31,15 @@ from .builder import DiffBuilder
 # Formatting subsystem
 from .formatting import (
     DiffFormat,
-    DiffPreset,
     DiffFormatContext,
     DiffLayout,
     DiffFlatLayout,
     DiffTreeLayout,
     DiffMarkdownLayout,
+    # Registry
+    DiffPresetEntry,
+    DiffRegistry,
+    get_diff_registry,
 )
 
 __all__ = [
@@ -49,10 +52,13 @@ __all__ = [
     "DiffBuilder",
     # Formatting
     "DiffFormat",
-    "DiffPreset",
     "DiffFormatContext",
     "DiffLayout",
     "DiffFlatLayout",
     "DiffTreeLayout",
     "DiffMarkdownLayout",
+    # Registry
+    "DiffPresetEntry",
+    "DiffRegistry",
+    "get_diff_registry",
 ]

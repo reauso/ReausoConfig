@@ -39,9 +39,12 @@ from rconfig.provenance import (
     ProvenanceLayout,
     ProvenanceFormatContext,
     ProvenanceFormat,
-    ProvenancePreset,
     ProvenanceTreeLayout,
     TreeLayout,  # Backwards compatibility alias
+    # Registry
+    ProvenancePresetEntry,
+    ProvenanceRegistry,
+    get_provenance_registry,
 )
 
 from rconfig.errors import AmbiguousRefError
@@ -82,9 +85,12 @@ __all__ = [
     "ProvenanceLayout",
     "ProvenanceFormatContext",
     "ProvenanceFormat",
-    "ProvenancePreset",
     "ProvenanceTreeLayout",
     "TreeLayout",  # Backwards compatibility alias
+    # Registry
+    "ProvenancePresetEntry",
+    "ProvenanceRegistry",
+    "get_provenance_registry",
     # Errors
     "AmbiguousRefError",
 ]

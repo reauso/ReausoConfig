@@ -1468,22 +1468,73 @@ print(f"Description: {entry.description}")  # "Learning rate for optimizer"
 
 #### Formatting Presets
 
-| Preset        | Shows                                 | Use Case         |
-| ------------- | ------------------------------------- | ---------------- |
-| `minimal()` | paths, files, lines                   | Quick overview   |
-| `compact()` | + values, source type, targets, types | Debugging values |
-| `full()`    | everything (default)                  | Complete tracing |
-| `help()`    | paths, types, values, descriptions    | CLI help display |
+| Preset          | Shows                                 | Use Case         |
+| --------------- | ------------------------------------- | ---------------- |
+| `default()`     | paths, values, files, lines, chain    | Reset to defaults|
+| `minimal()`     | paths, files, lines                   | Quick overview   |
+| `compact()`     | + values, source type, targets, types | Debugging values |
+| `full()`        | everything                            | Complete tracing |
+| `values()`      | paths and values only                 | Simple key=value |
+| `help()`        | paths, types, values, descriptions    | CLI help display |
+| `deprecations()`| only deprecated keys                  | Migration check  |
 
 ```python
-# Use presets
+# Use presets (named methods)
 print(rc.format(prov).minimal())
 print(rc.format(prov).compact())
-print(rc.format(prov).full())  # Default
+print(rc.format(prov).full())
 
-# Enum alternative
-from rconfig.composition import ProvenancePreset
-print(rc.format(prov).preset(ProvenancePreset.MINIMAL))
+# String-based preset() method
+print(rc.format(prov).preset("minimal"))
+print(rc.format(prov).preset("values"))
+
+# Reset to defaults after modifications
+print(rc.format(prov).hide_chain().default())
+```
+
+#### Custom Provenance Presets
+
+Register your own presets for common formatting needs:
+
+```python
+import rconfig as rc
+
+# Option 1: Register with lambda
+rc.register_provenance_preset(
+    "debug",
+    lambda: rc.ProvenanceFormatContext(
+        show_paths=True,
+        show_values=True,
+        show_files=True,
+        show_lines=True,
+        show_chain=True,
+        show_types=True,
+    ),
+    "Full debug output with types",
+)
+
+# Option 2: Register with decorator
+@rc.provenance_preset("source_only", "Show only source information")
+def source_only_preset() -> rc.ProvenanceFormatContext:
+    return rc.ProvenanceFormatContext(
+        show_paths=True,
+        show_values=False,
+        show_files=True,
+        show_lines=True,
+        show_source_type=True,
+    )
+
+# Use custom presets
+print(prov.format().preset("debug"))
+print(prov.format().preset("source_only"))
+
+# List all registered presets
+for name, entry in rc.known_provenance_presets().items():
+    builtin = "[builtin]" if entry.builtin else "[custom]"
+    print(f"{name} {builtin}: {entry.description}")
+
+# Unregister when no longer needed
+rc.unregister_provenance_preset("debug")
 ```
 
 #### Show/Hide Toggles
@@ -1720,21 +1771,68 @@ data = rc.format(diff).json()
 
 #### Formatting Presets
 
+| Preset          | Shows                          | Use Case              |
+| --------------- | ------------------------------ | --------------------- |
+| `default()`     | added/removed/changed, counts  | Reset to defaults     |
+| `changes_only()`| added/removed/changed, counts  | Focus on changes      |
+| `with_context()`| + unchanged entries            | See context           |
+| `full()`        | + provenance info              | Complete debugging    |
+| `summary()`     | only statistics                | Quick overview        |
+
 ```python
 diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
 
-# changes_only (default) - only show added/removed/changed
+# Named methods
 rc.format(diff).changes_only().terminal()
-
-# with_context - show changes plus unchanged entries
 rc.format(diff).with_context().terminal()
-
-# full - show everything including provenance info
 rc.format(diff).full().terminal()
-
-# summary - only show statistics
 rc.format(diff).summary().terminal()
 # Added: 2, Removed: 1, Changed: 3
+
+# String-based preset() method
+rc.format(diff).preset("changes_only").terminal()
+rc.format(diff).preset("summary").terminal()
+
+# Reset to defaults after modifications
+rc.format(diff).show_unchanged().default().terminal()
+```
+
+#### Custom Diff Presets
+
+Register your own presets for common diff formatting needs:
+
+```python
+import rconfig as rc
+
+# Option 1: Register with lambda
+rc.register_diff_preset(
+    "added_only",
+    lambda: rc.DiffFormatContext(
+        show_added=True,
+        show_removed=False,
+        show_changed=False,
+        show_unchanged=False,
+    ),
+    "Show only newly added entries",
+)
+
+# Option 2: Register with decorator
+@rc.diff_preset("removed_only", "Show only removed entries")
+def removed_only_preset() -> rc.DiffFormatContext:
+    return rc.DiffFormatContext(
+        show_added=False,
+        show_removed=True,
+        show_changed=False,
+        show_unchanged=False,
+    )
+
+# Use custom presets
+print(diff.format().preset("added_only"))
+print(diff.format().preset("removed_only"))
+
+# List all registered presets
+for name, entry in rc.known_diff_presets().items():
+    print(f"{name}: {entry.description}")
 ```
 
 #### Show/Hide Toggles

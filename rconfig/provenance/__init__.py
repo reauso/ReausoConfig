@@ -32,11 +32,14 @@ from .builder import ProvenanceBuilder
 # Formatting subsystem
 from .formatting import (
     ProvenanceFormat,
-    ProvenancePreset,
     ProvenanceFormatContext,
     ProvenanceLayout,
     ProvenanceTreeLayout,
     TreeLayout,  # Backwards compatibility alias
+    # Registry
+    ProvenancePresetEntry,
+    ProvenanceRegistry,
+    get_provenance_registry,
 )
 
 __all__ = [
@@ -52,9 +55,12 @@ __all__ = [
     "ProvenanceBuilder",
     # Formatting
     "ProvenanceFormat",
-    "ProvenancePreset",
     "ProvenanceFormatContext",
     "ProvenanceLayout",
     "ProvenanceTreeLayout",
     "TreeLayout",  # Backwards compatibility alias
+    # Registry
+    "ProvenancePresetEntry",
+    "ProvenanceRegistry",
+    "get_provenance_registry",
 ]

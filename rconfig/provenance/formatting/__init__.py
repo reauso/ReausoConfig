@@ -12,10 +12,18 @@ from .model import (
     ProvenanceEntryDisplayModel,
 )
 from .flat import ProvenanceFlatLayout
-from .format import ProvenanceFormat, ProvenanceFormatContext, ProvenancePreset
+from .format import ProvenanceFormat, ProvenanceFormatContext
 from .layout import ProvenanceLayout
 from .markdown import ProvenanceMarkdownLayout
 from .tree import ProvenanceTreeLayout
+from .registry import (
+    ProvenancePresetEntry,
+    ProvenanceRegistry,
+    get_provenance_registry,
+)
+
+# Import presets module to trigger builtin registration
+from . import presets as _presets  # noqa: F401
 
 # Backwards compatibility alias
 TreeLayout = ProvenanceTreeLayout
@@ -23,7 +31,11 @@ TreeLayout = ProvenanceTreeLayout
 __all__ = [
     # Format builder
     "ProvenanceFormat",
-    "ProvenancePreset",
+    "ProvenanceFormatContext",
+    # Registry
+    "ProvenancePresetEntry",
+    "ProvenanceRegistry",
+    "get_provenance_registry",
     # Display models
     "InterpolationKind",
     "InterpolationNodeDisplayModel",
@@ -31,7 +43,6 @@ __all__ = [
     "ProvenanceDisplayModelBuilder",
     "ProvenanceEntryDisplayModel",
     # Layout system
-    "ProvenanceFormatContext",
     "ProvenanceLayout",
     "ProvenanceFlatLayout",
     "ProvenanceMarkdownLayout",
