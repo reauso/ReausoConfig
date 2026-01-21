@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
-from typing import Any, Self
+from functools import singledispatchmethod
+from typing import Any, Self, overload
 
 from rconfig.provenance.models import ProvenanceEntry
 from rconfig.provenance.provenance import Provenance
@@ -419,14 +420,58 @@ class ProvenanceFormat:
 
     # --- Layout ---
 
-    def layout(self, layout: ProvenanceLayout) -> Self:
+    @overload
+    def layout(self, layout: ProvenanceLayout) -> Self: ...
+
+    @overload
+    def layout(self, layout: str) -> Self: ...
+
+    @singledispatchmethod
+    def layout(self, layout: ProvenanceLayout | str) -> Self:
         """Set a custom layout for formatting.
 
-        :param layout: The layout to use.
+        :param layout: The layout instance to use.
         :return: Self for method chaining.
         """
-        self._layout = layout
+        self._layout = layout  # type: ignore[assignment]
         return self
+
+    @layout.register
+    def _(self, layout: str) -> Self:
+        """Set a layout by registered name.
+
+        :param layout: The registered layout name (e.g., "tree", "flat", "markdown").
+        :return: Self for method chaining.
+        :raises ValueError: If layout name is not registered.
+        """
+        from .registry import get_provenance_registry
+
+        entry = get_provenance_registry().get_layout(layout)
+        if entry is None:
+            raise ValueError(f"Unknown layout '{layout}' for provenance formatting")
+        self._layout = entry.factory()
+        return self
+
+    def tree(self) -> Self:
+        """Use tree layout.
+
+        :return: Self for method chaining.
+        """
+        return self.layout("tree")
+
+    def flat(self) -> Self:
+        """Use flat layout.
+
+        :return: Self for method chaining.
+        """
+        return self.layout("flat")
+
+    def markdown(self) -> Self:
+        """Use markdown layout.
+
+        :return: Self for method chaining.
+        """
+        return self.layout("markdown")
 
     # --- Filtering ---
 

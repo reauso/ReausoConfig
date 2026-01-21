@@ -37,6 +37,7 @@ from .formatting import (
     ProvenanceTreeLayout,
     TreeLayout,  # Backwards compatibility alias
     # Registry
+    ProvenanceLayoutEntry,
     ProvenancePresetEntry,
     ProvenanceRegistry,
     get_provenance_registry,
@@ -60,6 +61,7 @@ __all__ = [
     "ProvenanceTreeLayout",
     "TreeLayout",  # Backwards compatibility alias
     # Registry
+    "ProvenanceLayoutEntry",
     "ProvenancePresetEntry",
     "ProvenanceRegistry",
     "get_provenance_registry",

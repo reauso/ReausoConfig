@@ -37,6 +37,7 @@ from .formatting import (
     DiffTreeLayout,
     DiffMarkdownLayout,
     # Registry
+    DiffLayoutEntry,
     DiffPresetEntry,
     DiffRegistry,
     get_diff_registry,
@@ -58,6 +59,7 @@ __all__ = [
     "DiffTreeLayout",
     "DiffMarkdownLayout",
     # Registry
+    "DiffLayoutEntry",
     "DiffPresetEntry",
     "DiffRegistry",
     "get_diff_registry",
