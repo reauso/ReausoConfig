@@ -73,6 +73,7 @@ from .diff import (
     DiffTreeLayout,
     DiffMarkdownLayout,
     # Registry
+    DiffLayoutEntry,
     DiffPresetEntry,
     DiffRegistry,
     get_diff_registry,
@@ -97,6 +98,7 @@ from .provenance import (
     ProvenanceTreeLayout,
     TreeLayout,  # Backwards compatibility alias
     # Registry
+    ProvenanceLayoutEntry,
     ProvenancePresetEntry,
     ProvenanceRegistry,
     get_provenance_registry,
@@ -2056,6 +2058,160 @@ def diff_preset(
     return decorator
 
 
+# === Format Layout API ===
+
+
+def register_provenance_layout(
+    name: str,
+    factory: Callable[[], ProvenanceLayout],
+    description: str = "",
+) -> None:
+    """Register a custom provenance format layout.
+
+    :param name: Unique name for the layout.
+    :param factory: Callable that returns a ProvenanceLayout instance.
+    :param description: Human-readable description.
+    :raises ValueError: If name conflicts with a built-in layout.
+
+    Example::
+
+        import rconfig as rc
+        from rconfig.provenance.formatting import ProvenanceLayout, ProvenanceDisplayModel
+
+        class TableLayout(ProvenanceLayout):
+            def render(self, model: ProvenanceDisplayModel) -> str:
+                # Custom rendering logic
+                ...
+
+        rc.register_provenance_layout(
+            "table",
+            lambda: TableLayout(),
+            "Custom table format",
+        )
+    """
+    get_provenance_registry().register_layout(name, factory, description)
+
+
+def unregister_provenance_layout(name: str) -> None:
+    """Unregister a custom provenance format layout.
+
+    :param name: Name of the layout to unregister.
+    :raises KeyError: If layout is not registered.
+    :raises ValueError: If trying to unregister a built-in layout.
+    """
+    get_provenance_registry().unregister_layout(name)
+
+
+def known_provenance_layouts() -> MappingProxyType[str, ProvenanceLayoutEntry]:
+    """Get all registered provenance layouts.
+
+    :return: Read-only mapping of layout names to entries.
+
+    Example::
+
+        for name, entry in rc.known_provenance_layouts().items():
+            builtin = "[builtin]" if entry.builtin else "[custom]"
+            print(f"{name} {builtin}: {entry.description}")
+    """
+    return get_provenance_registry().known_layouts
+
+
+def provenance_layout(
+    name: str,
+    description: str = "",
+) -> Callable[[Callable[[], ProvenanceLayout]], Callable[[], ProvenanceLayout]]:
+    """Decorator to register a function as a provenance layout.
+
+    :param name: Unique name for the layout.
+    :param description: Human-readable description.
+    :return: Decorator function.
+
+    Example::
+
+        import rconfig as rc
+        from rconfig.provenance.formatting import ProvenanceLayout, ProvenanceDisplayModel
+
+        @rc.provenance_layout("custom", "Custom output format")
+        def custom_layout() -> ProvenanceLayout:
+            class CustomLayout(ProvenanceLayout):
+                def render(self, model: ProvenanceDisplayModel) -> str:
+                    ...
+            return CustomLayout()
+
+        # Use it
+        print(prov.format().layout("custom"))
+    """
+    def decorator(
+        factory: Callable[[], ProvenanceLayout],
+    ) -> Callable[[], ProvenanceLayout]:
+        get_provenance_registry().register_layout(name, factory, description)
+        return factory
+    return decorator
+
+
+def register_diff_layout(
+    name: str,
+    factory: Callable[[], DiffLayout],
+    description: str = "",
+) -> None:
+    """Register a custom diff format layout.
+
+    :param name: Unique name for the layout.
+    :param factory: Callable that returns a DiffLayout instance.
+    :param description: Human-readable description.
+    :raises ValueError: If name conflicts with a built-in layout.
+    """
+    get_diff_registry().register_layout(name, factory, description)
+
+
+def unregister_diff_layout(name: str) -> None:
+    """Unregister a custom diff format layout.
+
+    :param name: Name of the layout to unregister.
+    :raises KeyError: If layout is not registered.
+    :raises ValueError: If trying to unregister a built-in layout.
+    """
+    get_diff_registry().unregister_layout(name)
+
+
+def known_diff_layouts() -> MappingProxyType[str, DiffLayoutEntry]:
+    """Get all registered diff layouts.
+
+    :return: Read-only mapping of layout names to entries.
+    """
+    return get_diff_registry().known_layouts
+
+
+def diff_layout(
+    name: str,
+    description: str = "",
+) -> Callable[[Callable[[], DiffLayout]], Callable[[], DiffLayout]]:
+    """Decorator to register a function as a diff layout.
+
+    :param name: Unique name for the layout.
+    :param description: Human-readable description.
+    :return: Decorator function.
+
+    Example::
+
+        import rconfig as rc
+        from rconfig.diff.formatting import DiffLayout, DiffDisplayModel
+
+        @rc.diff_layout("jsonlines", "JSON Lines format")
+        def jsonlines_layout() -> DiffLayout:
+            class JsonLinesLayout(DiffLayout):
+                def render(self, model: DiffDisplayModel) -> str:
+                    ...
+            return JsonLinesLayout()
+    """
+    def decorator(
+        factory: Callable[[], DiffLayout],
+    ) -> Callable[[], DiffLayout]:
+        get_diff_registry().register_layout(name, factory, description)
+        return factory
+    return decorator
+
+
 # Public API - Minimal root exports
 # For classes like TargetRegistry, ConfigValidator, etc., import from submodules:
 #   from rconfig.target import TargetRegistry
@@ -2117,6 +2273,18 @@ __all__ = [
     "DiffPresetEntry",
     "DiffRegistry",
     "get_diff_registry",
+    # Format Layout API (provenance)
+    "register_provenance_layout",
+    "unregister_provenance_layout",
+    "known_provenance_layouts",
+    "provenance_layout",
+    "ProvenanceLayoutEntry",
+    # Format Layout API (diff)
+    "register_diff_layout",
+    "unregister_diff_layout",
+    "known_diff_layouts",
+    "diff_layout",
+    "DiffLayoutEntry",
     # Lazy instantiation utilities
     "is_lazy_proxy",
     "force_initialize",

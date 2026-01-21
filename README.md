@@ -1654,6 +1654,26 @@ entry_data = prov.get("model.lr").to_dict()
 tree_data = prov.trace("model.lr").to_dict()
 ```
 
+#### Built-in Layouts
+
+| Layout | Method | Description |
+|--------|--------|-------------|
+| `tree` | `.tree()` | Tree-style multiline format with connectors (default) |
+| `flat` | `.flat()` | Single-line compact format |
+| `markdown` | `.markdown()` | Markdown table format for documentation |
+
+```python
+# Use layouts by name
+print(prov.format().layout("tree"))
+print(prov.format().layout("flat"))
+print(prov.format().layout("markdown"))
+
+# Or use convenience methods
+print(prov.format().tree())
+print(prov.format().flat())
+print(prov.format().markdown())
+```
+
 #### Custom Layouts
 
 Create custom output formats by extending ProvenanceLayout:
@@ -1670,8 +1690,39 @@ class TableLayout(ProvenanceLayout):
             lines.append(f"| /{entry.path} | {entry.file} | {entry.line} |")
         return "\n".join(lines)
 
-# Use custom layout
+# Use custom layout directly
 print(rc.format(prov).layout(TableLayout()))
+```
+
+#### Custom Layout Registration
+
+Register custom layouts for reuse across your project:
+
+```python
+import rconfig as rc
+from rconfig.provenance.formatting import ProvenanceLayout, ProvenanceDisplayModel
+
+class TableLayout(ProvenanceLayout):
+    def render(self, model: ProvenanceDisplayModel) -> str:
+        # ... implementation ...
+
+# Register the layout
+rc.register_provenance_layout(
+    "table",
+    lambda: TableLayout(),
+    "Custom table format",
+)
+
+# Use by name
+print(prov.format().layout("table"))
+
+# List all registered layouts
+for name, entry in rc.known_provenance_layouts().items():
+    builtin = "[builtin]" if entry.builtin else "[custom]"
+    print(f"{name} {builtin}: {entry.description}")
+
+# Unregister when no longer needed
+rc.unregister_provenance_layout("table")
 ```
 
 ### Config Diffing
@@ -1868,6 +1919,26 @@ rc.format(diff).from_file("*.yaml").terminal()
 rc.format(diff).for_path("training.*").from_file("configs/*.yaml").terminal()
 ```
 
+#### Built-in Layouts
+
+| Layout | Method | Description |
+|--------|--------|-------------|
+| `flat` | `.flat()` / `.terminal()` | Single-line compact format (default) |
+| `tree` | `.tree()` | Tree-style grouped by change type |
+| `markdown` | `.markdown()` | Markdown table format |
+
+```python
+# Use layouts by name
+print(rc.format(diff).layout("flat"))
+print(rc.format(diff).layout("tree"))
+print(rc.format(diff).layout("markdown"))
+
+# Or use convenience methods
+print(rc.format(diff).terminal())  # alias for flat()
+print(rc.format(diff).tree())
+print(rc.format(diff).markdown())
+```
+
 #### Custom Layouts
 
 Create custom output formats by extending DiffLayout:
@@ -1890,8 +1961,39 @@ class JsonLinesLayout(DiffLayout):
             }))
         return "\n".join(lines)
 
-# Use custom layout
+# Use custom layout directly
 print(rc.format(diff).layout(JsonLinesLayout()))
+```
+
+#### Custom Layout Registration
+
+Register custom layouts for reuse:
+
+```python
+import rconfig as rc
+from rconfig.diff.formatting import DiffLayout, DiffDisplayModel
+
+class JsonLinesLayout(DiffLayout):
+    def render(self, model: DiffDisplayModel) -> str:
+        # ... implementation ...
+
+# Register the layout
+rc.register_diff_layout(
+    "jsonlines",
+    lambda: JsonLinesLayout(),
+    "JSON Lines format",
+)
+
+# Use by name
+print(rc.format(diff).layout("jsonlines"))
+
+# List all registered layouts
+for name, entry in rc.known_diff_layouts().items():
+    builtin = "[builtin]" if entry.builtin else "[custom]"
+    print(f"{name} {builtin}: {entry.description}")
+
+# Unregister when no longer needed
+rc.unregister_diff_layout("jsonlines")
 ```
 
 ### Deprecation Warnings

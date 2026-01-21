@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
-from typing import Any, Self
+from functools import singledispatchmethod
+from typing import Any, Self, overload
 
 from ..diff import ConfigDiff
 from ..models import DiffEntry, DiffEntryType
@@ -542,13 +543,36 @@ class DiffFormat:
 
     # Layout
 
-    def layout(self, layout: DiffLayout) -> Self:
+    @overload
+    def layout(self, layout: DiffLayout) -> Self: ...
+
+    @overload
+    def layout(self, layout: str) -> Self: ...
+
+    @singledispatchmethod
+    def layout(self, layout: DiffLayout | str) -> Self:
         """Set a custom layout for formatting.
 
         :param layout: The layout instance to use.
         :return: Self for chaining.
         """
-        self._layout = layout
+        self._layout = layout  # type: ignore[assignment]
+        return self
+
+    @layout.register
+    def _(self, layout: str) -> Self:
+        """Set a layout by registered name.
+
+        :param layout: The registered layout name (e.g., "flat", "tree", "markdown").
+        :return: Self for chaining.
+        :raises ValueError: If layout name is not registered.
+        """
+        from .registry import get_diff_registry
+
+        entry = get_diff_registry().get_layout(layout)
+        if entry is None:
+            raise ValueError(f"Unknown layout '{layout}' for diff formatting")
+        self._layout = entry.factory()
         return self
 
     # Output methods
@@ -558,33 +582,21 @@ class DiffFormat:
 
         :return: Formatted string for terminal display.
         """
-        from .flat import DiffFlatLayout
-
-        self._layout = DiffFlatLayout()
-        model = self._build_model()
-        return self._layout.render(model)
+        return self.layout("flat").__str__()
 
     def tree(self) -> str:
         """Format as grouped tree structure.
 
         :return: Formatted string with tree layout.
         """
-        from .tree import DiffTreeLayout
-
-        self._layout = DiffTreeLayout()
-        model = self._build_model()
-        return self._layout.render(model)
+        return self.layout("tree").__str__()
 
     def markdown(self) -> str:
         """Format as markdown table.
 
         :return: Markdown-formatted string.
         """
-        from .markdown import DiffMarkdownLayout
-
-        self._layout = DiffMarkdownLayout()
-        model = self._build_model()
-        return self._layout.render(model)
+        return self.layout("markdown").__str__()
 
     def json(self) -> dict:
         """Format as dictionary (for JSON serialization).

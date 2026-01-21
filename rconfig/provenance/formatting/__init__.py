@@ -17,13 +17,15 @@ from .layout import ProvenanceLayout
 from .markdown import ProvenanceMarkdownLayout
 from .tree import ProvenanceTreeLayout
 from .registry import (
+    ProvenanceLayoutEntry,
     ProvenancePresetEntry,
     ProvenanceRegistry,
     get_provenance_registry,
 )
 
-# Import presets module to trigger builtin registration
-from . import presets as _presets  # noqa: F401
+# Import builtin modules to trigger registration
+from . import builtin_presets as _builtin_presets  # noqa: F401
+from . import builtin_layouts as _builtin_layouts  # noqa: F401
 
 # Backwards compatibility alias
 TreeLayout = ProvenanceTreeLayout
@@ -33,6 +35,7 @@ __all__ = [
     "ProvenanceFormat",
     "ProvenanceFormatContext",
     # Registry
+    "ProvenanceLayoutEntry",
     "ProvenancePresetEntry",
     "ProvenanceRegistry",
     "get_provenance_registry",
