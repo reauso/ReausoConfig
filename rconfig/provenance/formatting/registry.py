@@ -14,6 +14,7 @@ from rconfig._internal import Singleton
 
 if TYPE_CHECKING:
     from .format import ProvenanceFormatContext
+    from .layout import ProvenanceLayout
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -28,6 +29,22 @@ class ProvenancePresetEntry:
 
     name: str
     factory: Callable[[], ProvenanceFormatContext]
+    description: str = ""
+    builtin: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProvenanceLayoutEntry:
+    """Immutable entry for a registered provenance layout.
+
+    :param name: Unique identifier for the layout (e.g., "tree", "flat", "markdown").
+    :param factory: Callable returning a ProvenanceLayout instance.
+    :param description: Human-readable description.
+    :param builtin: True if this is a built-in layout.
+    """
+
+    name: str
+    factory: Callable[[], ProvenanceLayout]
     description: str = ""
     builtin: bool = False
 
@@ -62,6 +79,7 @@ class ProvenanceRegistry:
     def __init__(self) -> None:
         """Initialize the registry."""
         self._presets: dict[str, ProvenancePresetEntry] = {}
+        self._layouts: dict[str, ProvenanceLayoutEntry] = {}
         self._lock = threading.RLock()
 
     # --- Preset Methods ---
@@ -132,13 +150,89 @@ class ProvenanceRegistry:
         with self._lock:
             return name in self._presets
 
-    def clear(self) -> None:
+    def clear_presets(self) -> None:
         """Clear all custom presets, keeping built-ins.
 
         Primarily for testing.
         """
         with self._lock:
             self._presets = {k: v for k, v in self._presets.items() if v.builtin}
+
+    # --- Layout Methods ---
+
+    @property
+    def known_layouts(self) -> MappingProxyType[str, ProvenanceLayoutEntry]:
+        """Read-only view of all registered layouts."""
+        return MappingProxyType(self._layouts)
+
+    def register_layout(
+        self,
+        name: str,
+        factory: Callable[[], ProvenanceLayout],
+        description: str = "",
+        *,
+        builtin: bool = False,
+    ) -> None:
+        """Register a format layout.
+
+        :param name: Layout name.
+        :param factory: Callable returning ProvenanceLayout.
+        :param description: Human-readable description.
+        :param builtin: True if this is a built-in layout (internal use).
+        :raises ValueError: If name conflicts with a built-in layout.
+        """
+        entry = ProvenanceLayoutEntry(
+            name=name,
+            factory=factory,
+            description=description,
+            builtin=builtin,
+        )
+
+        with self._lock:
+            if name in self._layouts and self._layouts[name].builtin and not builtin:
+                raise ValueError(
+                    f"Cannot override built-in layout '{name}'. Use a different name."
+                )
+            self._layouts[name] = entry
+
+    def unregister_layout(self, name: str) -> None:
+        """Unregister a custom layout.
+
+        :param name: Layout name to unregister.
+        :raises KeyError: If layout is not registered.
+        :raises ValueError: If trying to unregister a built-in layout.
+        """
+        with self._lock:
+            if name not in self._layouts:
+                raise KeyError(f"Layout '{name}' is not registered")
+            if self._layouts[name].builtin:
+                raise ValueError(f"Cannot unregister built-in layout '{name}'")
+            del self._layouts[name]
+
+    def get_layout(self, name: str) -> ProvenanceLayoutEntry | None:
+        """Get a layout entry by name.
+
+        :param name: Layout name.
+        :return: Layout entry or None if not found.
+        """
+        return self._layouts.get(name)
+
+    def has_layout(self, name: str) -> bool:
+        """Check if a layout is registered.
+
+        :param name: Layout name.
+        :return: True if layout is registered.
+        """
+        with self._lock:
+            return name in self._layouts
+
+    def clear_layouts(self) -> None:
+        """Clear all custom layouts, keeping built-ins.
+
+        Primarily for testing.
+        """
+        with self._lock:
+            self._layouts = {k: v for k, v in self._layouts.items() if v.builtin}
 
 
 def get_provenance_registry() -> ProvenanceRegistry:

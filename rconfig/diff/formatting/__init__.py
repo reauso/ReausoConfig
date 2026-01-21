@@ -15,19 +15,22 @@ from .layout import DiffLayout
 from .markdown import DiffMarkdownLayout
 from .tree import DiffTreeLayout
 from .registry import (
+    DiffLayoutEntry,
     DiffPresetEntry,
     DiffRegistry,
     get_diff_registry,
 )
 
-# Import presets module to trigger builtin registration
-from . import presets as _presets  # noqa: F401
+# Import builtin modules to trigger registration
+from . import builtin_presets as _builtin_presets  # noqa: F401
+from . import builtin_layouts as _builtin_layouts  # noqa: F401
 
 __all__ = [
     # Format builder
     "DiffFormat",
     "DiffFormatContext",
     # Registry
+    "DiffLayoutEntry",
     "DiffPresetEntry",
     "DiffRegistry",
     "get_diff_registry",
