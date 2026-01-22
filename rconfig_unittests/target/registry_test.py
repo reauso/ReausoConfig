@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from types import MappingProxyType
 
 from rconfig.target import TargetRegistry
@@ -59,6 +60,70 @@ class TargetRegistryTests(BaseStoreTest):
             store.register(name="notcallable", target=InitNotCallable)
 
         self.assertEqual(len(store.known_targets), 0)
+
+    def test_register__AbstractClass__RaisesTypeError(self):
+        """Test that registering an abstract class raises TypeError."""
+        # Arrange
+        store = self._empty_store()
+
+        class AbstractTarget(ABC):
+            @abstractmethod
+            def process(self):
+                pass
+
+        # Act & Assert
+        with self.assertRaisesRegex(TypeError, "is abstract"):
+            store.register(name="abstract", target=AbstractTarget)
+
+        self.assertEqual(len(store.known_targets), 0)
+
+    def test_register__PartiallyImplementedAbstractClass__RaisesTypeError(self):
+        """Test that registering a partially implemented abstract class raises TypeError."""
+        # Arrange
+        store = self._empty_store()
+
+        class Base(ABC):
+            @abstractmethod
+            def method1(self):
+                pass
+
+            @abstractmethod
+            def method2(self):
+                pass
+
+        class Partial(Base):
+            def method1(self):
+                return "implemented"
+
+        # Act & Assert
+        with self.assertRaisesRegex(TypeError, "is abstract"):
+            store.register(name="partial", target=Partial)
+
+        self.assertEqual(len(store.known_targets), 0)
+
+    def test_register__ConcreteSubclassOfAbstract__StoresTargetEntry(self):
+        """Test that registering a concrete subclass of an ABC succeeds."""
+        # Arrange
+        store = self._empty_store()
+
+        class Base(ABC):
+            @abstractmethod
+            def process(self):
+                pass
+
+        class Concrete(Base):
+            def __init__(self, value):
+                self.value = value
+
+            def process(self):
+                return self.value
+
+        # Act
+        store.register(name="concrete", target=Concrete)
+
+        # Assert
+        self.assertIn("concrete", store.known_targets)
+        self.assertIs(store.known_targets["concrete"].target_class, Concrete)
 
     def test_register__NameAlreadyExists__OverridesExistingEntry(self):
         # Arrange

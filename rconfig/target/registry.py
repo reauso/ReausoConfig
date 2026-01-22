@@ -38,6 +38,7 @@ class TargetEntry:
     def _determine_decisive_init_parameters(self) -> None:
         """Inspect the target class and cache its constructor parameters."""
         self._validate_target_has_init_method()
+        self._validate_target_is_not_abstract()
 
         init_signature = inspect.signature(self.target_class.__init__, follow_wrapped=True)
         init_parameters = OrderedDict({key: value for key, value in init_signature.parameters.items() if key != 'self'})
@@ -50,6 +51,13 @@ class TargetEntry:
             message = (f"The class '{self.target_class.__module__}.{self.target_class.__qualname__}' "
                        f"has no '__init__' method.")
             raise AttributeError(message)
+
+    def _validate_target_is_not_abstract(self) -> None:
+        """Ensure the target class is not abstract."""
+        if inspect.isabstract(self.target_class):
+            message = (f"The class '{self.target_class.__module__}.{self.target_class.__qualname__}' "
+                       f"is abstract and cannot be registered as a target.")
+            raise TypeError(message)
 
 
 @Singleton
