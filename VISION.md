@@ -16,7 +16,7 @@ This document outlines potential features for rconfig based on analysis of state
 8. [✅ Multi-Environment Profiles](#8-multi-environment-profiles)
 9. [✅ Config Diffing](#9--config-diffing)
 10. [✅ Callbacks and Hooks](#10-callbacks-and-hooks)
-11. [XDG Base Directory Support](#11-xdg-base-directory-support)
+11. [:x: XDG Base Directory Support](#11-x-xdg-base-directory-support)
 12. [✅ CLI `_ref_` Shorthand](#12-cli-_ref_-shorthand)
 13. [✅ Extension-less `_ref_` Resolution](#13-extension-less-_ref_-resolution)
 14. [✅ Multirun Support](#14-multirun-support)
@@ -1134,9 +1134,13 @@ rconfig.register_callback(ExperimentTracker("http://mlflow.internal"))
 
 ---
 
-## 11. XDG Base Directory Support
+## 11. :x: XDG Base Directory Support
 
 **Adopted by:** Confuse, many Linux CLI applications
+
+**Status:** Rejected
+
+**Rationale:** This feature adds implicit behavior and ambiguity that makes configurations harder to reason about. For a configuration library, explicit path specification is preferable — the application author already knows where their configs are. Layered auto-discovery with silent merging from platform-specific locations (e.g., `/etc/`, `~/.config/`) creates debugging difficulties and conflates application-level concerns (where to find files) with library-level concerns (how to load and process configs). Most users would find this confusing rather than helpful.
 
 ### Description
 
@@ -1834,7 +1838,7 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 8. ✅ Multi-Environment Profiles (via `inner_path`)
 9. ✅ Config Diffing
 10. ✅ Callbacks and Hooks
-11. XDG Base Directory Support
+11. :x: XDG Base Directory Support (see rationale in section)
 
 ### Planned Enhancements
 
