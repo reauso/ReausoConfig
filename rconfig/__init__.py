@@ -175,7 +175,14 @@ from .deprecation import (
     RconfigDeprecationWarning,
     get_deprecation_registry,
 )
-from .errors import DeprecatedKeyError
+from .errors import DeprecatedKeyError, HookError, HookExecutionError
+from .hooks import (
+    Callback,
+    HookContext,
+    HookEntry,
+    HookPhase,
+    HookRegistry,
+)
 
 T = TypeVar("T")
 
@@ -183,12 +190,296 @@ T = TypeVar("T")
 # Internal singleton instances
 _store = TargetRegistry()
 _resolver_registry = ResolverRegistry()
+_hook_registry = HookRegistry()
 _validator = ConfigValidator(_store)
 _instantiator = ConfigInstantiator(_store, _validator)
 
 # Help integration storage (thread-safe)
 _help_integration: HelpIntegration = FlatHelpIntegration()
 _help_integration_lock = threading.RLock()
+
+
+# =============================================================================
+# Hooks API
+# =============================================================================
+
+
+def _invoke_hooks(phase: HookPhase, context: HookContext) -> None:
+    """Invoke all hooks registered for a phase.
+
+    Internal function used by instantiate() and ConfigInstantiator.
+
+    :param phase: The lifecycle phase.
+    :param context: The context to pass to hooks.
+    """
+    _hook_registry.invoke(phase, context)
+
+
+def register_hook(
+    phase: HookPhase,
+    func: Callable[[HookContext], None],
+    *,
+    name: str | None = None,
+    pattern: str | None = None,
+    priority: int = 50,
+) -> None:
+    """Register a hook for a configuration lifecycle phase.
+
+    :param phase: The lifecycle phase when this hook should be invoked.
+    :param func: The hook function. Must accept a HookContext parameter.
+    :param name: Unique identifier for the hook. Defaults to function name.
+    :param pattern: Optional glob pattern for conditional execution.
+                   Hook only runs when config_path matches the pattern.
+    :param priority: Execution order (lower values run first, default 50).
+
+    Example::
+
+        def validate_paths(ctx: HookContext) -> None:
+            if ctx.config and "data" in ctx.config:
+                path = Path(ctx.config["data"]["path"])
+                if not path.exists():
+                    raise ValueError(f"Data path not found: {path}")
+
+        rc.register_hook(HookPhase.CONFIG_LOADED, validate_paths)
+    """
+    _hook_registry.register(phase, func, name=name, pattern=pattern, priority=priority)
+
+
+def unregister_hook(name: str, phase: HookPhase | None = None) -> None:
+    """Unregister a hook by name.
+
+    :param name: The name of the hook to unregister.
+    :param phase: If specified, only unregister from this phase.
+                 If None, unregister from all phases.
+    :raises KeyError: If no hook with that name exists.
+
+    Example::
+
+        rc.unregister_hook("validate_paths")
+        rc.unregister_hook("my_hook", phase=HookPhase.CONFIG_LOADED)
+    """
+    _hook_registry.unregister(name, phase)
+
+
+def register_callback(callback: Callback) -> None:
+    """Register a class-based callback for all lifecycle phases.
+
+    The callback's methods (on_config_loaded, on_before_instantiate, etc.)
+    are registered as individual hooks.
+
+    :param callback: A Callback subclass instance.
+
+    Example::
+
+        class ExperimentTracker(rc.Callback):
+            def on_config_loaded(self, ctx: HookContext) -> None:
+                start_tracking(ctx.config)
+
+            def on_error(self, ctx: HookContext) -> None:
+                log_failure(ctx.error)
+
+        tracker = ExperimentTracker()
+        rc.register_callback(tracker)
+    """
+    callback_id = id(callback)
+    callback_name = callback.__class__.__name__
+
+    # Register each overridden method as a hook
+    _hook_registry.register(
+        HookPhase.CONFIG_LOADED,
+        callback.on_config_loaded,
+        name=f"{callback_name}_{callback_id}_config_loaded",
+    )
+    _hook_registry.register(
+        HookPhase.BEFORE_INSTANTIATE,
+        callback.on_before_instantiate,
+        name=f"{callback_name}_{callback_id}_before_instantiate",
+    )
+    _hook_registry.register(
+        HookPhase.AFTER_INSTANTIATE,
+        callback.on_after_instantiate,
+        name=f"{callback_name}_{callback_id}_after_instantiate",
+    )
+    _hook_registry.register(
+        HookPhase.ON_ERROR,
+        callback.on_error,
+        name=f"{callback_name}_{callback_id}_on_error",
+    )
+
+
+def unregister_callback(callback: Callback) -> None:
+    """Unregister a class-based callback from all lifecycle phases.
+
+    :param callback: The Callback instance to unregister.
+
+    Example::
+
+        rc.unregister_callback(tracker)
+    """
+    callback_id = id(callback)
+    callback_name = callback.__class__.__name__
+
+    for phase in HookPhase:
+        suffix = phase.name.lower()
+        hook_name = f"{callback_name}_{callback_id}_{suffix}"
+        try:
+            _hook_registry.unregister(hook_name, phase)
+        except KeyError:
+            pass  # Hook may not be registered for this phase
+
+
+def known_hooks() -> MappingProxyType[HookPhase, tuple[HookEntry, ...]]:
+    """Return a read-only view of all registered hooks.
+
+    :return: Mapping from HookPhase to tuple of HookEntry objects.
+
+    Example::
+
+        for phase, hooks in rc.known_hooks().items():
+            for hook in hooks:
+                print(f"{phase.name}: {hook.name}")
+    """
+    return _hook_registry.known_hooks
+
+
+def on_config_loaded(
+    func: Callable[[HookContext], None] | None = None,
+    *,
+    pattern: str | None = None,
+    priority: int = 50,
+) -> Callable[[HookContext], None] | Callable[[Callable[[HookContext], None]], Callable[[HookContext], None]]:
+    """Decorator to register a CONFIG_LOADED hook.
+
+    Called after config file is loaded and composed (refs resolved),
+    before interpolation resolution.
+
+    :param func: The hook function (when used without parentheses).
+    :param pattern: Optional glob pattern for conditional execution.
+    :param priority: Execution order (lower values run first, default 50).
+    :return: The decorated function.
+
+    Example::
+
+        @rc.on_config_loaded
+        def validate_paths(ctx: HookContext) -> None:
+            '''Validate data paths exist.'''
+            ...
+
+        @rc.on_config_loaded(pattern="**/model/*.yaml", priority=10)
+        def validate_model(ctx: HookContext) -> None:
+            '''Validate model configs only, run early.'''
+            ...
+    """
+    def decorator(f: Callable[[HookContext], None]) -> Callable[[HookContext], None]:
+        _hook_registry.register(
+            HookPhase.CONFIG_LOADED, f, name=f.__name__, pattern=pattern, priority=priority
+        )
+        return f
+
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+def on_before_instantiate(
+    func: Callable[[HookContext], None] | None = None,
+    *,
+    pattern: str | None = None,
+    priority: int = 50,
+) -> Callable[[HookContext], None] | Callable[[Callable[[HookContext], None]], Callable[[HookContext], None]]:
+    """Decorator to register a BEFORE_INSTANTIATE hook.
+
+    Called before each object's constructor is called (per nested config
+    with _target_).
+
+    :param func: The hook function (when used without parentheses).
+    :param pattern: Optional glob pattern for conditional execution.
+    :param priority: Execution order (lower values run first, default 50).
+    :return: The decorated function.
+
+    Example::
+
+        @rc.on_before_instantiate
+        def inject_secrets(ctx: HookContext) -> None:
+            '''Log before each instantiation.'''
+            print(f"Creating {ctx.target_name} at {ctx.inner_path}")
+    """
+    def decorator(f: Callable[[HookContext], None]) -> Callable[[HookContext], None]:
+        _hook_registry.register(
+            HookPhase.BEFORE_INSTANTIATE, f, name=f.__name__, pattern=pattern, priority=priority
+        )
+        return f
+
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+def on_after_instantiate(
+    func: Callable[[HookContext], None] | None = None,
+    *,
+    pattern: str | None = None,
+    priority: int = 50,
+) -> Callable[[HookContext], None] | Callable[[Callable[[HookContext], None]], Callable[[HookContext], None]]:
+    """Decorator to register an AFTER_INSTANTIATE hook.
+
+    Called after each object's constructor returns (per nested config
+    with _target_).
+
+    :param func: The hook function (when used without parentheses).
+    :param pattern: Optional glob pattern for conditional execution.
+    :param priority: Execution order (lower values run first, default 50).
+    :return: The decorated function.
+
+    Example::
+
+        @rc.on_after_instantiate
+        def register_metrics(ctx: HookContext) -> None:
+            '''Register each instantiated object with metrics system.'''
+            metrics.register(ctx.target_name, ctx.instance)
+    """
+    def decorator(f: Callable[[HookContext], None]) -> Callable[[HookContext], None]:
+        _hook_registry.register(
+            HookPhase.AFTER_INSTANTIATE, f, name=f.__name__, pattern=pattern, priority=priority
+        )
+        return f
+
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+def on_error(
+    func: Callable[[HookContext], None] | None = None,
+    *,
+    pattern: str | None = None,
+    priority: int = 50,
+) -> Callable[[HookContext], None] | Callable[[Callable[[HookContext], None]], Callable[[HookContext], None]]:
+    """Decorator to register an ON_ERROR hook.
+
+    Called when an error occurs during instantiation.
+
+    :param func: The hook function (when used without parentheses).
+    :param pattern: Optional glob pattern for conditional execution.
+    :param priority: Execution order (lower values run first, default 50).
+    :return: The decorated function.
+
+    Example::
+
+        @rc.on_error
+        def log_failures(ctx: HookContext) -> None:
+            '''Log instantiation failures.'''
+            logger.error(f"Failed: {ctx.error}")
+    """
+    def decorator(f: Callable[[HookContext], None]) -> Callable[[HookContext], None]:
+        _hook_registry.register(
+            HookPhase.ON_ERROR, f, name=f.__name__, pattern=pattern, priority=priority
+        )
+        return f
+
+    if func is not None:
+        return decorator(func)
+    return decorator
 
 
 def set_help_integration(integration: HelpIntegration) -> None:
@@ -538,6 +829,17 @@ def instantiate(
     config = composer.compose(path)
     instance_targets = composer.instance_targets
 
+    # Invoke CONFIG_LOADED hooks (may modify config via return value)
+    config = _hook_registry.invoke_with_result(
+        HookPhase.CONFIG_LOADED,
+        HookContext(
+            phase=HookPhase.CONFIG_LOADED,
+            config_path=str(path),
+            config=MappingProxyType(config),
+        ),
+        config,
+    )
+
     # Collect all overrides
     all_overrides: list[Override] = []
 
@@ -599,16 +901,34 @@ def instantiate(
             if isinstance(ext_config, dict) and "_target_" in ext_config:
                 external_instances[f"__external__:{ext_path}"] = (
                     _instantiator.instantiate(
-                        ext_config, instance_targets={}, config_path=ext_path
+                        ext_config,
+                        instance_targets={},
+                        config_path=ext_path,
+                        config_path_for_hooks=str(path),
                     )
                 )
 
-        return _instantiator.instantiate(
-            sub_config,
-            instance_targets=processed_targets,
-            external_instances=external_instances,
-            lazy=lazy,
-        )
+        try:
+            return _instantiator.instantiate(
+                sub_config,
+                instance_targets=processed_targets,
+                external_instances=external_instances,
+                lazy=lazy,
+                config_path_for_hooks=str(path),
+            )
+        except Exception as e:
+            # Invoke ON_ERROR hooks
+            _invoke_hooks(
+                HookPhase.ON_ERROR,
+                HookContext(
+                    phase=HookPhase.ON_ERROR,
+                    config_path=str(path),
+                    config=MappingProxyType(sub_config),
+                    inner_path=inner_path,
+                    error=e,
+                ),
+            )
+            raise
 
     # Check for unsatisfied _required_ values on full config
     from rconfig.validation.required import find_required_markers
@@ -619,7 +939,25 @@ def instantiate(
         missing = [(m.path, m.expected_type) for m in required_markers]
         raise RequiredValueError(missing)
 
-    return _instantiator.instantiate(config, instance_targets=instance_targets, lazy=lazy)
+    try:
+        return _instantiator.instantiate(
+            config,
+            instance_targets=instance_targets,
+            lazy=lazy,
+            config_path_for_hooks=str(path),
+        )
+    except Exception as e:
+        # Invoke ON_ERROR hooks
+        _invoke_hooks(
+            HookPhase.ON_ERROR,
+            HookContext(
+                phase=HookPhase.ON_ERROR,
+                config_path=str(path),
+                config=MappingProxyType(config),
+                error=e,
+            ),
+        )
+        raise
 
 
 # === Multirun API ===

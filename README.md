@@ -2428,6 +2428,156 @@ worker2_results = results[25:50]
 single_result = results[3]
 ```
 
+### Lifecycle Hooks
+
+Register callbacks at various stages of the configuration lifecycle. Useful for validation, logging, metrics, secrets injection, and experiment tracking.
+
+#### Hook Phases
+
+| Phase | When Invoked | Typical Use Cases |
+|-------|--------------|-------------------|
+| `CONFIG_LOADED` | After config composition, before instantiation | Validation, logging, secrets injection |
+| `BEFORE_INSTANTIATE` | Before each object's constructor | Metrics, transformation |
+| `AFTER_INSTANTIATE` | After each object's constructor | Registration, tracking |
+| `ON_ERROR` | When instantiation fails | Error logging, cleanup |
+
+#### Decorator Registration
+
+```python
+import rconfig as rc
+from rconfig.hooks import HookContext
+
+@rc.on_config_loaded
+def validate_paths(ctx: HookContext) -> None:
+    """Validate that data paths exist after config is loaded."""
+    if ctx.config and "data" in ctx.config:
+        path = Path(ctx.config["data"]["path"])
+        if not path.exists():
+            raise ValueError(f"Data path not found: {path}")
+
+@rc.on_config_loaded(priority=10)
+def early_validation(ctx: HookContext) -> None:
+    """Run early (lower priority values run first)."""
+    ...
+
+@rc.on_config_loaded(pattern="**/model/*.yaml")
+def model_only_hook(ctx: HookContext) -> None:
+    """Only runs for config files matching the glob pattern."""
+    ...
+
+@rc.on_before_instantiate
+def log_instantiation(ctx: HookContext) -> None:
+    """Log each object instantiation."""
+    print(f"Creating {ctx.target_name} at {ctx.inner_path}")
+
+@rc.on_after_instantiate
+def register_metrics(ctx: HookContext) -> None:
+    """Register instantiated objects with a metrics system."""
+    metrics.register(ctx.target_name, ctx.instance)
+
+@rc.on_error
+def log_failures(ctx: HookContext) -> None:
+    """Log instantiation failures."""
+    logger.error(f"Failed: {ctx.error}")
+```
+
+#### Config Modification
+
+`CONFIG_LOADED` hooks can modify the config by returning a new dict. This enables secrets injection, value transformation, and dynamic configuration:
+
+```python
+import os
+from rconfig.hooks import HookContext
+
+@rc.on_config_loaded
+def inject_secrets(ctx: HookContext) -> dict | None:
+    """Inject secrets from environment variables."""
+    config = dict(ctx.config)  # Make mutable copy
+
+    # Replace placeholder values with environment secrets
+    if config.get("api_key") == "_required_":
+        config["api_key"] = os.getenv("API_KEY")
+
+    if config.get("db_password") == "_required_":
+        config["db_password"] = os.getenv("DB_PASSWORD")
+
+    return config  # Return modified config
+
+@rc.on_config_loaded(priority=20)
+def compute_derived_values(ctx: HookContext) -> dict | None:
+    """Compute values based on other config settings."""
+    config = dict(ctx.config)
+
+    # Derive batch_size from available GPU memory
+    if "auto_batch_size" in config and config["auto_batch_size"]:
+        config["batch_size"] = calculate_optimal_batch_size()
+
+    return config
+```
+
+Multiple hooks can chain modifications - each hook receives the config as modified by previous hooks (in priority order).
+
+#### Class-Based Callbacks
+
+For callbacks that need to maintain state across multiple hooks:
+
+```python
+class ExperimentTracker(rc.Callback):
+    """Track experiment lifecycle for MLflow/W&B integration."""
+
+    def __init__(self, tracking_uri: str):
+        self.tracking_uri = tracking_uri
+        self.run_id = None
+
+    def on_config_loaded(self, ctx: HookContext) -> None:
+        self.run_id = start_run(self.tracking_uri)
+        log_config(self.run_id, dict(ctx.config))
+
+    def on_after_instantiate(self, ctx: HookContext) -> None:
+        log_component(self.run_id, ctx.target_name)
+
+    def on_error(self, ctx: HookContext) -> None:
+        mark_failed(self.run_id, str(ctx.error))
+
+# Register the callback
+tracker = ExperimentTracker("http://mlflow.internal")
+rc.register_callback(tracker)
+
+# Later, unregister if needed
+rc.unregister_callback(tracker)
+```
+
+#### Explicit Registration
+
+```python
+from rconfig.hooks import HookPhase
+
+# Register with explicit phase
+rc.register_hook(HookPhase.CONFIG_LOADED, my_hook, name="my_hook")
+
+# Unregister by name
+rc.unregister_hook("my_hook")
+
+# View all registered hooks
+for phase, hooks in rc.known_hooks().items():
+    for hook in hooks:
+        print(f"{phase.name}: {hook.name}")
+```
+
+#### HookContext Reference
+
+The `HookContext` object passed to hooks contains:
+
+| Field | Type | Available In | Description |
+|-------|------|--------------|-------------|
+| `phase` | `HookPhase` | All | Current lifecycle phase |
+| `config_path` | `str` | All | Path to the config file |
+| `config` | `MappingProxyType` | All | Read-only config dict |
+| `inner_path` | `str \| None` | BEFORE/AFTER_INSTANTIATE | Path within config |
+| `target_name` | `str \| None` | BEFORE/AFTER_INSTANTIATE | The _target_ name |
+| `instance` | `Any \| None` | AFTER_INSTANTIATE | The created object |
+| `error` | `Exception \| None` | ON_ERROR | The exception |
+
 ## API Reference
 
 ### Type Aliases
@@ -3136,6 +3286,224 @@ def my_help(provenance, config_path):
     sys.exit(0)
 ```
 
+#### `@rc.on_config_loaded(*, pattern=None, priority=50)`
+
+Decorator to register a hook called after config composition, before instantiation.
+
+Hooks can optionally return a `dict` to modify the config. If a hook returns `None` (or doesn't return), the config is unchanged. Multiple hooks chain modifications in priority order.
+
+**Parameters:**
+
+| Parameter  | Type           | Default  | Description                                      |
+| ---------- | -------------- | -------- | ------------------------------------------------ |
+| `pattern`  | `str \| None`  | `None`   | Glob pattern for conditional execution.          |
+| `priority` | `int`          | `50`     | Execution order (lower values run first).        |
+
+**Returns:** The decorated function.
+
+**Examples:**
+
+```python
+from rconfig.hooks import HookContext
+
+@rc.on_config_loaded
+def validate_paths(ctx: HookContext) -> None:
+    """Validate data paths exist."""
+    if ctx.config and "data_path" in ctx.config:
+        path = Path(ctx.config["data_path"])
+        if not path.exists():
+            raise ValueError(f"Data path not found: {path}")
+
+@rc.on_config_loaded(pattern="**/model/*.yaml", priority=10)
+def model_hook(ctx: HookContext) -> None:
+    """Only runs for model configs, runs early."""
+    ...
+
+@rc.on_config_loaded
+def inject_secrets(ctx: HookContext) -> dict | None:
+    """Modify config by returning a new dict."""
+    if ctx.config.get("api_key") == "_required_":
+        return {**ctx.config, "api_key": os.getenv("API_KEY")}
+    return None  # No changes
+```
+
+#### `@rc.on_before_instantiate(*, pattern=None, priority=50)`
+
+Decorator to register a hook called before each object's constructor.
+
+**Parameters:**
+
+| Parameter  | Type           | Default  | Description                                      |
+| ---------- | -------------- | -------- | ------------------------------------------------ |
+| `pattern`  | `str \| None`  | `None`   | Glob pattern for conditional execution.          |
+| `priority` | `int`          | `50`     | Execution order (lower values run first).        |
+
+**Returns:** The decorated function.
+
+**Examples:**
+
+```python
+@rc.on_before_instantiate
+def log_instantiation(ctx: HookContext) -> None:
+    print(f"Creating {ctx.target_name} at {ctx.inner_path}")
+```
+
+#### `@rc.on_after_instantiate(*, pattern=None, priority=50)`
+
+Decorator to register a hook called after each object's constructor returns.
+
+**Parameters:**
+
+| Parameter  | Type           | Default  | Description                                      |
+| ---------- | -------------- | -------- | ------------------------------------------------ |
+| `pattern`  | `str \| None`  | `None`   | Glob pattern for conditional execution.          |
+| `priority` | `int`          | `50`     | Execution order (lower values run first).        |
+
+**Returns:** The decorated function.
+
+**Examples:**
+
+```python
+@rc.on_after_instantiate
+def register_metrics(ctx: HookContext) -> None:
+    metrics.register(ctx.target_name, ctx.instance)
+```
+
+#### `@rc.on_error(*, pattern=None, priority=50)`
+
+Decorator to register a hook called when instantiation fails.
+
+**Parameters:**
+
+| Parameter  | Type           | Default  | Description                                      |
+| ---------- | -------------- | -------- | ------------------------------------------------ |
+| `pattern`  | `str \| None`  | `None`   | Glob pattern for conditional execution.          |
+| `priority` | `int`          | `50`     | Execution order (lower values run first).        |
+
+**Returns:** The decorated function.
+
+**Examples:**
+
+```python
+@rc.on_error
+def log_failures(ctx: HookContext) -> None:
+    logger.error(f"Instantiation failed: {ctx.error}")
+```
+
+#### `rc.register_hook(phase, func, *, name=None, pattern=None, priority=50)`
+
+Explicitly register a hook function for a specific phase.
+
+**Parameters:**
+
+| Parameter  | Type           | Default     | Description                                      |
+| ---------- | -------------- | ----------- | ------------------------------------------------ |
+| `phase`    | `HookPhase`    | required    | The lifecycle phase to register for.             |
+| `func`     | `Callable`     | required    | The hook function.                               |
+| `name`     | `str \| None`  | `None`      | Hook name (defaults to function name).           |
+| `pattern`  | `str \| None`  | `None`      | Glob pattern for conditional execution.          |
+| `priority` | `int`          | `50`        | Execution order (lower values run first).        |
+
+**Returns:** `None`
+
+**Examples:**
+
+```python
+from rconfig.hooks import HookPhase
+
+def my_hook(ctx: HookContext) -> None:
+    print(f"Config loaded: {ctx.config_path}")
+
+rc.register_hook(HookPhase.CONFIG_LOADED, my_hook, name="my_hook")
+```
+
+#### `rc.unregister_hook(name, *, phase=None)`
+
+Remove a registered hook by name.
+
+**Parameters:**
+
+| Parameter | Type              | Default  | Description                                        |
+| --------- | ----------------- | -------- | -------------------------------------------------- |
+| `name`    | `str`             | required | Name of the hook to remove.                        |
+| `phase`   | `HookPhase \| None` | `None`   | If specified, only remove from this phase.         |
+
+**Returns:** `None`
+
+**Raises:**
+
+| Exception    | Condition                        |
+| ------------ | -------------------------------- |
+| `KeyError`   | If no hook with that name exists |
+
+**Examples:**
+
+```python
+rc.unregister_hook("my_hook")
+rc.unregister_hook("my_hook", phase=HookPhase.CONFIG_LOADED)
+```
+
+#### `rc.register_callback(callback)`
+
+Register a Callback class instance. All implemented methods are registered as hooks.
+
+**Parameters:**
+
+| Parameter  | Type         | Default  | Description                     |
+| ---------- | ------------ | -------- | ------------------------------- |
+| `callback` | `Callback`   | required | Instance of a Callback subclass |
+
+**Returns:** `None`
+
+**Examples:**
+
+```python
+class ExperimentTracker(rc.Callback):
+    def on_config_loaded(self, ctx: HookContext) -> None:
+        self.run_id = start_run()
+        log_config(self.run_id, dict(ctx.config))
+
+    def on_after_instantiate(self, ctx: HookContext) -> None:
+        log_component(self.run_id, ctx.target_name)
+
+tracker = ExperimentTracker()
+rc.register_callback(tracker)
+```
+
+#### `rc.unregister_callback(callback)`
+
+Remove all hooks registered by a Callback instance.
+
+**Parameters:**
+
+| Parameter  | Type         | Default  | Description                     |
+| ---------- | ------------ | -------- | ------------------------------- |
+| `callback` | `Callback`   | required | The Callback instance to remove |
+
+**Returns:** `None`
+
+**Examples:**
+
+```python
+rc.unregister_callback(tracker)
+```
+
+#### `rc.known_hooks()`
+
+Return a read-only view of all registered hooks.
+
+**Parameters:** None
+
+**Returns:** `MappingProxyType[HookPhase, tuple[HookEntry, ...]]`
+
+**Examples:**
+
+```python
+for phase, hooks in rc.known_hooks().items():
+    for hook in hooks:
+        print(f"{phase.name}: {hook.name} (priority={hook.priority})")
+```
+
 ---
 
 ### Advanced API
@@ -3710,6 +4078,102 @@ Exception raised when a deprecated key is used and the deprecation policy is set
 ##### `RconfigDeprecationWarning`
 
 Warning class used by the default deprecation handler. Integrates with Python's `warnings` filter system.
+
+#### Hook Classes
+
+##### `rc.Callback`
+
+Base class for class-based hooks that can maintain state across hook invocations.
+
+**Methods to Override:**
+
+| Method                         | Phase              | Description                          |
+| ------------------------------ | ------------------ | ------------------------------------ |
+| `on_config_loaded(ctx)`        | CONFIG_LOADED      | Called after config composition      |
+| `on_before_instantiate(ctx)`   | BEFORE_INSTANTIATE | Called before each constructor       |
+| `on_after_instantiate(ctx)`    | AFTER_INSTANTIATE  | Called after each constructor        |
+| `on_error(ctx)`                | ON_ERROR           | Called when instantiation fails      |
+
+**Examples:**
+
+```python
+class ExperimentTracker(rc.Callback):
+    def __init__(self, tracking_uri: str):
+        self.tracking_uri = tracking_uri
+        self.run_id = None
+
+    def on_config_loaded(self, ctx: HookContext) -> None:
+        self.run_id = start_run(self.tracking_uri)
+        log_config(self.run_id, dict(ctx.config))
+
+    def on_after_instantiate(self, ctx: HookContext) -> None:
+        log_component(self.run_id, ctx.target_name, ctx.instance)
+
+    def on_error(self, ctx: HookContext) -> None:
+        mark_failed(self.run_id, str(ctx.error))
+
+tracker = ExperimentTracker("http://mlflow.internal")
+rc.register_callback(tracker)
+```
+
+##### `HookPhase`
+
+Enum defining the lifecycle phases where hooks can be registered.
+
+**Values:**
+
+| Value                | Description                                    |
+| -------------------- | ---------------------------------------------- |
+| `CONFIG_LOADED`      | After config composition, before instantiation |
+| `BEFORE_INSTANTIATE` | Before each object's constructor call          |
+| `AFTER_INSTANTIATE`  | After each object's constructor returns        |
+| `ON_ERROR`           | When instantiation fails with an exception     |
+
+##### `HookContext`
+
+Immutable context object passed to hook functions.
+
+**Attributes:**
+
+| Attribute     | Type                        | Available In             | Description                    |
+| ------------- | --------------------------- | ------------------------ | ------------------------------ |
+| `phase`       | `HookPhase`                 | All                      | Current lifecycle phase        |
+| `config_path` | `str`                       | All                      | Path to the config file        |
+| `config`      | `MappingProxyType` or None  | All                      | Read-only view of config dict  |
+| `inner_path`  | `str \| None`               | BEFORE/AFTER_INSTANTIATE | Path within config             |
+| `target_name` | `str \| None`               | BEFORE/AFTER_INSTANTIATE | The `_target_` name            |
+| `instance`    | `Any \| None`               | AFTER_INSTANTIATE        | The instantiated object        |
+| `error`       | `Exception \| None`         | ON_ERROR                 | The exception that occurred    |
+
+##### `HookEntry`
+
+Immutable dataclass representing a registered hook.
+
+**Attributes:**
+
+| Attribute  | Type           | Description                               |
+| ---------- | -------------- | ----------------------------------------- |
+| `name`     | `str`          | Hook identifier                           |
+| `phase`    | `HookPhase`    | Lifecycle phase                           |
+| `func`     | `Callable`     | The hook function                         |
+| `pattern`  | `str \| None`  | Glob pattern for conditional execution    |
+| `priority` | `int`          | Execution order (lower runs first)        |
+
+##### `HookError`
+
+Base exception for hook-related errors.
+
+##### `HookExecutionError`
+
+Exception raised when a hook function raises an error during execution.
+
+**Attributes:**
+
+| Attribute        | Type           | Description                    |
+| ---------------- | -------------- | ------------------------------ |
+| `hook_name`      | `str`          | Name of the failing hook       |
+| `phase`          | `HookPhase`    | Phase when error occurred      |
+| `original_error` | `Exception`    | The original exception         |
 
 ## Advanced Usage
 

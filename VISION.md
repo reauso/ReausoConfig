@@ -15,7 +15,7 @@ This document outlines potential features for rconfig based on analysis of state
 7. [:x: Defaults List / Composition Groups](#7-x-defaults-list--composition-groups)
 8. [✅ Multi-Environment Profiles](#8-multi-environment-profiles)
 9. [✅ Config Diffing](#9--config-diffing)
-10. [Callbacks and Hooks](#10-callbacks-and-hooks)
+10. [✅ Callbacks and Hooks](#10-callbacks-and-hooks)
 11. [XDG Base Directory Support](#11-xdg-base-directory-support)
 12. [✅ CLI `_ref_` Shorthand](#12-cli-_ref_-shorthand)
 13. [✅ Extension-less `_ref_` Resolution](#13-extension-less-_ref_-resolution)
@@ -1001,7 +1001,7 @@ rconfig diff config_v1.yaml config_v2.yaml --exit-code
 
 ---
 
-## 10. Callbacks and Hooks
+## 10. ✅ Callbacks and Hooks
 
 **Adopted by:** Hydra, pytest, many frameworks
 
@@ -1833,7 +1833,7 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 
 8. ✅ Multi-Environment Profiles (via `inner_path`)
 9. ✅ Config Diffing
-10. Callbacks and Hooks
+10. ✅ Callbacks and Hooks
 11. XDG Base Directory Support
 
 ### Planned Enhancements

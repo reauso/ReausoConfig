@@ -695,6 +695,46 @@ class DeprecationError(ConfigError):
     """Base exception for deprecation-related errors."""
 
 
+# =============================================================================
+# Hook Errors
+# =============================================================================
+
+
+class HookError(ConfigError):
+    """Base exception for hook-related errors."""
+
+
+class HookExecutionError(HookError):
+    """Raised when a hook function raises an exception.
+
+    :param hook_name: Name of the hook that failed.
+    :param phase: The lifecycle phase during which the hook failed.
+    :param original_error: The exception raised by the hook function.
+    """
+
+    def __init__(
+        self,
+        hook_name: str,
+        phase: "HookPhase",
+        original_error: Exception,
+    ) -> None:
+        self.hook_name = hook_name
+        self.phase = phase
+        self.original_error = original_error
+        super().__init__(
+            f"Hook '{hook_name}' failed during {phase.name}: "
+            f"{type(original_error).__name__}: {original_error}\n"
+            f"Hint: Check the hook implementation for errors."
+        )
+
+
+# Import HookPhase for type annotation (placed at end to avoid circular imports)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rconfig.hooks.models import HookPhase
+
+
 class DeprecatedKeyError(DeprecationError):
     """Raised when a deprecated key is used and policy is 'error'.
 
