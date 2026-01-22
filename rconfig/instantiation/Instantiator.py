@@ -5,6 +5,7 @@ Python objects using registered target classes.
 """
 
 import inspect
+from types import MappingProxyType
 from typing import Any, get_type_hints
 
 from rconfig.target import TargetRegistry
@@ -43,6 +44,8 @@ class ConfigInstantiator:
         self._instantiated_cache: dict[str, Any] = {}
         # Global lazy mode flag
         self._global_lazy: bool = False
+        # Root config path for hooks (file path)
+        self._config_path_for_hooks: str | None = None
 
     def instantiate(
         self,
@@ -52,6 +55,7 @@ class ConfigInstantiator:
         instance_targets: dict[str, str | None] | None = None,
         external_instances: dict[str, Any] | None = None,
         lazy: bool = False,
+        config_path_for_hooks: str | None = None,
     ) -> Any:
         """Create an object from a config dictionary.
 
@@ -67,6 +71,7 @@ class ConfigInstantiator:
                                    objects from outside the partial scope.
         :param lazy: If True, all nested configs are lazily instantiated.
                      Lazy objects delay __init__ until first attribute access.
+        :param config_path_for_hooks: File path for hooks (passed to HookContext).
         :return: Instantiated object.
         :raises ValidationError: If config is invalid (when validate=True).
         :raises InstantiationError: If instantiation fails.
@@ -80,6 +85,9 @@ class ConfigInstantiator:
 
         # Set up lazy mode for this instantiation
         self._global_lazy = lazy
+
+        # Store config path for hooks
+        self._config_path_for_hooks = config_path_for_hooks
 
         # Pre-populate cache with external instances
         if external_instances:
@@ -102,12 +110,19 @@ class ConfigInstantiator:
         filtered_config = {k: v for k, v in config.items() if k != LAZY_KEY}
         kwargs = self._processed_arguments(filtered_config, config_path)
 
+        # Invoke BEFORE_INSTANTIATE hooks
+        self._invoke_before_instantiate(filtered_config, config_path, target_name)
+
         try:
             if should_be_lazy:
                 proxy_class = get_lazy_proxy_class(reference.target_class)
                 instance = proxy_class(**kwargs)
             else:
                 instance = reference.target_class(**kwargs)
+
+            # Invoke AFTER_INSTANTIATE hooks
+            self._invoke_after_instantiate(filtered_config, config_path, target_name, instance)
+
             # Cache this instance for potential sharing
             if config_path:
                 self._instantiated_cache[config_path] = instance
@@ -260,12 +275,19 @@ class ConfigInstantiator:
         # Process arguments, instantiating nested configs
         kwargs = self._processed_arguments(filtered_config, config_path)
 
+        # Invoke BEFORE_INSTANTIATE hooks
+        self._invoke_before_instantiate(filtered_config, config_path, target_name)
+
         try:
             if should_be_lazy:
                 proxy_class = get_lazy_proxy_class(reference.target_class)
                 instance = proxy_class(**kwargs)
             else:
                 instance = reference.target_class(**kwargs)
+
+            # Invoke AFTER_INSTANTIATE hooks
+            self._invoke_after_instantiate(filtered_config, config_path, target_name, instance)
+
             # Cache this instance for potential sharing
             self._instantiated_cache[cache_path] = instance
             return instance
@@ -298,3 +320,66 @@ class ConfigInstantiator:
             return {TARGET_KEY: inferred_target, **value}
 
         return None
+
+    def _invoke_before_instantiate(
+        self,
+        config: dict[str, Any],
+        inner_path: str,
+        target_name: str,
+    ) -> None:
+        """Invoke BEFORE_INSTANTIATE hooks if hooks are enabled.
+
+        :param config: The config being instantiated.
+        :param inner_path: Path within config to current object.
+        :param target_name: The _target_ name being instantiated.
+        """
+        if self._config_path_for_hooks is None:
+            return
+
+        from rconfig.hooks import HookContext, HookPhase, HookRegistry
+
+        registry = HookRegistry()
+        if not registry.known_hooks[HookPhase.BEFORE_INSTANTIATE]:
+            return
+
+        context = HookContext(
+            phase=HookPhase.BEFORE_INSTANTIATE,
+            config_path=self._config_path_for_hooks,
+            config=MappingProxyType(config),
+            inner_path=inner_path or None,
+            target_name=target_name,
+        )
+        registry.invoke(HookPhase.BEFORE_INSTANTIATE, context)
+
+    def _invoke_after_instantiate(
+        self,
+        config: dict[str, Any],
+        inner_path: str,
+        target_name: str,
+        instance: Any,
+    ) -> None:
+        """Invoke AFTER_INSTANTIATE hooks if hooks are enabled.
+
+        :param config: The config that was instantiated.
+        :param inner_path: Path within config to current object.
+        :param target_name: The _target_ name that was instantiated.
+        :param instance: The instantiated object.
+        """
+        if self._config_path_for_hooks is None:
+            return
+
+        from rconfig.hooks import HookContext, HookPhase, HookRegistry
+
+        registry = HookRegistry()
+        if not registry.known_hooks[HookPhase.AFTER_INSTANTIATE]:
+            return
+
+        context = HookContext(
+            phase=HookPhase.AFTER_INSTANTIATE,
+            config_path=self._config_path_for_hooks,
+            config=MappingProxyType(config),
+            inner_path=inner_path or None,
+            target_name=target_name,
+            instance=instance,
+        )
+        registry.invoke(HookPhase.AFTER_INSTANTIATE, context)
