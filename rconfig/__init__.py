@@ -830,7 +830,7 @@ def instantiate(
     instance_targets = composer.instance_targets
 
     # Invoke CONFIG_LOADED hooks (may modify config via return value)
-    config = _hook_registry.invoke_with_result(
+    config = _hook_registry.invoke(
         HookPhase.CONFIG_LOADED,
         HookContext(
             phase=HookPhase.CONFIG_LOADED,

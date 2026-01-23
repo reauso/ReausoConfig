@@ -89,48 +89,43 @@ class TestDiffLayoutABC:
 
 
 class TestDiffFormatValueFormatting:
-    """Tests for DiffFormat value formatting.
+    """Tests for value formatting used by DiffFormat.
 
-    With the new architecture, value formatting is done in DiffFormat._format_value().
+    Value formatting is provided by format_value() from format_utils.
     """
 
     def test_format_value_none(self) -> None:
-        """_format_value handles None."""
-        diff = ConfigDiff({})
-        fmt = DiffFormat(diff)
+        """format_value handles None."""
+        from rconfig._internal.format_utils import format_value
 
-        assert fmt._format_value(None) == "null"
+        assert format_value(None) == "null"
 
     def test_format_value_bool(self) -> None:
-        """_format_value handles booleans."""
-        diff = ConfigDiff({})
-        fmt = DiffFormat(diff)
+        """format_value handles booleans."""
+        from rconfig._internal.format_utils import format_value
 
-        assert fmt._format_value(True) == "true"
-        assert fmt._format_value(False) == "false"
+        assert format_value(True) == "true"
+        assert format_value(False) == "false"
 
     def test_format_value_string(self) -> None:
-        """_format_value handles strings with quotes."""
-        diff = ConfigDiff({})
-        fmt = DiffFormat(diff)
+        """format_value handles strings with quotes."""
+        from rconfig._internal.format_utils import format_value
 
-        assert fmt._format_value("hello") == "'hello'"
+        assert format_value("hello") == "'hello'"
 
     def test_format_value_number(self) -> None:
-        """_format_value handles numbers."""
-        diff = ConfigDiff({})
-        fmt = DiffFormat(diff)
+        """format_value handles numbers."""
+        from rconfig._internal.format_utils import format_value
 
-        assert fmt._format_value(42) == "42"
-        assert fmt._format_value(3.14) == "3.14"
+        assert format_value(42) == "42"
+        assert format_value(3.14) == "3.14"
 
     def test_format_value_truncates_long_values(self) -> None:
-        """_format_value truncates long lists/dicts."""
-        diff = ConfigDiff({})
-        fmt = DiffFormat(diff)
+        """format_value truncates long lists/dicts."""
+        from rconfig._internal.format_utils import format_value
 
         long_list = list(range(100))
-        result = fmt._format_value(long_list)
+        result = format_value(long_list)
         assert len(result) <= 50
         assert result.endswith("...")
 

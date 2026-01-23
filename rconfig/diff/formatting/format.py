@@ -10,7 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from functools import singledispatchmethod
-from typing import Any, Self, overload
+from typing import Self, overload
+
+from rconfig._internal.format_utils import format_value
 
 from ..diff import ConfigDiff
 from ..models import DiffEntry, DiffEntryType
@@ -140,10 +142,10 @@ class DiffFormat:
             builder.add_entry(
                 path=path,
                 diff_type=entry.diff_type,
-                left_value=self._format_value(entry.left_value)
+                left_value=format_value(entry.left_value)
                 if self._ctx.show_values and entry.left_value is not None
                 else None,
-                right_value=self._format_value(entry.right_value)
+                right_value=format_value(entry.right_value)
                 if self._ctx.show_values and entry.right_value is not None
                 else None,
                 left_provenance=entry.left_provenance
@@ -249,25 +251,6 @@ class DiffFormat:
                 return False
 
         return True
-
-    def _format_value(self, value: Any) -> str:
-        """Format a value for display.
-
-        :param value: The value to format.
-        :return: Formatted value string.
-        """
-        match value:
-            case None:
-                return "null"
-            case bool():
-                return "true" if value else "false"
-            case str():
-                return repr(value)
-            case list() | dict():
-                s = str(value)
-                return s[:47] + "..." if len(s) > 50 else s
-            case _:
-                return str(value)
 
     # Show/Hide toggles
 
