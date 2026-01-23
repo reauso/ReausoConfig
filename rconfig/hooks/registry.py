@@ -9,7 +9,7 @@ from __future__ import annotations
 import fnmatch
 import threading
 from types import MappingProxyType
-from typing import Any, Callable
+from typing import Any, Callable, overload
 
 from rconfig._internal import Singleton
 from rconfig.hooks.models import HookContext, HookEntry, HookPhase
@@ -34,9 +34,12 @@ class HookRegistry:
             priority=10,
         )
 
-        # Invoke hooks for a phase
+        # Invoke hooks for a phase (fire-and-forget)
         context = HookContext(phase=HookPhase.CONFIG_LOADED, config_path="config.yaml")
         registry.invoke(HookPhase.CONFIG_LOADED, context)
+
+        # Invoke hooks with config (allows hooks to modify config)
+        config = registry.invoke(HookPhase.CONFIG_LOADED, context, config)
 
         # Get all registered hooks
         for phase, hooks in registry.known_hooks.items():
@@ -120,50 +123,33 @@ class HookRegistry:
             if not found:
                 raise KeyError(f"Hook '{name}' is not registered")
 
-    def invoke(self, phase: HookPhase, context: HookContext) -> None:
+    @overload
+    def invoke(self, phase: HookPhase, context: HookContext) -> None: ...
+    @overload
+    def invoke(self, phase: HookPhase, context: HookContext, config: dict[str, Any]) -> dict[str, Any]: ...
+
+    def invoke(
+        self,
+        phase: HookPhase,
+        context: HookContext,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         """Invoke all hooks registered for a phase.
 
         Hooks are invoked in priority order (lower values first).
         If a hook has a pattern, it only runs when config_path matches.
 
-        :param phase: The lifecycle phase to invoke hooks for.
-        :param context: The context to pass to each hook function.
-        :raises HookExecutionError: If a hook raises an exception.
-        """
-        # Import here to avoid circular dependency
-        from rconfig.errors import HookExecutionError
+        When config is provided, hooks can return a dict to replace
+        the config. The updated config is passed to subsequent hooks.
+        Returns the final (potentially modified) config dict.
 
-        with self._lock:
-            hooks = sorted(self._hooks[phase], key=lambda h: h.priority)
-
-        for hook in hooks:
-            # Check pattern match if specified
-            if hook.pattern is not None:
-                if not fnmatch.fnmatch(context.config_path, hook.pattern):
-                    continue
-
-            try:
-                hook.func(context)
-            except Exception as e:
-                raise HookExecutionError(hook.name, phase, e) from e
-
-    def invoke_with_result(
-        self,
-        phase: HookPhase,
-        context: HookContext,
-        config: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Invoke hooks, allowing CONFIG_LOADED hooks to modify config.
-
-        Similar to invoke(), but for CONFIG_LOADED phase, hooks can return
-        a modified config dict. If a hook returns a dict, it replaces the
-        current config for subsequent hooks. If a hook returns None (or
-        doesn't return), the config is unchanged.
+        When config is omitted, hook return values are ignored and
+        this method returns None.
 
         :param phase: The lifecycle phase to invoke hooks for.
         :param context: The context to pass to each hook function.
-        :param config: The current config dict.
-        :return: The (potentially modified) config dict.
+        :param config: Optional config dict for hooks that modify config.
+        :return: The (potentially modified) config if provided, else None.
         :raises HookExecutionError: If a hook raises an exception.
         """
         # Import here to avoid circular dependency
@@ -181,8 +167,8 @@ class HookRegistry:
             try:
                 result = hook.func(context)
 
-                # For CONFIG_LOADED phase, allow hooks to return modified config
-                if phase == HookPhase.CONFIG_LOADED and isinstance(result, dict):
+                # When config is provided, allow hooks to return modified config
+                if config is not None and isinstance(result, dict):
                     config = result
                     # Update context with new config for next hook
                     context = HookContext(

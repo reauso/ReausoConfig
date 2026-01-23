@@ -450,8 +450,8 @@ class HookRegistryTests(TestCase):
         self.assertEqual(len(self.registry.known_hooks[HookPhase.CONFIG_LOADED]), 100)
 
 
-class InvokeWithResultTests(TestCase):
-    """Tests for invoke_with_result() method."""
+class InvokeWithConfigTests(TestCase):
+    """Tests for invoke() with config parameter."""
 
     def setUp(self) -> None:
         self.registry = HookRegistry()
@@ -460,7 +460,7 @@ class InvokeWithResultTests(TestCase):
     def tearDown(self) -> None:
         self.registry.clear()
 
-    def test_invoke_with_result__HookReturnsDict__ConfigUpdated(self):
+    def test_invoke__HookReturnsDict__ConfigUpdated(self):
         # Arrange
         def modify_hook(ctx: HookContext) -> dict:
             return {**ctx.config, "new_key": "new_value"}
@@ -474,7 +474,7 @@ class InvokeWithResultTests(TestCase):
         )
 
         # Act
-        result = self.registry.invoke_with_result(
+        result = self.registry.invoke(
             HookPhase.CONFIG_LOADED, context, original_config
         )
 
@@ -482,7 +482,7 @@ class InvokeWithResultTests(TestCase):
         self.assertEqual(result["existing"], "value")
         self.assertEqual(result["new_key"], "new_value")
 
-    def test_invoke_with_result__HookReturnsNone__ConfigUnchanged(self):
+    def test_invoke__HookReturnsNone__ConfigUnchanged(self):
         # Arrange
         def no_return_hook(ctx: HookContext) -> None:
             pass  # Returns None implicitly
@@ -496,14 +496,14 @@ class InvokeWithResultTests(TestCase):
         )
 
         # Act
-        result = self.registry.invoke_with_result(
+        result = self.registry.invoke(
             HookPhase.CONFIG_LOADED, context, original_config
         )
 
         # Assert
         self.assertIs(result, original_config)
 
-    def test_invoke_with_result__MultipleHooks__ChainModifications(self):
+    def test_invoke__MultipleHooks__ChainModifications(self):
         # Arrange
         def add_a(ctx: HookContext) -> dict:
             return {**ctx.config, "a": 1}
@@ -526,14 +526,14 @@ class InvokeWithResultTests(TestCase):
         )
 
         # Act
-        result = self.registry.invoke_with_result(
+        result = self.registry.invoke(
             HookPhase.CONFIG_LOADED, context, original_config
         )
 
         # Assert
         self.assertEqual(result, {"a": 1, "b": 2, "c": 3})
 
-    def test_invoke_with_result__MixedReturnTypes__OnlyDictUpdates(self):
+    def test_invoke__MixedReturnTypes__OnlyDictUpdates(self):
         # Arrange
         def returns_dict(ctx: HookContext) -> dict:
             return {**ctx.config, "from_dict": True}
@@ -556,17 +556,17 @@ class InvokeWithResultTests(TestCase):
         )
 
         # Act
-        result = self.registry.invoke_with_result(
+        result = self.registry.invoke(
             HookPhase.CONFIG_LOADED, context, original_config
         )
 
         # Assert - only dict return is applied
         self.assertEqual(result, {"from_dict": True})
 
-    def test_invoke_with_result__NonConfigLoadedPhase__IgnoresReturnValue(self):
+    def test_invoke__WithConfig__AnyPhaseProcessesReturns(self):
         # Arrange
         def modify_hook(ctx: HookContext) -> dict:
-            return {"should": "be_ignored"}
+            return {"modified": "value"}
 
         self.registry.register(HookPhase.BEFORE_INSTANTIATE, modify_hook, name="modify")
         original_config = {"original": "value"}
@@ -577,14 +577,14 @@ class InvokeWithResultTests(TestCase):
         )
 
         # Act
-        result = self.registry.invoke_with_result(
+        result = self.registry.invoke(
             HookPhase.BEFORE_INSTANTIATE, context, original_config
         )
 
-        # Assert - return value ignored for non-CONFIG_LOADED phase
-        self.assertIs(result, original_config)
+        # Assert - when config is passed, dict returns are processed regardless of phase
+        self.assertEqual(result, {"modified": "value"})
 
-    def test_invoke_with_result__HookSeesUpdatedConfig__ContextUpdatedBetweenHooks(self):
+    def test_invoke__HookSeesUpdatedConfig__ContextUpdatedBetweenHooks(self):
         # Arrange
         seen_configs: list[dict] = []
 
@@ -607,7 +607,7 @@ class InvokeWithResultTests(TestCase):
         )
 
         # Act
-        self.registry.invoke_with_result(HookPhase.CONFIG_LOADED, context, original_config)
+        self.registry.invoke(HookPhase.CONFIG_LOADED, context, original_config)
 
         # Assert - second hook sees the config modified by first hook
         self.assertEqual(seen_configs[0], {"original": True})
