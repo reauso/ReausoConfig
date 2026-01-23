@@ -5,19 +5,25 @@ Python objects using registered target classes.
 """
 
 import inspect
+from collections.abc import Mapping, MutableMapping
 from types import MappingProxyType
-from typing import Any, get_type_hints
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from rconfig.target import TargetRegistry
 from rconfig.validation import ConfigValidator
 from rconfig.errors import InstantiationError
 from rconfig._internal.path_utils import build_child_path
+
 from rconfig._internal.type_utils import (
     TARGET_KEY,
     LAZY_KEY,
     could_be_implicit_nested,
     extract_class_from_hint,
+    extracted_container_element_type,
     is_concrete_type,
+    register_inferred_target,
+    resolved_union_candidate,
+    unwrapped_hint,
 )
 from rconfig.instantiation.LazyProxy import get_lazy_proxy_class
 
@@ -222,14 +228,22 @@ class ConfigInstantiator:
                 return self._instantiate_nested(augmented, config_path)
 
         if isinstance(value, list):
+            list_element_type = _extracted_list_element_type(expected_type)
             return [
-                self._instantiated_value(item, build_child_path(config_path, i), None)
+                self._instantiated_value(
+                    item,
+                    build_child_path(config_path, i),
+                    _extracted_tuple_positional_type(expected_type, i) or list_element_type,
+                )
                 for i, item in enumerate(value)
             ]
 
         if isinstance(value, dict):
+            dict_value_type = _extracted_dict_value_type(expected_type)
             return {
-                k: self._instantiated_value(v, build_child_path(config_path, k), None)
+                k: self._instantiated_value(
+                    v, build_child_path(config_path, k), dict_value_type
+                )
                 for k, v in value.items()
             }
 
@@ -305,9 +319,19 @@ class ConfigInstantiator:
     ) -> dict[str, Any] | None:
         """Add inferred _target_ to a dict if the type is concrete.
 
+        Handles plain class types and union types via structural matching.
+
         :return: Augmented config if inference succeeds, None otherwise.
         """
         class_type = extract_class_from_hint(expected_type)
+
+        if class_type is None:
+            # Try union structural matching
+            unwrapped = unwrapped_hint(expected_type)
+            if get_origin(unwrapped) is Union:
+                matched = resolved_union_candidate(unwrapped, value, self._store)
+                if matched is not None:
+                    class_type = matched
 
         if class_type is None:
             return None
@@ -316,7 +340,9 @@ class ConfigInstantiator:
             self._store, class_type
         )
 
-        if is_concrete_result and inferred_target is not None:
+        if is_concrete_result:
+            if inferred_target is None:
+                inferred_target = register_inferred_target(self._store, class_type)
             return {TARGET_KEY: inferred_target, **value}
 
         return None
@@ -383,3 +409,57 @@ class ConfigInstantiator:
             instance=instance,
         )
         registry.invoke(HookPhase.AFTER_INSTANTIATE, context)
+
+
+def _extracted_list_element_type(hint: type | None) -> type | None:
+    """Extract element type from list[X] or Optional[list[X]].
+
+    :param hint: Type hint for the list field.
+    :return: The element type, or None.
+    """
+    if hint is None:
+        return None
+    unwrapped = unwrapped_hint(hint)
+    return extracted_container_element_type(unwrapped, 0)
+
+
+def _extracted_tuple_positional_type(hint: type | None, index: int) -> type | None:
+    """Extract positional type from tuple[A, B, C].
+
+    Returns the type at position `index`, or None if not a positional tuple.
+
+    :param hint: Type hint for the tuple field.
+    :param index: The position index.
+    :return: The type at position, or None.
+    """
+    if hint is None:
+        return None
+    unwrapped = unwrapped_hint(hint)
+    origin = get_origin(unwrapped)
+    if origin is not tuple:
+        return None
+    args = get_args(unwrapped)
+    if not args:
+        return None
+    # Skip variadic tuples — they use the list element path
+    if len(args) == 2 and args[1] is Ellipsis:
+        return None
+    if 0 <= index < len(args):
+        return args[index]
+    return None
+
+
+def _extracted_dict_value_type(hint: type | None) -> type | None:
+    """Extract value type from dict[K, V], Mapping[K, V], or Optional variants.
+
+    :param hint: Type hint for the dict/mapping field.
+    :return: The value type V, or None.
+    """
+    if hint is None:
+        return None
+    unwrapped = unwrapped_hint(hint)
+    origin = get_origin(unwrapped)
+    if origin not in (dict, Mapping, MutableMapping):
+        return None
+    args = get_args(unwrapped)
+    return args[1] if len(args) >= 2 else None

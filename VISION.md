@@ -21,7 +21,7 @@ This document outlines potential features for rconfig based on analysis of state
 13. [✅ Extension-less `_ref_` Resolution](#13-extension-less-_ref_-resolution)
 14. [✅ Multirun Support](#14-multirun-support)
 15. [✅ CLI Help Integration](#15-cli-help-integration)
-16. [Future Type Inference Enhancements](#16-future-type-inference-enhancements)
+16. [✅ Complete Type Inference Enhancements](#16-complete-type-inference-enhancements)
 
 ---
 
@@ -1772,50 +1772,164 @@ def my_func(provenance, config_path): ...
 
 ---
 
-## 16. Future Type Inference Enhancements
+## 16. ✅ Complete Type Inference Enhancements
 
-These enhancements build on the existing type inference system for `inner_path`.
+These enhancements complete the type inference system for `inner_path` by addressing all remaining gaps in the type resolution matrix.
 
-### Dict Element Type Inference
+### Architecture: Composable Unwrapping Pipeline
 
-Similar to list elements, paths like `models["resnet"]` could infer types from `dict[str, Model]` hints. This would follow the same pattern as list element inference.
+Type inference follows a layered pipeline that composes naturally:
 
-**Example:**
+1. **Layer 1 — Strip wrappers**: Unwrap `Annotated[X, ...]` → `X`, `Optional[X]` → `X`, `NewType('N', X)` → `X`
+2. **Layer 2a — Container matching**: Match access pattern to container type:
+   - Integer index on `list[X]` / `set[X]` / `frozenset[X]` / `Sequence[X]` → `X`
+   - Integer index on `tuple[A, B, C]` → type at position
+   - String key on `dict[K, V]` / `Mapping[K, V]` → `V`
+3. **Layer 2b — Union matching**: Structural match against union members (see below)
+4. **Layer 3 — Verify/register**: Ensure the resolved type is concrete and usable
+
+This composable approach naturally handles combinations like `Optional[list[X]]`, `Annotated[dict[str, Model], ...]`, etc. without special-casing each combination.
+
+### New Container Type Inference
+
+#### Dict Element Type Inference
+
+Paths like `models["resnet"]` infer types from `dict[str, Model]` hints:
+
 ```python
 @dataclass
 class Config:
-    models: dict[str, Model]  # dict[str, X] hint
+    models: dict[str, Model]
 
-# Future: Type inferred from dict value type
+# Type inferred from dict value type
 model = rc.instantiate(path, inner_path='config.models["resnet"]')
 ```
 
-**Implementation approach:**
-- Extend `_infer_list_element_type()` pattern to handle dict key access
-- Parse dict key syntax (e.g., `["resnet"]` or `["key with spaces"]`)
-- Extract value type from `dict[K, V]` using `get_args()`
+#### Tuple Positional Type Inference
 
-### Union Type Handling
+Paths with integer indices on tuple types infer the positional type:
 
-Currently, union types like `Encoder | Decoder` are rejected as ambiguous. Future enhancements could allow inference in specific cases:
-
-1. **Single registered member**: If only one union member is registered in the store, use it
-2. **Discriminator field**: Use a field like `_type_` to select the correct union member
-
-**Example:**
 ```python
 @dataclass
 class Config:
-    component: Encoder | Decoder  # Union type
+    components: tuple[Encoder, Decoder, Loss]
 
-# Future option 1: Only Encoder is registered → use Encoder
-# Future option 2: Config has _type_: encoder → use Encoder
+# Type inferred as Decoder (position 1)
+decoder = rc.instantiate(path, inner_path='config.components[1]')
 ```
 
-**Considerations:**
-- Single-member inference is straightforward but may mask registration errors
-- Discriminator fields require convention agreement (`_type_`, `type`, `kind`?)
-- May conflict with explicit `_target_` which already serves as discriminator
+#### Annotated Type Unwrapping
+
+`Annotated[X, ...]` is unwrapped to `X` before further inference:
+
+```python
+@dataclass
+class Config:
+    model: Annotated[Encoder, SomeMetadata]
+
+# Annotated wrapper stripped, inferred as Encoder
+encoder = rc.instantiate(path, inner_path='config.model')
+```
+
+#### Optional Container Unwrapping
+
+`Optional[list[X]]` and `Optional[dict[K, V]]` are unwrapped through both layers:
+
+```python
+@dataclass
+class Config:
+    callbacks: Optional[list[Callback]]
+
+# Optional unwrapped, then list element type inferred
+cb = rc.instantiate(path, inner_path='config.callbacks[0]')
+```
+
+### Union Type Handling via Structural Matching
+
+Union types like `Encoder | Decoder` are resolved by matching the config's structure against each union member's fields.
+
+**Prerequisite**: The parent config must have a registered `_target_` (providing type hint access).
+
+#### Structural Matching Algorithm
+
+Given a config dict and candidate union member classes:
+
+1. **Strip rconfig-internal keys** from config (`_target_`, `_ref_`, `_recursive_`, etc.) — match only user payload
+2. **Expand candidates**: For abstract union members, replace them with their concrete subclasses (via `__subclasses__()`, recursive). Abstract classes are never candidates themselves — they cannot be registered or instantiated (enforced by the registry's concrete-only constraint).
+3. **For each concrete candidate class**:
+   - **Disqualify if**: config has keys that don't exist as fields on the candidate (unknown keys)
+   - **Disqualify if**: candidate has required fields (no default) missing from config
+   - **Disqualify if**: config values are type-incompatible with field annotations (e.g., `"abc"` for an `int` field)
+4. **Determine result**:
+   - 0 candidates match → error ("none of the union members match the provided config")
+   - 1 candidate matches → use it
+   - 2+ candidates match → error ("ambiguous: specify `_target_` explicitly")
+
+#### Three Resolution Cases
+
+**Case 1: `_target_` missing, type IS registered**
+
+```python
+store.register(Encoder, name="encoder")
+store.register(Decoder, name="decoder")
+```
+
+```yaml
+parent:
+  _target_: my_model
+  component:          # hint: Encoder | Decoder
+    hidden_size: 256
+    num_layers: 4     # only Encoder has this field
+    # no _target_ — structural match resolves to Encoder
+```
+
+Structural matching identifies `Encoder` → uses its registered name.
+
+**Case 2: `_target_` present, NOT registered**
+
+```yaml
+component:
+  _target_: encoder     # specified but not in registry
+  hidden_size: 256
+  num_layers: 4
+```
+
+Structural matching identifies `Encoder` → auto-registers it with the specified `_target_` name.
+
+**Case 3: Both `_target_` AND registration missing**
+
+```yaml
+component:              # no _target_
+  hidden_size: 256
+  num_layers: 4         # uniquely identifies Encoder
+```
+
+Structural matching identifies `Encoder` → auto-registers it (using class name).
+
+#### Edge Cases
+
+| Scenario | Behavior |
+|---|---|
+| Abstract union member | Never a candidate itself (cannot be registered per registry constraint). Expanded to its imported concrete subclasses via `__subclasses__()` (best-effort — only sees already-imported classes) |
+| `**kwargs` class | Accepts any keys, treated as valid candidate — normal ambiguity rules apply |
+| Empty config `{}` | Matches any class with all-default fields — likely ambiguous → error |
+| No type annotations on member | Falls through to existing behavior (cannot structurally match) |
+| Subclass not yet imported | Not visible to `__subclasses__()` — safe failure (error, not wrong inference) |
+
+#### Performance Note
+
+Structural matching inspects class fields and type-checks values for each union member. For hot paths, resolved type mappings can be cached after first resolution.
+
+**Implementation approach:**
+- Refactor `extract_class_from_hint()` into a composable pipeline (strip → container match → verify)
+- Add `_infer_dict_element_type()` mirroring `_infer_list_element_type()`
+- Add `_infer_tuple_element_type()` with position-aware extraction
+- Add `_resolve_union_type()` implementing structural matching
+- Handle `Annotated` unwrapping via `get_args()[0]` in Layer 1
+- Handle `Optional[container[X]]` by composing Layer 1 + Layer 2a
+- Handle `set[X]` / `frozenset[X]` as list-like containers (YAML lists → element type extraction)
+- Handle `Sequence[X]` / `Mapping[K, V]` abstract ABCs as aliases for concrete types
+- Handle `NewType('Name', X)` via `__supertype__` attribute unwrapping
 
 ---
 
@@ -1846,6 +1960,6 @@ This vision document outlines 14 features that would enhance rconfig based on pr
 13. ✅ Extension-less `_ref_` Resolution
 14. ✅ Multirun Support
 15. ✅ CLI Help Integration
-16. Future Type Inference Enhancements
+16. ✅ Complete Type Inference Enhancements
 
 Each feature includes detailed usage examples showing how users would interact with the functionality, highlighting the key benefits and use cases.

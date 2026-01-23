@@ -881,6 +881,204 @@ callback = rc.instantiate(Path("trainer.yaml"), inner_path="trainer.callbacks[0]
 assert isinstance(callback, Callback)
 ```
 
+**Dict element type inference:**
+
+Type inference works for dict values by extracting the value type from `dict[str, X]` type hints:
+
+```python
+@dataclass
+class ModelConfig:
+    hidden_size: int
+
+@dataclass
+class Registry:
+    models: dict[str, ModelConfig]  # dict[str, X] type hint
+
+rc.register("registry", Registry)
+rc.register("model_config", ModelConfig)
+
+# Config with dict values (no _target_ on values)
+# registry:
+#   _target_: registry
+#   models:
+#     resnet:
+#       hidden_size: 512
+#     vgg:
+#       hidden_size: 256
+
+# Type is inferred from dict[str, ModelConfig] value type
+registry = rc.instantiate(Path("registry.yaml"))
+assert isinstance(registry.models["resnet"], ModelConfig)
+```
+
+**Tuple positional type inference:**
+
+Type inference works for tuple elements by matching the position to the corresponding type in `tuple[A, B, C]` type hints:
+
+```python
+@dataclass
+class Encoder:
+    hidden_size: int
+
+@dataclass
+class Decoder:
+    output_size: int
+
+@dataclass
+class Pipeline:
+    components: tuple[Encoder, Decoder]  # Positional types
+
+rc.register("pipeline", Pipeline)
+rc.register("encoder", Encoder)
+rc.register("decoder", Decoder)
+
+# Config: components[0] -> Encoder, components[1] -> Decoder
+# pipeline:
+#   _target_: pipeline
+#   components:
+#     - hidden_size: 512
+#     - output_size: 256
+```
+
+Variadic tuples (`tuple[X, ...]`) work like lists — all elements share the same type.
+
+**Annotated type unwrapping:**
+
+`Annotated[X, metadata]` wrappers are stripped before type inference:
+
+```python
+@dataclass
+class Scheduler:
+    step_size: int
+
+@dataclass
+class Trainer:
+    scheduler: Annotated[Scheduler, "learning rate scheduler"]
+
+rc.register("trainer", Trainer)
+rc.register("scheduler", Scheduler)
+
+# Annotated is unwrapped — inference sees Scheduler
+trainer = rc.instantiate(Path("trainer.yaml"))
+assert isinstance(trainer.scheduler, Scheduler)
+```
+
+This composes with other wrappers: `Annotated[Optional[list[X]], meta]` correctly unwraps through all layers.
+
+**Optional container unwrapping:**
+
+`Optional[container]` types are unwrapped to expose the inner container for inference:
+
+```python
+@dataclass
+class Trainer:
+    callbacks: Optional[list[Callback]]  # Optional is unwrapped
+
+rc.register("trainer", Trainer)
+rc.register("callback", Callback)
+
+# Optional[list[Callback]] unwraps to list[Callback], then to Callback
+trainer = rc.instantiate(Path("trainer.yaml"))
+assert isinstance(trainer.callbacks[0], Callback)
+```
+
+**Union type inference (structural matching):**
+
+When a field has a union type like `Union[A, B]`, rconfig resolves it via structural matching — comparing the config keys against each candidate's constructor parameters:
+
+```python
+@dataclass
+class SGDOptimizer:
+    lr: float
+    momentum: float = 0.9
+
+@dataclass
+class AdamOptimizer:
+    lr: float
+    eps: float = 1e-8
+
+@dataclass
+class Model:
+    optimizer: Union[SGDOptimizer, AdamOptimizer]
+
+rc.register("model", Model)
+rc.register("sgd", SGDOptimizer)
+rc.register("adam", AdamOptimizer)
+
+# Config with momentum -> matches SGDOptimizer
+# model:
+#   _target_: model
+#   optimizer:
+#     lr: 0.01
+#     momentum: 0.95
+
+model = rc.instantiate(Path("model.yaml"))
+assert isinstance(model.optimizer, SGDOptimizer)
+```
+
+Structural matching checks: required fields present, no unknown keys (unless `**kwargs`), and value type compatibility. Abstract union members are expanded to their concrete subclasses. Ambiguous matches (0 or 2+ candidates) leave the value as a plain dict.
+
+**`set[X]` / `frozenset[X]` element type inference:**
+
+YAML has no native set type — set-typed fields receive list values. The element type is extracted from `set[X]` or `frozenset[X]` type hints for inference:
+
+```python
+@dataclass
+class Tag:
+    name: str
+
+@dataclass
+class Article:
+    tags: set[Tag]  # Element type extracted from set[Tag]
+
+rc.register("article", Article)
+rc.register("tag", Tag)
+
+# YAML list items inferred as Tag via set[Tag] hint
+article = rc.instantiate(Path("article.yaml"))
+for tag in article.tags:
+    assert isinstance(tag, Tag)
+```
+
+**`Sequence[X]` / `Mapping[K, V]` abstract collection ABCs:**
+
+Abstract collection types from `collections.abc` are handled as aliases for their concrete counterparts:
+
+```python
+from collections.abc import Sequence, Mapping
+
+@dataclass
+class Pipeline:
+    steps: Sequence[Step]  # Treated like list[Step]
+
+@dataclass
+class ServiceRegistry:
+    services: Mapping[str, Endpoint]  # Treated like dict[str, Endpoint]
+```
+
+Supported ABCs: `Sequence`, `MutableSequence`, `Set`, `MutableSet`, `Mapping`, `MutableMapping`.
+
+**`NewType` unwrapping:**
+
+`NewType` aliases are unwrapped to expose the underlying type for inference:
+
+```python
+from typing import NewType
+
+DatabaseConfig = NewType("DatabaseConfig", DatabaseConnection)
+
+@dataclass
+class AppConfig:
+    database: DatabaseConfig  # Unwrapped to DatabaseConnection
+
+rc.register("app_config", AppConfig)
+rc.register("databaseconnection", DatabaseConnection)
+
+# NewType is transparent — inference sees DatabaseConnection
+app = rc.instantiate(Path("app.yaml"))
+assert isinstance(app.database, DatabaseConnection)
+```
+
 **Note:** `inner_path=None` is equivalent to `inner_path="/"` (root). The root always requires `_target_` because there's no parent to infer the type from.
 
 #### Multi-Environment Configuration
@@ -2647,7 +2845,7 @@ Validate a config file without instantiating (dry-run). Checks all `_required_` 
 | Parameter         | Type                      | Default  | Description                                                                     |
 | ----------------- | ------------------------- | -------- | ------------------------------------------------------------------------------- |
 | `path`          | `Path`                  | required | Path to the configuration file.                                                 |
-| `inner_path`    | `str \| None`            | `None` | Dot-notation path to validate only a section (e.g., `"model"` or `"trainer.callbacks[0]"`). `_required_` markers outside this section are ignored. When specified, the root-level `_target_` is optional and types can be inferred from parent's type hints (including list element types from `list[X]`). |
+| `inner_path`    | `str \| None`            | `None` | Dot-notation path to validate only a section (e.g., `"model"` or `"trainer.callbacks[0]"`). `_required_` markers outside this section are ignored. When specified, the root-level `_target_` is optional and types can be inferred from parent's type hints (including `list[X]`, `set[X]`, `dict[str, X]`, `Sequence[X]`, `Mapping[K, V]`, `tuple[A, B, C]`, `Optional[container]`, `Annotated[X, ...]`, `NewType`, and `Union[A, B]` via structural matching). |
 | `overrides`     | `dict[str, Any] \| None` | `None` | Dictionary of config overrides using dot notation keys.                         |
 | `cli_overrides` | `bool`                  | `True` | Whether to parse CLI overrides from `sys.argv`.                               |
 
@@ -2693,7 +2891,7 @@ Load, compose, validate, and instantiate a configuration file into Python object
 | ----------------- | ------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `path`          | `StrOrPath`             | required  | Path to the configuration file. Accepts str, Path, or any os.PathLike. Supports `.yaml`, `.yml`, `.json`, `.toml`.                      |
 | `expected_type` | `type[T] \| None`        | `None`  | Optional type for type-safe returns. Enables IDE autocompletion and type checking.                                                              |
-| `inner_path`    | `str \| None`            | `None`  | Dot-notation path to instantiate only a section (e.g.,`"model.encoder"` or `"trainer.callbacks[0]"`). Interpolations are resolved from the full config before extraction. When specified, the root-level `_target_` is optional and types can be inferred from parent's type hints (including list element types from `list[X]`). |
+| `inner_path`    | `str \| None`            | `None`  | Dot-notation path to instantiate only a section (e.g.,`"model.encoder"` or `"trainer.callbacks[0]"`). Interpolations are resolved from the full config before extraction. When specified, the root-level `_target_` is optional and types can be inferred from parent's type hints (including `list[X]`, `set[X]`, `dict[str, X]`, `Sequence[X]`, `Mapping[K, V]`, `tuple[A, B, C]`, `Optional[container]`, `Annotated[X, ...]`, `NewType`, and `Union[A, B]` via structural matching). |
 | `overrides`     | `dict[str, Any] \| None` | `None`  | Config overrides using dot notation keys. Applied before CLI overrides.                                                                         |
 | `cli_overrides` | `bool`                  | `True`  | Whether to parse CLI overrides from `sys.argv`. Set to `False` for tests or library usage.                                                  |
 | `lazy`          | `bool`                  | `False` | If `True`, all nested configs delay `__init__` until first attribute access.                                                                |

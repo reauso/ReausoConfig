@@ -38,8 +38,13 @@ def ensure_path(path: StrOrPath) -> Path:
         return path
     return Path(path)
 
-# Regex for parsing instance paths with list indices
-PATH_SEGMENT_RE = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
+# Regex for parsing instance paths with list indices and dict keys
+PATH_SEGMENT_RE = re.compile(
+    r'([^.\[\]]+)'       # Group 1: bare key (model, layers, etc.)
+    r'|\[(\d+)\]'        # Group 2: integer index [0], [1], etc.
+    r'|\["([^"]+)"\]'    # Group 3: double-quoted string key ["key"]
+    r"|\['([^']+)'\]"    # Group 4: single-quoted string key ['key']
+)
 
 
 def build_child_path(parent: str, key: str | int) -> str:
@@ -63,10 +68,12 @@ def build_child_path(parent: str, key: str | int) -> str:
 def parse_path_segments(path: str) -> list[str | int]:
     """Parse a config path into segments.
 
-    Supports dot notation and list indexing:
+    Supports dot notation, list indexing, and dict key access:
     - "model.layers" -> ["model", "layers"]
     - "callbacks[0]" -> ["callbacks", 0]
     - "callbacks[0].name" -> ["callbacks", 0, "name"]
+    - 'models["resnet"]' -> ["models", "resnet"]
+    - "models['resnet']" -> ["models", "resnet"]
 
     :param path: The path string.
     :return: List of path segments (strings for dict keys, ints for list indices).
@@ -74,11 +81,15 @@ def parse_path_segments(path: str) -> list[str | int]:
     segments: list[str | int] = []
 
     for match in PATH_SEGMENT_RE.finditer(path):
-        key, index = match.groups()
+        key, index, dq_key, sq_key = match.groups()
         if key:
             segments.append(key)
         elif index:
             segments.append(int(index))
+        elif dq_key:
+            segments.append(dq_key)
+        elif sq_key:
+            segments.append(sq_key)
 
     return segments
 

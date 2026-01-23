@@ -1,4 +1,12 @@
 from abc import ABC, abstractmethod
+from collections.abc import (
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    MutableSet,
+    Sequence,
+    Set as AbstractSet,
+)
 from dataclasses import dataclass
 from typing import Optional, Union
 from unittest import TestCase
@@ -2266,29 +2274,22 @@ class ConfigValidatorCoverageTests(TestCase):
         store.clear()
         return store
 
-    def test_is_concrete_type__NameCollision__UsesFullyQualifiedName(self):
-        """Test auto-registration with name collision uses fully qualified name."""
+    def test_is_concrete_type__UnregisteredConcrete__ReturnsConcreteNoTarget(self):
+        """Test is_concrete_type returns (True, None, []) for unregistered concrete class."""
         store = self._empty_store()
 
         @dataclass
         class MyClass:
             value: int
 
-        # Pre-register a class with the same lowercase name
-        @dataclass
-        class AnotherMyClass:
-            other: str
-
-        store.register("myclass", AnotherMyClass)
-
-        # Act - this should trigger name collision handling
+        # Act - pure query, does NOT register
         is_concrete_result, exact_target, matching = is_concrete_type(store, MyClass)
 
-        # Assert - should use fully qualified name due to collision
+        # Assert - concrete but not registered
         self.assertTrue(is_concrete_result)
-        self.assertIsNotNone(exact_target)
-        # The name should be the fully qualified name since "myclass" is taken
-        self.assertIn(".", exact_target)  # Contains module.ClassName
+        self.assertIsNone(exact_target)
+        self.assertEqual(matching, [])
+        self.assertNotIn("myclass", store.known_targets)
 
     def test_implicit_nested_errors__ClassTypeExtractionFails__ReturnsEmpty(self):
         """Test _implicit_nested_errors returns empty when class extraction fails."""
@@ -2455,3 +2456,165 @@ class ConfigValidatorCoverageTests(TestCase):
 
         # Assert
         self.assertIsNone(result)
+
+
+class ConfigValidatorABCContainerTests(TestCase):
+    """Tests for ABC container type matching in validation."""
+
+    def _empty_store(self) -> TargetRegistry:
+        store = TargetRegistry()
+        store.clear()
+        return store
+
+    def test_validate__SequenceField__AcceptsListValue(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            items: Sequence[int]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "items": [1, 2, 3]}
+
+        result = validator.validate(config)
+
+        self.assertTrue(result.valid)
+
+    def test_validate__MutableSequenceField__AcceptsListValue(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            items: MutableSequence[str]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "items": ["a", "b"]}
+
+        result = validator.validate(config)
+
+        self.assertTrue(result.valid)
+
+    def test_validate__MappingField__AcceptsDictValue(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            data: Mapping[str, int]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "data": {"a": 1, "b": 2}}
+
+        result = validator.validate(config)
+
+        self.assertTrue(result.valid)
+
+    def test_validate__MutableMappingField__AcceptsDictValue(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            data: MutableMapping[str, float]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "data": {"x": 1.0}}
+
+        result = validator.validate(config)
+
+        self.assertTrue(result.valid)
+
+    def test_validate__SetField__AcceptsListValue(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            tags: set[int]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "tags": [1, 2, 3]}
+
+        result = validator.validate(config)
+
+        self.assertTrue(result.valid)
+
+    def test_validate__FrozensetField__AcceptsListValue(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            tags: frozenset[str]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "tags": ["a", "b"]}
+
+        result = validator.validate(config)
+
+        self.assertTrue(result.valid)
+
+    def test_validate__AbstractSetField__AcceptsListValue(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            items: AbstractSet[int]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "items": [1, 2, 3]}
+
+        result = validator.validate(config)
+
+        self.assertTrue(result.valid)
+
+    def test_validate__TupleField__AcceptsListValue(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            coords: tuple[int, ...]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "coords": [1, 2, 3]}
+
+        result = validator.validate(config)
+
+        self.assertTrue(result.valid)
+
+    def test_validate__SequenceWrongElementType__ReportsError(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            items: Sequence[int]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "items": ["not", "ints"]}
+
+        result = validator.validate(config)
+
+        self.assertFalse(result.valid)
+        self.assertEqual(len(result.errors), 1)
+        self.assertIsInstance(result.errors[0], TypeMismatchError)
+
+    def test_validate__MappingWrongValueType__ReportsError(self):
+        store = self._empty_store()
+
+        @dataclass
+        class Config:
+            data: Mapping[str, int]
+
+        store.register("config", Config)
+        validator = ConfigValidator(store)
+        config = {"_target_": "config", "data": {"a": "not_int"}}
+
+        result = validator.validate(config)
+
+        self.assertFalse(result.valid)
+        self.assertIsInstance(result.errors[0], TypeMismatchError)
