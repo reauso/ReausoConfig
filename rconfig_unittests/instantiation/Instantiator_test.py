@@ -671,8 +671,8 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
 
         self.assertEqual(result.data, {"key": "value"})
 
-    def test_instantiate__UnionWithMultipleTypes__SkipsImplicitInference(self):
-        """Test Union[A, B] doesn't trigger implicit inference (line 189)."""
+    def test_instantiate__UnionWithMultipleTypes__InfersViaStructuralMatch(self):
+        """Test Union[A, B] triggers implicit inference via structural matching."""
         store = self._empty_store()
 
         @dataclass
@@ -691,17 +691,16 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
         store.register("type_b", TypeB)
         store.register("container", Container)
         instantiator = self._create_instantiator(store)
-        # Dict without _target_ - stays as dict because Union can't be inferred
         config = {
             "_target_": "container",
-            "item": {"value": 10},  # Will stay as dict
+            "item": {"value": 10},
         }
 
         result = instantiator.instantiate(config, validate=False)
 
-        # Item stays as dict since Union[A, B] can't be inferred
-        self.assertIsInstance(result.item, dict)
-        self.assertEqual(result.item, {"value": 10})
+        # TypeA has value: int, TypeB has name: str — structural match picks TypeA
+        self.assertIsInstance(result.item, TypeA)
+        self.assertEqual(result.item.value, 10)
 
     def test_instantiate__NotRegisteredType_ImplicitNested__AutoRegistersAndInstantiates(self):
         """Test unregistered concrete type is auto-registered and instantiated."""
@@ -762,8 +761,8 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
         self.assertIsInstance(result.level2.level3, Level3)
         self.assertEqual(result.level2.level3.value, 99)
 
-    def test_instantiate__GenericTypeHint__SkipsImplicitInference(self):
-        """Test generic types like list[X] don't trigger implicit inference (line 149)."""
+    def test_instantiate__GenericTypeHint__InfersElementType(self):
+        """Test generic types like list[X] trigger element type inference."""
         store = self._empty_store()
 
         @dataclass
@@ -779,13 +778,16 @@ class ConfigInstantiatorEdgeCaseTests(TestCase):
         instantiator = self._create_instantiator(store)
         config = {
             "_target_": "container",
-            "items": [{"value": 1}, {"value": 2}],  # Dicts stay as dicts
+            "items": [{"value": 1}, {"value": 2}],
         }
 
         result = instantiator.instantiate(config, validate=False)
 
-        # Items stay as dicts since list[Item] can't trigger implicit inference
-        self.assertIsInstance(result.items[0], dict)
+        # Items are instantiated via element type inference from list[Item]
+        self.assertIsInstance(result.items[0], Item)
+        self.assertEqual(result.items[0].value, 1)
+        self.assertIsInstance(result.items[1], Item)
+        self.assertEqual(result.items[1].value, 2)
 
     def test_instantiate__ExplicitNestedInDict__InstantiatesCorrectly(self):
         """Test explicit nested configs in dicts are instantiated."""
@@ -1856,29 +1858,22 @@ class ConfigInstantiatorCoverageTests(TestCase):
         # Assert
         self.assertIsNone(result)
 
-    def test_is_concrete_type__NameCollision__UsesFullyQualifiedName(self):
-        """Test auto-registration with name collision uses fully qualified name."""
+    def test_is_concrete_type__UnregisteredConcrete__ReturnsConcreteNoTarget(self):
+        """Test is_concrete_type returns (True, None, []) for unregistered concrete class."""
         store = self._empty_store()
 
         @dataclass
         class MyClass:
             value: int
 
-        # Pre-register a class with the same lowercase name
-        @dataclass
-        class AnotherMyClass:
-            other: str
-
-        store.register("myclass", AnotherMyClass)
-
-        # Act - this should trigger name collision handling
+        # Act - pure query, does NOT register
         is_concrete_result, inferred_target, matching = is_concrete_type(store, MyClass)
 
-        # Assert - should use fully qualified name due to collision
+        # Assert - concrete but not registered
         self.assertTrue(is_concrete_result)
-        self.assertIsNotNone(inferred_target)
-        # The name should be the fully qualified name since "myclass" is taken
-        self.assertIn(".", inferred_target)  # Contains module.ClassName
+        self.assertIsNone(inferred_target)
+        self.assertEqual(matching, [])
+        self.assertNotIn("myclass", store.known_targets)
 
     def test_augment_with_inferred_target__NonConcreteType__ReturnsNone(self):
         """Test _augment_with_inferred_target returns None for non-concrete types."""

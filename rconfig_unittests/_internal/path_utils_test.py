@@ -34,6 +34,36 @@ class ParsePathSegmentsTests(unittest.TestCase):
         result = parse_path_segments("")
         self.assertEqual(result, [])
 
+    def test_parse__DoubleQuotedKey__ReturnsStringSegment(self):
+        result = parse_path_segments('models["resnet"]')
+        self.assertEqual(result, ["models", "resnet"])
+
+    def test_parse__SingleQuotedKey__ReturnsStringSegment(self):
+        result = parse_path_segments("models['resnet']")
+        self.assertEqual(result, ["models", "resnet"])
+
+    def test_parse__MixedPathWithStringKey__ParsesCorrectly(self):
+        result = parse_path_segments('parent.models["resnet"].layers[0]')
+        self.assertEqual(result, ["parent", "models", "resnet", "layers", 0])
+
+    def test_parse__StringKeyWithSpaces__PreservesSpaces(self):
+        result = parse_path_segments('data["key with spaces"]')
+        self.assertEqual(result, ["data", "key with spaces"])
+
+    def test_parse__CombinedBracketAndDot__ParsesAll(self):
+        result = parse_path_segments('config["db"].host')
+        self.assertEqual(result, ["config", "db", "host"])
+
+    def test_parse__NumericStringKey__ReturnsStringSegment(self):
+        """Quoted numeric key ["0"] is a string, not an int."""
+        result = parse_path_segments('data["0"]')
+        self.assertEqual(result, ["data", "0"])
+
+    def test_parse__KeyWithSpecialChars__PreservesChars(self):
+        """Quoted keys with dots and dashes are preserved as-is."""
+        result = parse_path_segments('config["my-key.name"]')
+        self.assertEqual(result, ["config", "my-key.name"])
+
 
 class NavigatePathTests(unittest.TestCase):
     """Tests for navigate_path function."""

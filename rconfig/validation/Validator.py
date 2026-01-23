@@ -5,6 +5,14 @@ target classes in the TargetRegistry.
 """
 
 import inspect
+from collections.abc import (
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    MutableSet,
+    Sequence,
+    Set as AbstractSet,
+)
 from dataclasses import dataclass, field
 from inspect import Parameter
 from typing import Any, Union, get_args, get_origin, get_type_hints
@@ -28,7 +36,20 @@ from rconfig._internal.type_utils import (
     extract_class_from_hint,
     is_class_type,
     is_concrete_type,
+    register_inferred_target,
 )
+
+
+# Origins that accept list values (YAML has no native set/frozenset/tuple)
+_LIST_LIKE_ORIGINS: frozenset[type] = frozenset({
+    list, set, frozenset, tuple,
+    Sequence, MutableSequence, AbstractSet, MutableSet,
+})
+
+# Origins that accept dict values
+_DICT_LIKE_ORIGINS: frozenset[type] = frozenset({
+    dict, Mapping, MutableMapping,
+})
 
 
 @dataclass
@@ -250,7 +271,9 @@ class ConfigValidator:
             self._store, class_type
         )
 
-        if is_concrete_result and inferred_target is not None:
+        if is_concrete_result:
+            if inferred_target is None:
+                inferred_target = register_inferred_target(self._store, class_type)
             # Type is concrete - inject the target and validate
             augmented_config = {TARGET_KEY: inferred_target, **value}
             nested_result = self.validate(augmented_config, field_path)
@@ -356,13 +379,13 @@ class ConfigValidator:
             return self._matches_none_type(expected_type, origin, args)
         if origin is Union:
             return self._matches_union_type(value, args)
-        if origin is list:
+        if origin in _LIST_LIKE_ORIGINS:
             return self._matches_list_type(value, args)
-        if origin is dict:
+        if origin in _DICT_LIKE_ORIGINS:
             return self._matches_dict_type(value, args)
         if origin is None:
             return self._matches_basic_type(value, expected_type)
-        # Unhandled parameterized generic (e.g., tuple, Callable)
+        # Unhandled parameterized generic (e.g., Callable)
         return False
 
     def _matches_none_type(
@@ -422,15 +445,17 @@ class ConfigValidator:
                     return f"{self._type_repr(non_none[0])} | None"
             return " | ".join(self._type_repr(a) for a in args)
 
-        if origin is list:
+        if origin in _LIST_LIKE_ORIGINS:
+            origin_name = getattr(origin, "__name__", str(origin))
             if args:
-                return f"list[{self._type_repr(args[0])}]"
-            return "list"
+                return f"{origin_name}[{self._type_repr(args[0])}]"
+            return origin_name
 
-        if origin is dict:
+        if origin in _DICT_LIKE_ORIGINS:
+            origin_name = getattr(origin, "__name__", str(origin))
             if args:
-                return f"dict[{self._type_repr(args[0])}, {self._type_repr(args[1])}]"
-            return "dict"
+                return f"{origin_name}[{self._type_repr(args[0])}, {self._type_repr(args[1])}]"
+            return origin_name
 
         if hasattr(t, "__name__"):
             return t.__name__
@@ -486,16 +511,16 @@ class ConfigValidator:
         return current_type
 
     def _get_list_element_type(self, current_type: type | None) -> type | None:
-        """Extract element type from a list type hint.
+        """Extract element type from a list-like type hint.
 
-        :param current_type: Current type hint (should be a list type).
+        :param current_type: Current type hint (should be a list-like type).
         :return: Element type if available, None otherwise.
         """
         if current_type is None:
             return None
         origin = get_origin(current_type)
         args = get_args(current_type)
-        if origin is list and args:
+        if origin in _LIST_LIKE_ORIGINS and args:
             return args[0]
         return None
 
