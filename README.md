@@ -511,7 +511,23 @@ epochs: 10
 | Parent directory    | `../shared/base` | Navigate up directories           |
 | Absolute            | `/models/resnet` | From config root directory        |
 
-File extensions are auto-detected. If you have multiple files with the same stem (e.g., `model.yaml` and `model.json`), specify the extension explicitly to disambiguate.
+**Extension-less resolution:** `_ref_` paths can omit the file extension. The format is detected automatically from whatever file exists with that stem:
+
+```yaml
+model:
+  _ref_: models/vit  # Finds models/vit.yaml, models/vit.json, or models/vit.toml
+```
+
+This makes configs format-agnostic — you can switch a referenced file from YAML to JSON without updating any `_ref_` paths that point to it.
+
+If multiple files share the same stem (e.g., `vit.yaml` and `vit.json` both exist), rconfig raises `AmbiguousRefError`. Either remove the duplicate or specify the extension explicitly:
+
+```yaml
+model:
+  _ref_: models/vit.yaml  # Explicit — no ambiguity
+```
+
+If no file with the stem exists, `RefResolutionError` is raised.
 
 **Deep merge:** Sibling keys override values from the referenced file.
 
@@ -651,7 +667,7 @@ from rconfig.help import GroupedHelpIntegration
 rc.set_help_integration(GroupedHelpIntegration())
 ```
 
-See [CLI Help Integration](VISION.md#15-cli-help-integration) for advanced usage.
+See [Help Integration Classes](#help-integration-classes) in the API Reference for custom integrations.
 
 #### Override Priority
 
