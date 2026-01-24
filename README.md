@@ -175,7 +175,8 @@ ReausoConfig reserves the following keys (prefixed and suffixed with `_`) for fr
 | `_instance_`  | Shares an instantiated object across config paths  |
 | `_lazy_`      | Marks a nested config for lazy instantiation       |
 | `_required_`  | Marks a value as required (must be overridden)     |
-| `_recursive_` | Reserved for future use                            |
+| `_extend_`    | Appends items to a list during deep merge          |
+| `_prepend_`   | Prepends items to a list during deep merge         |
 
 These keys are stripped from the config before instantiation and are not passed to your class constructors. If you use a reserved key as a field name in your class, that field will never receive a value from config.
 
@@ -186,6 +187,22 @@ Before instantiation, configs are validated for:
 - Required fields (parameters without defaults)
 - Type compatibility
 - Target existence in registry
+
+### Resolution Pipeline
+
+When you call `rc.instantiate()`, the following steps execute in order:
+
+```
+1. LOAD        Parse the config file (YAML, JSON, or TOML)
+2. COMPOSE     Resolve all _ref_ references and deep merge
+3. OVERRIDE    Apply programmatic overrides, then CLI overrides (CLI wins)
+4. INTERPOLATE Resolve all ${...} expressions
+5. EXTRACT     If inner_path is specified, extract that section
+6. VALIDATE    Check required values and type compatibility
+7. INSTANTIATE Recursively create objects via registered constructors
+```
+
+Lifecycle hooks fire at specific points during this pipeline: `CONFIG_LOADED` runs after step 2, `BEFORE_INSTANTIATE` and `AFTER_INSTANTIATE` run per-object during step 7, and `ON_ERROR` runs if any step raises an exception.
 
 ### Object-Oriented Instantiation
 
@@ -529,7 +546,92 @@ model:
 
 If no file with the stem exists, `RefResolutionError` is raised.
 
-**Deep merge:** Sibling keys override values from the referenced file.
+#### Root-Level `_ref_` Restriction
+
+`_ref_` is **not allowed at the root level** of any config file. Every config file must define an object dictionary directly — it cannot be just a reference to another file:
+
+```yaml
+# WRONG - raises RefAtRootError
+_ref_: ./base.yaml
+
+# CORRECT - nest the reference inside a key
+_target_: trainer
+model:
+  _ref_: ./base.yaml
+```
+
+If you want to reuse an entire file's content, either inline it directly or reference it from a parent config's nested key.
+
+#### Deep Merge Semantics
+
+When a `_ref_` is merged with sibling keys, deep merge rules determine how values combine:
+
+| Value Type | Behavior | Example |
+|-----------|----------|---------|
+| **Dicts** | Recursively merged (both sides preserved; override wins on conflict) | `{a: 1, b: 2}` + `{b: 3, c: 4}` → `{a: 1, b: 3, c: 4}` |
+| **Lists** | Completely replaced (not appended) | `[1, 2, 3]` + `[4]` → `[4]` |
+| **Scalars** | Replaced by override | `lr: 0.01` + `lr: 0.1` → `lr: 0.1` |
+
+```yaml
+# base.yaml
+_target_: model
+layers:
+  hidden_size: 256
+  dropout: 0.1
+callbacks: [logger, checkpoint]
+lr: 0.01
+
+# trainer.yaml
+_target_: trainer
+model:
+  _ref_: base.yaml
+  layers:
+    dropout: 0.2      # Dict merge: hidden_size preserved, dropout overridden
+  callbacks: [early_stop]  # List replaced entirely (not appended)
+  lr: 0.001               # Scalar replaced
+```
+
+Result after merge:
+```yaml
+model:
+  _target_: model
+  layers:
+    hidden_size: 256   # Preserved from base
+    dropout: 0.2       # Overridden
+  callbacks: [early_stop]  # Replaced (not [logger, checkpoint, early_stop])
+  lr: 0.001                # Replaced
+```
+
+##### List Operations: `_extend_` and `_prepend_`
+
+To append or prepend items to a list instead of replacing it, use `_extend_` or `_prepend_`:
+
+```yaml
+# base.yaml
+callbacks: [logger, checkpoint]
+
+# trainer.yaml
+model:
+  _ref_: base.yaml
+  callbacks:
+    _extend_: [early_stop, profiler]   # Appends to list
+    # Result: [logger, checkpoint, early_stop, profiler]
+```
+
+```yaml
+# Or prepend:
+model:
+  _ref_: base.yaml
+  callbacks:
+    _prepend_: [setup]   # Prepends to list
+    # Result: [setup, logger, checkpoint]
+```
+
+**Constraints:**
+
+- Cannot use both `_extend_` and `_prepend_` in the same block
+- Cannot combine list operations with other keys in the same block
+- The base value must already be a list
 
 ### Instance Sharing with `_instance_`
 
@@ -1754,8 +1856,8 @@ def source_only_preset() -> rc.ProvenanceFormatContext:
     )
 
 # Use custom presets
-print(prov.format().preset("debug"))
-print(prov.format().preset("source_only"))
+print(rc.format(prov).preset("debug"))
+print(rc.format(prov).preset("source_only"))
 
 # List all registered presets
 for name, entry in rc.known_provenance_presets().items():
@@ -1893,14 +1995,14 @@ tree_data = prov.trace("model.lr").to_dict()
 
 ```python
 # Use layouts by name
-print(prov.format().layout("tree"))
-print(prov.format().layout("flat"))
-print(prov.format().layout("markdown"))
+print(rc.format(prov).layout("tree"))
+print(rc.format(prov).layout("flat"))
+print(rc.format(prov).layout("markdown"))
 
 # Or use convenience methods
-print(prov.format().tree())
-print(prov.format().flat())
-print(prov.format().markdown())
+print(rc.format(prov).tree())
+print(rc.format(prov).flat())
+print(rc.format(prov).markdown())
 ```
 
 #### Custom Layouts
@@ -1943,7 +2045,7 @@ rc.register_provenance_layout(
 )
 
 # Use by name
-print(prov.format().layout("table"))
+print(rc.format(prov).layout("table"))
 
 # List all registered layouts
 for name, entry in rc.known_provenance_layouts().items():
@@ -2107,8 +2209,8 @@ def removed_only_preset() -> rc.DiffFormatContext:
     )
 
 # Use custom presets
-print(diff.format().preset("added_only"))
-print(diff.format().preset("removed_only"))
+print(rc.format(diff).preset("added_only"))
+print(rc.format(diff).preset("removed_only"))
 
 # List all registered presets
 for name, entry in rc.known_diff_presets().items():
@@ -2807,6 +2909,45 @@ The `HookContext` object passed to hooks contains:
 | `instance` | `Any \| None` | AFTER_INSTANTIATE | The created object |
 | `error` | `Exception \| None` | ON_ERROR | The exception |
 
+### Caching
+
+ReausoConfig caches parsed config files to avoid redundant I/O and parsing. Caching is enabled by default with unlimited size.
+
+#### What's Cached
+
+Parsed file contents (the dict result of YAML/JSON/TOML parsing) are cached in an LRU cache keyed by file path. Subsequent loads of the same file skip parsing entirely.
+
+#### When Caching Helps
+
+- **Multiple instantiations** from the same config files (e.g., multirun sweeps)
+- **Partial instantiation** with `inner_path` accessing the same base config repeatedly
+- **Long-running applications** that re-read config files
+
+#### When to Clear the Cache
+
+- After modifying config files during runtime (the cache doesn't watch for file changes)
+- In test suites between tests to ensure isolation
+
+```python
+import rconfig as rc
+
+# Limit cache to 100 files
+rc.set_cache_size(size=100)
+
+# Unlimited cache (default)
+rc.set_cache_size(size=0)
+
+# Clear all cached files
+rc.clear_cache()
+```
+
+**Test fixture example:**
+
+```python
+def setup_function():
+    rc.clear_cache()  # Ensure fresh config for each test
+```
+
 ## API Reference
 
 ### Type Aliases
@@ -2875,7 +3016,7 @@ Validate a config file without instantiating (dry-run). Checks all `_required_` 
 
 | Parameter         | Type                      | Default  | Description                                                                     |
 | ----------------- | ------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `path`          | `Path`                  | required | Path to the configuration file.                                                 |
+| `path`          | `StrOrPath`             | required | Path to the configuration file. Accepts str, Path, or any os.PathLike.          |
 | `inner_path`    | `str \| None`            | `None` | Dot-notation path to validate only a section (e.g., `"model"` or `"trainer.callbacks[0]"`). `_required_` markers outside this section are ignored. When specified, the root-level `_target_` is optional and types can be inferred from parent's type hints (including `list[X]`, `set[X]`, `dict[str, X]`, `Sequence[X]`, `Mapping[K, V]`, `tuple[A, B, C]`, `Optional[container]`, `Annotated[X, ...]`, `NewType`, and `Union[A, B]` via structural matching). |
 | `overrides`     | `dict[str, Any] \| None` | `None` | Dictionary of config overrides using dot notation keys.                         |
 | `cli_overrides` | `bool`                  | `True` | Whether to parse CLI overrides from `sys.argv`.                               |
@@ -3093,6 +3234,88 @@ prov = rc.get_provenance(
 prov = rc.get_provenance(path=Path("config.yaml"), cli_overrides=False)
 ```
 
+#### `rc.diff(left, right, *, left_inner_path=None, right_inner_path=None, left_overrides=None, right_overrides=None, cli_overrides=False)`
+
+Compare two configurations and report differences.
+
+**Parameters:**
+
+| Parameter           | Type                        | Default   | Description                                                              |
+| ------------------- | --------------------------- | --------- | ------------------------------------------------------------------------ |
+| `left`            | `StrOrPath \| Provenance`   | required  | Left (base) config. Path or existing Provenance object.                  |
+| `right`           | `StrOrPath \| Provenance`   | required  | Right (new) config. Path or existing Provenance object.                  |
+| `left_inner_path` | `str \| None`               | `None`  | Dot-notation path to compare only a section of the left config.          |
+| `right_inner_path`| `str \| None`               | `None`  | Dot-notation path to compare only a section of the right config.         |
+| `left_overrides`  | `dict[str, Any] \| None`    | `None`  | Overrides for left config (ignored if left is Provenance).               |
+| `right_overrides` | `dict[str, Any] \| None`    | `None`  | Overrides for right config (ignored if right is Provenance).             |
+| `cli_overrides`   | `bool`                      | `False` | Whether to parse CLI overrides from `sys.argv`.                        |
+
+**Returns:** `ConfigDiff` - Immutable object with `added`, `removed`, `changed`, `unchanged` views. Each view is a `MappingProxyType[str, DiffEntry]`.
+
+Use `rc.format(diff)` for customized output formatting.
+
+**Examples:**
+
+```python
+# Compare two config files
+diff = rc.diff(Path("config_v1.yaml"), Path("config_v2.yaml"))
+
+# Compare same file with different overrides
+diff = rc.diff(
+    Path("config.yaml"),
+    Path("config.yaml"),
+    left_overrides={"model.lr": 0.001},
+    right_overrides={"model.lr": 0.01},
+)
+
+# Reuse existing provenance for efficiency
+prov_v1 = rc.get_provenance(path="v1.yaml")
+prov_v2 = rc.get_provenance(path="v2.yaml")
+diff = rc.diff(prov_v1, prov_v2)
+
+# Compare specific sections
+diff = rc.diff(
+    Path("v1.yaml"), Path("v2.yaml"),
+    left_inner_path="model",
+    right_inner_path="model",
+)
+```
+
+#### `rc.format(obj, layout=None)`
+
+Format a Provenance or ConfigDiff object for display. Returns a fluent builder for configuring output via method chaining.
+
+**Parameters:**
+
+| Parameter | Type                              | Default  | Description                                                          |
+| --------- | --------------------------------- | -------- | -------------------------------------------------------------------- |
+| `obj`   | `Provenance \| ConfigDiff`        | required | The object to format.                                                |
+| `layout`| `ProvenanceLayout \| None`        | `None` | Optional custom layout (Provenance only). Ignored for ConfigDiff.    |
+
+**Returns:** `ProvenanceFormat` when given Provenance, `DiffFormat` when given ConfigDiff. Both support method chaining for presets, show/hide toggles, filtering, and layout selection.
+
+**Raises:**
+
+| Exception     | Condition                                  |
+| ------------- | ------------------------------------------ |
+| `TypeError` | If `obj` is not a Provenance or ConfigDiff |
+
+**Examples:**
+
+```python
+# Provenance formatting
+prov = rc.get_provenance(path="config.yaml")
+print(rc.format(prov).minimal())
+print(rc.format(prov).for_path("/model.*").tree())
+print(rc.format(prov).full().flat())
+
+# Diff formatting
+diff = rc.diff(Path("v1.yaml"), Path("v2.yaml"))
+print(rc.format(diff).terminal())
+print(rc.format(diff).show_provenance().markdown())
+print(rc.format(diff).changes_only().tree())
+```
+
 #### `rc.set_cache_size(size)`
 
 Configure the LRU cache for loaded config files.
@@ -3175,7 +3398,7 @@ Export resolved config as a Python dictionary.
 
 | Parameter           | Type                      | Default   | Description                                                                                 |
 | ------------------- | ------------------------- | --------- | ------------------------------------------------------------------------------------------- |
-| `path`            | `Path`                  | required  | Path to config file.                                                                        |
+| `path`            | `StrOrPath`             | required  | Path to config file. Accepts str, Path, or any os.PathLike.                                 |
 | `overrides`       | `dict[str, Any] \| None` | `None`  | Dictionary of config overrides.                                                             |
 | `cli_overrides`   | `bool`                  | `True`  | Whether to parse CLI overrides.                                                             |
 | `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers (`_target_`, `_ref_`, `_instance_`, `_lazy_`). |
@@ -3197,7 +3420,7 @@ Export resolved config as a YAML string.
 
 | Parameter           | Type                      | Default   | Description                           |
 | ------------------- | ------------------------- | --------- | ------------------------------------- |
-| `path`            | `Path`                  | required  | Path to config file.                  |
+| `path`            | `StrOrPath`             | required  | Path to config file. Accepts str, Path, or any os.PathLike. |
 | `overrides`       | `dict[str, Any] \| None` | `None`  | Dictionary of config overrides.       |
 | `cli_overrides`   | `bool`                  | `True`  | Whether to parse CLI overrides.       |
 | `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers. |
@@ -3218,7 +3441,7 @@ Export resolved config as a JSON string.
 
 | Parameter           | Type                      | Default   | Description                                                   |
 | ------------------- | ------------------------- | --------- | ------------------------------------------------------------- |
-| `path`            | `Path`                  | required  | Path to config file.                                          |
+| `path`            | `StrOrPath`             | required  | Path to config file. Accepts str, Path, or any os.PathLike.   |
 | `overrides`       | `dict[str, Any] \| None` | `None`  | Dictionary of config overrides.                               |
 | `cli_overrides`   | `bool`                  | `True`  | Whether to parse CLI overrides.                               |
 | `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers.                         |
@@ -3241,7 +3464,7 @@ Export resolved config as a TOML string.
 
 | Parameter           | Type                      | Default   | Description                           |
 | ------------------- | ------------------------- | --------- | ------------------------------------- |
-| `path`            | `Path`                  | required  | Path to config file.                  |
+| `path`            | `StrOrPath`             | required  | Path to config file. Accepts str, Path, or any os.PathLike. |
 | `overrides`       | `dict[str, Any] \| None` | `None`  | Dictionary of config overrides.       |
 | `cli_overrides`   | `bool`                  | `True`  | Whether to parse CLI overrides.       |
 | `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers. |
@@ -3260,10 +3483,10 @@ Export config to a single file with format auto-detected from output path extens
 
 **Parameters:**
 
-| Parameter           | Type                      | Default   | Description                                                                      |
-| ------------------- | ------------------------- | --------- | -------------------------------------------------------------------------------- |
-| `source`          | `Path \| dict[str, Any]` | required  | Path to config file, or dict.                                                    |
-| `output_path`     | `Path`                  | required  | Output file path. Extension determines format (`.yaml`, `.json`, `.toml`). |
+| Parameter           | Type                            | Default   | Description                                                                      |
+| ------------------- | ------------------------------- | --------- | -------------------------------------------------------------------------------- |
+| `source`          | `StrOrPath \| dict[str, Any]` | required  | Path to config file, or dict. Accepts str, Path, or any os.PathLike.             |
+| `output_path`     | `StrOrPath`                   | required  | Output file path. Extension determines format (`.yaml`, `.json`, `.toml`). |
 | `overrides`       | `dict[str, Any] \| None` | `None`  | Config overrides. Ignored if source is dict.                                     |
 | `cli_overrides`   | `bool`                  | `True`  | Parse CLI overrides. Ignored if source is dict.                                  |
 | `exclude_markers` | `bool`                  | `False` | If `True`, remove internal markers.                                            |
@@ -3293,10 +3516,10 @@ Export config preserving file structure (with `_ref_` relationships).
 
 **Parameters:**
 
-| Parameter            | Type                      | Default   | Description                                              |
-| -------------------- | ------------------------- | --------- | -------------------------------------------------------- |
-| `source`           | `Path \| dict[str, Any]` | required  | Path to config file, or dict.                            |
-| `config_root_file` | `Path`                  | required  | Output root file path. Extension determines root format. |
+| Parameter            | Type                            | Default   | Description                                              |
+| -------------------- | ------------------------------- | --------- | -------------------------------------------------------- |
+| `source`           | `StrOrPath \| dict[str, Any]` | required  | Path to config file, or dict. Accepts str, Path, or any os.PathLike. |
+| `config_root_file` | `StrOrPath`                   | required  | Output root file path. Extension determines root format. |
 | `overrides`        | `dict[str, Any] \| None` | `None`  | Config overrides. Ignored if source is dict.             |
 | `cli_overrides`    | `bool`                  | `True`  | Parse CLI overrides. Ignored if source is dict.          |
 | `exclude_markers`  | `bool`                  | `False` | If `True`, remove internal markers.                    |
@@ -3326,7 +3549,7 @@ Export resolved config using a custom exporter.
 
 | Parameter         | Type                      | Default  | Description                     |
 | ----------------- | ------------------------- | -------- | ------------------------------- |
-| `path`          | `Path`                  | required | Path to config file.            |
+| `path`          | `StrOrPath`             | required | Path to config file. Accepts str, Path, or any os.PathLike. |
 | `exporter`      | `Exporter`              | required | Exporter instance to use.       |
 | `overrides`     | `dict[str, Any] \| None` | `None` | Dictionary of config overrides. |
 | `cli_overrides` | `bool`                  | `True` | Parse CLI overrides.            |
@@ -3735,6 +3958,130 @@ for phase, hooks in rc.known_hooks().items():
 
 ---
 
+### Common Types
+
+Types returned by common API functions.
+
+#### `ValidationResult`
+
+Result of config validation, returned by `rc.validate()`.
+
+**Attributes:**
+
+| Attribute | Type                     | Description                                        |
+| --------- | ------------------------ | -------------------------------------------------- |
+| `valid` | `bool`                   | `True` if validation passed with no errors       |
+| `errors`| `list[ValidationError]`  | List of validation errors (empty if `valid=True`) |
+
+**Examples:**
+
+```python
+result = rc.validate(path="config.yaml")
+if not result.valid:
+    for error in result.errors:
+        print(error)
+```
+
+#### `ConfigDiff`
+
+Immutable diff result, returned by `rc.diff()`. Acts as a mapping of config paths to `DiffEntry` objects.
+
+**Attributes:**
+
+| Attribute     | Type                              | Description                      |
+| ------------- | --------------------------------- | -------------------------------- |
+| `added`     | `MappingProxyType[str, DiffEntry]` | Entries present only in right    |
+| `removed`   | `MappingProxyType[str, DiffEntry]` | Entries present only in left     |
+| `changed`   | `MappingProxyType[str, DiffEntry]` | Entries with different values    |
+| `unchanged` | `MappingProxyType[str, DiffEntry]` | Entries with identical values    |
+
+**Methods:**
+
+| Method          | Returns          | Description                         |
+| --------------- | ---------------- | ----------------------------------- |
+| `is_empty()`  | `bool`         | True if no added/removed/changed    |
+| `to_dict()`   | `dict[str, Any]` | Export as dictionary                |
+| `__len__()`   | `int`          | Total entry count                   |
+| `__contains__(path)` | `bool`  | Check if path exists in diff        |
+| `__getitem__(path)` | `DiffEntry` | Get entry by config path           |
+
+#### `DiffEntry`
+
+A single entry in a ConfigDiff.
+
+**Attributes:**
+
+| Attribute            | Type                      | Description                                              |
+| -------------------- | ------------------------- | -------------------------------------------------------- |
+| `path`             | `str`                   | Config path (e.g., "model.lr")                           |
+| `diff_type`        | `DiffEntryType`         | One of: `ADDED`, `REMOVED`, `CHANGED`, `UNCHANGED`      |
+| `left_value`       | `Any`                   | Value in left config (`None` if added)                   |
+| `right_value`      | `Any`                   | Value in right config (`None` if removed)                |
+| `left_provenance`  | `ProvenanceEntry \| None` | Provenance entry from left config                        |
+| `right_provenance` | `ProvenanceEntry \| None` | Provenance entry from right config                       |
+
+#### `ProvenanceNode`
+
+Immutable node in a provenance trace tree, returned by `prov.trace(path)`. Forms a tree structure for tracing compound expressions through refs, interpolations, operators, and resolvers.
+
+**Attributes:**
+
+| Attribute         | Type                          | Description                                          |
+| ----------------- | ----------------------------- | ---------------------------------------------------- |
+| `source_type`   | `NodeSourceType`              | Type of this node (file, ref, interpolation, etc.)   |
+| `path`          | `str \| None`                  | Config path (e.g., "/model.lr")                      |
+| `file`          | `str \| None`                  | Source file name                                     |
+| `line`          | `int \| None`                  | Line number in source file                           |
+| `value`         | `Any`                         | The resolved value at this node                      |
+| `expression`    | `str \| None`                  | Interpolation expression (e.g., "${/a + /b}")        |
+| `operator`      | `str \| None`                  | Operator for compound expressions (+, *, etc.)       |
+| `env_var`       | `str \| None`                  | Environment variable name (for env sources)          |
+| `cli_arg`       | `str \| None`                  | CLI argument (for CLI sources)                       |
+| `resolver_name` | `str \| None`                  | Resolver path (e.g., "uuid", "db:lookup")            |
+| `resolver_func` | `str \| None`                  | Function name of the resolver                        |
+| `resolver_module`| `str \| None`                 | Module where the resolver is defined                 |
+| `children`      | `tuple[ProvenanceNode, ...]`  | Child nodes in the tree                              |
+
+**Methods:**
+
+| Method       | Returns          | Description                                |
+| ------------ | ---------------- | ------------------------------------------ |
+| `to_dict()` | `dict[str, Any]` | Recursively convert to dictionary          |
+
+**Examples:**
+
+```python
+prov = rc.get_provenance(path="config.yaml")
+tree = prov.trace("model.lr")
+if tree:
+    print(tree.source_type)  # "file", "interpolation", etc.
+    print(tree.file, tree.line)
+    for child in tree.children:
+        print(f"  {child.source_type}: {child.path}")
+    # Export as dict
+    data = tree.to_dict()
+```
+
+#### `NodeSourceType`
+
+Enum (`StrEnum`) indicating the type of each node in a provenance trace tree.
+
+**Values:**
+
+| Value             | Description                                       |
+| ----------------- | ------------------------------------------------- |
+| `FILE`          | Value came from a config file                     |
+| `REF`           | Value came from a `_ref_` reference             |
+| `INSTANCE`      | Value came from an instance chain                 |
+| `INTERPOLATION` | Value was computed via interpolation              |
+| `CLI`           | Value was set via command-line argument            |
+| `ENV`           | Value was set via environment variable             |
+| `PROGRAMMATIC`  | Value was set programmatically                    |
+| `OPERATOR`      | Value is result of an operator expression         |
+| `RESOLVER`      | Value came from a resolver function               |
+
+---
+
 ### Advanced API
 
 Classes and types for extending and customizing rconfig. Use these when you need to create custom loaders, exporters, or help integrations.
@@ -4005,9 +4352,9 @@ Get the appropriate exporter for a config file based on its extension.
 
 **Parameters:**
 
-| Parameter | Type   | Default  | Description              |
-| --------- | ------ | -------- | ------------------------ |
-| `path`  | `Path` | required | Path to the config file. |
+| Parameter | Type        | Default  | Description              |
+| --------- | ----------- | -------- | ------------------------ |
+| `path`  | `StrOrPath` | required | Path to the config file. Accepts str, Path, or any os.PathLike. |
 
 **Returns:** `Exporter` - An exporter instance for the file format
 
@@ -4179,9 +4526,9 @@ Get the appropriate loader for a config file based on its extension.
 
 **Parameters:**
 
-| Parameter | Type   | Default  | Description              |
-| --------- | ------ | -------- | ------------------------ |
-| `path`  | `Path` | required | Path to the config file. |
+| Parameter | Type        | Default  | Description              |
+| --------- | ----------- | -------- | ------------------------ |
+| `path`  | `StrOrPath` | required | Path to the config file. Accepts str, Path, or any os.PathLike. |
 
 **Returns:** `ConfigFileLoader` - A loader instance for the file format
 
@@ -4535,9 +4882,68 @@ except InstantiationError as e:
     print(f"Could not create object: {e}")
 ```
 
-## Pros and Cons
+## Troubleshooting
 
-### Pros
+Common errors and how to fix them:
+
+### `TargetNotFoundError: Target 'X' is not registered`
+
+**Cause:** The `_target_` name in your config doesn't match any registered class.
+
+**Fix:** Ensure you called `rc.register(name="X", target=MyClass)` before instantiation, and that the name matches exactly (case-sensitive).
+
+```python
+# Check what's registered
+print(rc.known_targets().keys())
+```
+
+### `ConfigFileError: file not found`
+
+**Cause:** The config file path doesn't exist or is relative to the wrong directory.
+
+**Fix:** Verify the file exists and the path is correct relative to your working directory. Use absolute paths if unsure.
+
+### `RefResolutionError` / `AmbiguousRefError`
+
+**Cause:** A `_ref_` path doesn't point to an existing file, or an extension-less ref matches multiple files (e.g., both `model.yaml` and `model.json` exist).
+
+**Fix:** Check that the referenced file exists. If using extension-less refs, ensure only one file with that stem exists, or specify the extension explicitly.
+
+### `CircularInterpolationError`
+
+**Cause:** Two or more `${...}` expressions reference each other, creating a cycle.
+
+**Fix:** Break the cycle by using a literal value for one of the expressions instead of a reference.
+
+```yaml
+# Wrong - circular
+a: ${/b}
+b: ${/a}
+
+# Fix - break the cycle
+a: ${/b}
+b: 42
+```
+
+### `AmbiguousTargetError: Cannot infer type`
+
+**Cause:** A nested config dict has no `_target_` and the field's type hint is abstract or has multiple registered implementations.
+
+**Fix:** Add an explicit `_target_` to the nested config block to specify which implementation to use.
+
+### `RequiredValueError`
+
+**Cause:** Config contains `_required_` markers that weren't satisfied by overrides, CLI arguments, or environment variables.
+
+**Fix:** Provide values via `overrides={"key": value}`, CLI arguments (`key=value`), or environment variable interpolation (`${env:KEY}`).
+
+### `RefAtRootError`
+
+**Cause:** A config file has `_ref_` at its root level. Every config file must define an object dictionary directly.
+
+**Fix:** Move the `_ref_` inside a nested key, or inline the referenced content directly.
+
+## Key Strengths
 
 - **Minimal coupling**: Only your startup code imports rconfig
 - **Simple API**: Just `register`, `validate`, `instantiate`
