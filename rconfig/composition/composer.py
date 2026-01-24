@@ -14,7 +14,7 @@ from typing import Any
 from rconfig._internal.path_utils import StrOrPath, ensure_path
 from .IncrementalComposer import IncrementalComposer, clear_cache, set_cache_size
 from .InstanceResolver import InstanceResolver
-from rconfig.provenance import Provenance, ProvenanceBuilder
+from rconfig.provenance import Provenance, ProvenanceBuilder, NullProvenanceBuilder
 
 
 # Re-export cache functions for backwards compatibility
@@ -66,6 +66,36 @@ class ConfigComposer:
         self._loaded_files: set[Path] = set()
         self._dependency_closure: set[str] = set()
 
+    def _compose_impl(
+        self,
+        path: StrOrPath,
+        inner_path: str | None,
+        provenance_builder: ProvenanceBuilder,
+    ) -> dict[str, Any]:
+        """Internal composition with the given provenance builder.
+
+        :param path: Path to the entry-point config file.
+        :param inner_path: Optional path to target subtree.
+        :param provenance_builder: Builder to accumulate provenance entries.
+                                  Use NullProvenanceBuilder to skip tracking.
+        :return: Fully composed config dictionary.
+        """
+        path = ensure_path(path)
+        self._provenance_builder = provenance_builder
+
+        # Compose the config tree using incremental algorithm
+        composer = IncrementalComposer(self._config_root, self._provenance_builder)
+        result = composer.compose(path, inner_path=inner_path)
+
+        # Store ref graph and loaded files from composer
+        self._ref_graph = composer.ref_graph
+        self._loaded_files = result.loaded_files
+        self._dependency_closure = result.dependency_closure
+
+        # Resolve all _instance_ references
+        self._instance_resolver = InstanceResolver(self._provenance_builder)
+        return self._instance_resolver.resolve(result.instances, result.config)
+
     def compose(
         self,
         path: StrOrPath,
@@ -76,6 +106,9 @@ class ConfigComposer:
         Uses the unified incremental algorithm that only loads files needed
         to reach and resolve the specified inner_path. When inner_path is
         None or empty, all files are loaded (full composition).
+
+        Provenance tracking is skipped for performance. Use
+        compose_with_provenance() if you need origin information.
 
         :param path: Path to the entry-point config file. Accepts str, Path, or any os.PathLike.
         :param inner_path: Optional path to target subtree. If provided,
@@ -89,27 +122,8 @@ class ConfigComposer:
         :raises CircularInstanceError: If circular _instance_ references detected.
         :raises InvalidInnerPathError: If inner_path doesn't exist.
         """
-        path = ensure_path(path)
-
-        # Create builder for accumulating provenance during composition
-        self._provenance_builder = ProvenanceBuilder()
-
-        # Compose the config tree using incremental algorithm
-        composer = IncrementalComposer(self._config_root, self._provenance_builder)
-        result = composer.compose(path, inner_path=inner_path)
-
-        # Store ref graph and loaded files from composer
-        self._ref_graph = composer.ref_graph
-        self._loaded_files = result.loaded_files
-        self._dependency_closure = result.dependency_closure
-
-        # Resolve all _instance_ references
-        self._instance_resolver = InstanceResolver(self._provenance_builder)
-        config = self._instance_resolver.resolve(result.instances, result.config)
-
-        # Set config and build immutable provenance
-        self._provenance_builder.set_config(config)
-        self._provenance = self._provenance_builder.build()
+        config = self._compose_impl(path, inner_path, NullProvenanceBuilder())
+        self._provenance = None
         return config
 
     @property
@@ -227,8 +241,10 @@ class ConfigComposer:
             print(prov)  # Shows config with file:line annotations
             entry = prov.get("model.layers")  # Get specific origin info
         """
-        self.compose(path, inner_path=inner_path)
-        assert self._provenance is not None
+        builder = ProvenanceBuilder()
+        config = self._compose_impl(path, inner_path, builder)
+        builder.set_config(config)
+        self._provenance = builder.build()
         return self._provenance
 
 

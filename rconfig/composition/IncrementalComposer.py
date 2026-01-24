@@ -20,7 +20,6 @@ from rconfig._internal.path_utils import (
     path_exists,
 )
 from rconfig.errors import (
-    AmbiguousRefError,
     CircularRefError,
     ConfigFileError,
     InstanceResolutionError,
@@ -29,12 +28,13 @@ from rconfig.errors import (
     RefInstanceConflictError,
     RefResolutionError,
 )
-from rconfig.loaders import get_loader, supported_loader_extensions
+from rconfig.loaders import get_loader
 from rconfig.loaders.position_map import PositionMap
 
 from .DependencyAnalyzer import DependencyAnalyzer
+from .file_path_resolver import FilePathResolver
 from .Merger import deep_merge
-from rconfig.provenance import ProvenanceBuilder
+from rconfig.provenance import NullProvenanceBuilder, ProvenanceBuilder
 
 
 # Special keys
@@ -64,6 +64,24 @@ def _load_file_impl(path: str) -> PositionMap:
 _load_file_cached = lru_cache(maxsize=None)(_load_file_impl)
 
 
+def _load_file_impl_no_positions(path: str) -> dict[str, Any]:
+    """Load a config file without position information (faster).
+
+    Used when provenance tracking is disabled to skip PositionMap creation.
+
+    :param path: Absolute path to the config file as string.
+    :return: Plain dict without position tracking.
+    :raises ConfigFileError: If file cannot be loaded.
+    """
+    path_obj = Path(path)
+    loader = get_loader(path_obj)
+    return loader.load(path_obj)
+
+
+# Initialize the cached function for no-positions loading
+_load_file_cached_no_positions = lru_cache(maxsize=None)(_load_file_impl_no_positions)
+
+
 def set_cache_size(size: int) -> None:
     """Set the LRU cache size for loaded config files.
 
@@ -71,10 +89,13 @@ def set_cache_size(size: int) -> None:
 
     :param size: Maximum number of files to cache. 0 means unlimited.
     """
-    global _load_file_cached
+    global _load_file_cached, _load_file_cached_no_positions
     with _cache_lock:
         maxsize = None if size == 0 else size
         _load_file_cached = lru_cache(maxsize=maxsize)(_load_file_impl)
+        _load_file_cached_no_positions = lru_cache(maxsize=maxsize)(
+            _load_file_impl_no_positions
+        )
 
 
 def clear_cache() -> None:
@@ -84,6 +105,7 @@ def clear_cache() -> None:
     """
     with _cache_lock:
         _load_file_cached.cache_clear()
+        _load_file_cached_no_positions.cache_clear()
 
 
 @dataclass
@@ -167,6 +189,7 @@ class IncrementalComposer:
         """
         self._config_root = config_root
         self._provenance = provenance
+        self._track_provenance = not isinstance(provenance, NullProvenanceBuilder)
         self._instances: dict[str, InstanceMarker] = {}
         self._loading_stack: list[str] = []
         self._ref_graph: dict[str, list[str]] = {}
@@ -201,6 +224,8 @@ class IncrementalComposer:
         # Set config root to entry file's parent if not specified
         if self._config_root is None:
             self._config_root = path.parent
+
+        self._file_resolver = FilePathResolver(self._config_root)
 
         # Store inner_path for selective ref resolution
         self._inner_path = inner_path
@@ -250,10 +275,12 @@ class IncrementalComposer:
 
         :param path: Absolute path to the config file.
         :return: Raw config dict (may contain _ref_ markers). Returns PositionMap
-                 to preserve line number information.
+                 when provenance tracking is enabled, plain dict otherwise.
         """
         path_str = str(path)
-        return _load_file_cached(path_str)
+        if self._track_provenance:
+            return _load_file_cached(path_str)
+        return _load_file_cached_no_positions(path_str)
 
     def _ensure_path_reachable(
         self,
@@ -369,7 +396,7 @@ class IncrementalComposer:
         :return: Config with the ref resolved.
         """
         # Resolve the file path
-        resolved_path = self._resolve_file_path(
+        resolved_path = self._file_resolver.resolve(
             blocking_ref.file_path,
             current_dir,
             blocking_ref.config_path,
@@ -433,7 +460,7 @@ class IncrementalComposer:
                     ref_path = value[_REF_KEY]
                     if isinstance(ref_path, str):
                         # Resolve this ref
-                        resolved_path = self._resolve_file_path(
+                        resolved_path = self._file_resolver.resolve(
                             ref_path, current_dir, current_path
                         )
                         ref_config = self._load_raw_file(resolved_path)
@@ -726,7 +753,7 @@ class IncrementalComposer:
             )
 
         # Resolve the file path
-        resolved_path = self._resolve_file_path(ref_path, current_dir, config_path)
+        resolved_path = self._file_resolver.resolve(ref_path, current_dir, config_path)
 
         # Track the ref relationship
         resolved_path_str = str(resolved_path)
@@ -887,105 +914,6 @@ class IncrementalComposer:
                     )
                 else:
                     self._provenance.add(override_path, file=file_path, line=line)
-
-    def _resolve_file_path(
-        self,
-        ref_path: str,
-        current_dir: Path,
-        config_path: str,
-    ) -> Path:
-        """Resolve a _ref_ file path to an absolute path.
-
-        :param ref_path: The _ref_ path string.
-        :param current_dir: Directory of current file.
-        :param config_path: Current path in config (for error messages).
-        :return: Resolved absolute path.
-        """
-        if ref_path.startswith("/"):
-            if self._config_root is None:
-                raise RefResolutionError(
-                    ref_path,
-                    "cannot use absolute path without config root",
-                    config_path,
-                    hint="Use a relative path (e.g., './file.yaml') or set config_root when composing.",
-                )
-            base_path = self._config_root / ref_path[1:]
-        else:
-            base_path = current_dir / ref_path
-
-        # Check if path has an extension
-        if self._has_extension(ref_path):
-            resolved = base_path.resolve()
-            if not resolved.exists():
-                raise RefResolutionError(
-                    ref_path,
-                    "file not found",
-                    config_path,
-                    hint="Verify the file path is correct. Use './' for relative paths or '/' for paths from config root.",
-                )
-            return resolved
-
-        # Extension-less resolution
-        return self._resolve_extensionless_path(base_path, ref_path, config_path)
-
-    def _has_extension(self, ref_path: str) -> bool:
-        """Check if a path has a file extension."""
-        filename = Path(ref_path).name
-        return bool(Path(filename).suffix)
-
-    def _resolve_extensionless_path(
-        self,
-        base_path: Path,
-        ref_path: str,
-        config_path: str,
-    ) -> Path:
-        """Resolve an extension-less _ref_ path by globbing.
-
-        :param base_path: The base path without extension.
-        :param ref_path: Original _ref_ path (for error messages).
-        :param config_path: Current path in config (for error messages).
-        :return: Resolved absolute path.
-        """
-        parent = base_path.parent.resolve()
-        stem = base_path.name
-
-        if not parent.exists():
-            raise RefResolutionError(
-                ref_path,
-                f"directory not found: {parent}",
-                config_path,
-            )
-
-        pattern = f"{stem}.*"
-        all_matches = list(parent.glob(pattern))
-
-        supported_exts = supported_loader_extensions()
-        matching_files = [
-            f for f in all_matches if f.is_file() and f.suffix.lower() in supported_exts
-        ]
-
-        if len(matching_files) == 0:
-            if all_matches:
-                found_exts = [f.suffix for f in all_matches if f.is_file()]
-                raise RefResolutionError(
-                    ref_path,
-                    f"no config file found matching '{stem}.*' with supported extension. "
-                    f"Found files with unsupported extensions: {found_exts}. "
-                    f"Supported extensions: {sorted(supported_exts)}",
-                    config_path,
-                )
-            else:
-                raise RefResolutionError(
-                    ref_path,
-                    f"no config file found matching '{stem}.*' in {parent}",
-                    config_path,
-                )
-
-        if len(matching_files) > 1:
-            file_names = sorted([f.name for f in matching_files])
-            raise AmbiguousRefError(ref_path, file_names, config_path)
-
-        return matching_files[0]
 
     def _set_value_at_path(
         self,

@@ -27,7 +27,9 @@ REQUIRED_KEY = "_required_"
 # Sentinel for _lazy_ key
 LAZY_KEY = "_lazy_"
 
-# Keys used internally by rconfig (stripped during structural matching)
+# Keys used internally by rconfig. These are consumed by the framework during
+# composition and instantiation, and cannot be used as config field names.
+# They are stripped during structural matching and before constructor calls.
 RCONFIG_INTERNAL_KEYS = frozenset({
     "_target_", "_ref_", "_instance_", "_lazy_", "_required_", "_recursive_",
 })

@@ -631,16 +631,13 @@ class ConfigComposerInternalTests(TestCase):
 
     def test_resolve_file_path__AbsolutePathWithoutConfigRoot__RaisesRefResolutionError(self):
         # Arrange
-        from rconfig.composition import IncrementalComposer
-        from rconfig.provenance import ProvenanceBuilder
+        from rconfig.composition.file_path_resolver import FilePathResolver
 
-        # Create walker with config_root=None
-        provenance = ProvenanceBuilder()
-        walker = IncrementalComposer(config_root=None, provenance=provenance)
+        resolver = FilePathResolver(config_root=None)
 
         # Act & Assert
         with self.assertRaises(RefResolutionError) as ctx_err:
-            walker._resolve_file_path("/model.yaml", Path("/configs"), "test.path")
+            resolver.resolve("/model.yaml", Path("/configs"), "test.path")
 
         self.assertIn("without config root", str(ctx_err.exception))
 
@@ -1879,13 +1876,12 @@ class ProvenanceErrorPathTests(TestCase):
         # Act
         with mock_filesystem(fs):
             composer = ConfigComposer(fs.base_path)
-            config = composer.compose(Path("/configs/app.yaml"))
-            prov = composer.provenance
+            prov = composer.compose_with_provenance(Path("/configs/app.yaml"))
 
         # Assert - verify nested lists are composed correctly
         self.assertIsNotNone(prov)
-        self.assertEqual(config["matrix"][0][0]["value"], "nested")
-        self.assertEqual(config["matrix"][0][1]["value"], "item")
+        self.assertEqual(prov.config["matrix"][0][0]["value"], "nested")
+        self.assertEqual(prov.config["matrix"][0][1]["value"], "item")
 
     def test_compose_with_provenance__ChainedInstanceCycle__RaisesError(self):
         """Test circular chained instance references."""

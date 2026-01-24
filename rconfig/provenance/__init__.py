@@ -28,6 +28,7 @@ from .models import (
 # Main classes
 from .provenance import Provenance
 from .builder import ProvenanceBuilder
+from .null_builder import NullProvenanceBuilder
 
 # Formatting subsystem
 from .formatting import (
@@ -54,6 +55,7 @@ __all__ = [
     # Main classes
     "Provenance",
     "ProvenanceBuilder",
+    "NullProvenanceBuilder",
     # Formatting
     "ProvenanceFormat",
     "ProvenanceFormatContext",
