@@ -164,6 +164,21 @@ for name, ref in refs.items():
     print(f"{name}: {ref.target_class}")
 ```
 
+### Reserved Keys
+
+ReausoConfig reserves the following keys (prefixed and suffixed with `_`) for framework use during composition and instantiation. These keys are consumed by the framework and **cannot be used as field names** in your configuration classes.
+
+| Key           | Purpose                                            |
+| ------------- | -------------------------------------------------- |
+| `_target_`    | Maps config block to a registered Python class     |
+| `_ref_`       | References another config file for composition     |
+| `_instance_`  | Shares an instantiated object across config paths  |
+| `_lazy_`      | Marks a nested config for lazy instantiation       |
+| `_required_`  | Marks a value as required (must be overridden)     |
+| `_recursive_` | Reserved for future use                            |
+
+These keys are stripped from the config before instantiation and are not passed to your class constructors. If you use a reserved key as a field name in your class, that field will never receive a value from config.
+
 ### Validation
 
 Before instantiation, configs are validated for:
